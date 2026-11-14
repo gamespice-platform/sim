@@ -16,6 +16,8 @@ mod brain;
 mod hulls;
 #[cfg(feature = "interp")]
 mod interp;
+#[cfg(feature = "killview")]
+mod killview;
 #[cfg(feature = "motor")]
 mod motor;
 #[cfg(feature = "ragdoll")]

@@ -26,7 +26,7 @@ Native (Rust, GDExtension) twins of hot script code in the dot family, one modul
 | `rust/crates/dot-sim-motor` | the motor's collision body over a `Space` trait (the engine queries) its slide loop (`slide`) and the whole motor tick (`full`), pure and tested with a fake floor; the gdext side is the engine `Space` |
 | `rust/crates/dot-sim-arms` | the view arms' clearance scan in the engine's `f32`/`f64` order (`Vector3.rotated`, `AABB.intersects_segment`, `lerp`), pure |
 | `rust/crates/dot-sim-audio` | the footstep stride and landing, slide and surf start and stop decisions and the surface name rules, pure and tested; the gdext side does the rays and the node lookups |
-| `rust/crates/dot-sim-gdext` | the one cdylib (`dot_sim`): thin bindings, one cargo feature per module (`bots`, `brain`, `snapshot`, `interp`, `motor`, `arms`, `audio`, `ragdoll`), `web`/`web-nothreads` for the browser build |
+| `rust/crates/dot-sim-gdext` | the one cdylib (`dot_sim`): thin bindings, one cargo feature per module (`bots`, `brain`, `snapshot`, `interp`, `motor`, `arms`, `audio`, `ragdoll`, `killview`), `web`/`web-nothreads` for the browser build |
 | `addons/dot_sim/dot_sim.gd` | `DotSim.has(module)`: which modules are loaded, safe with no library |
 | `ci/` | build matrix, installer and packaging ([native-ci.md](native-ci.md)); the installer writes the gitignored `addons/dot_sim/bin/<platform>/` and `.gdextension` |
 | `examples/sim_selftest.tscn` | the bots parity suite |

@@ -195,6 +195,107 @@ pub fn rad_to_deg(r: f64) -> f64 {
     r * (180.0 / std::f64::consts::PI)
 }
 
+/// A `Quaternion` as the engine stores it: x, y, z, w.
+pub type Quat = [f32; 4];
+
+impl Vec3 {
+    /// `Vector3.normalize()` in place, as the engine: zero for a non-finite or zero vector, else
+    /// each component divided by the length (the square root of the `f32` squared length).
+    #[inline]
+    fn engine_normalized(self) -> Self {
+        if !(self.x.is_finite() && self.y.is_finite() && self.z.is_finite()) {
+            return Self::default();
+        }
+        self.normalized()
+    }
+
+    /// `Vector3 * real_t` with an `f32` scalar.
+    #[inline]
+    fn times(self, s: f32) -> Self {
+        Self::new(self.x * s, self.y * s, self.z * s)
+    }
+}
+
+/// A basis's column `i`, as `Basis::get_column`.
+#[inline]
+fn column(rows: &[Vec3; 3], i: usize) -> Vec3 {
+    let c = |r: Vec3| match i {
+        0 => r.x,
+        1 => r.y,
+        _ => r.z,
+    };
+    Vec3::new(c(rows[0]), c(rows[1]), c(rows[2]))
+}
+
+/// `Basis.orthonormalized()`: Gram-Schmidt over the columns in the engine's order and rounding.
+pub fn orthonormalized(rows: &[Vec3; 3]) -> [Vec3; 3] {
+    let x = column(rows, 0).engine_normalized();
+    let y = column(rows, 1);
+    let y = (y - x.times(x.dot(y))).engine_normalized();
+    let z = column(rows, 2);
+    let z = (z - x.times(x.dot(z)) - y.times(y.dot(z))).engine_normalized();
+    [
+        Vec3::new(x.x, y.x, z.x),
+        Vec3::new(x.y, y.y, z.y),
+        Vec3::new(x.z, y.z, z.z),
+    ]
+}
+
+/// `Basis.determinant()`, expanded along the first column as the engine does.
+pub fn determinant(m: &[Vec3; 3]) -> f32 {
+    m[0].x * (m[1].y * m[2].z - m[2].y * m[1].z) - m[1].x * (m[0].y * m[2].z - m[2].y * m[0].z)
+        + m[2].x * (m[0].y * m[1].z - m[1].y * m[0].z)
+}
+
+/// `Basis.get_quaternion()`: the trace branch, else the largest diagonal entry's, in `f32`.
+pub fn quaternion(m: &[Vec3; 3]) -> Quat {
+    let r = |i: usize, j: usize| {
+        let row = m[i];
+        match j {
+            0 => row.x,
+            1 => row.y,
+            _ => row.z,
+        }
+    };
+    let trace = r(0, 0) + r(1, 1) + r(2, 2);
+    let mut q = [0.0f32; 4];
+    if trace > 0.0 {
+        let s = (trace + 1.0).sqrt();
+        q[3] = s * 0.5;
+        let s = 0.5 / s;
+        q[0] = (r(2, 1) - r(1, 2)) * s;
+        q[1] = (r(0, 2) - r(2, 0)) * s;
+        q[2] = (r(1, 0) - r(0, 1)) * s;
+    } else {
+        let i = if r(0, 0) < r(1, 1) {
+            if r(1, 1) < r(2, 2) { 2 } else { 1 }
+        } else if r(0, 0) < r(2, 2) {
+            2
+        } else {
+            0
+        };
+        let j = (i + 1) % 3;
+        let k = (i + 2) % 3;
+        let s = (r(i, i) - r(j, j) - r(k, k) + 1.0).sqrt();
+        q[i] = s * 0.5;
+        let s = 0.5 / s;
+        q[3] = (r(k, j) - r(j, k)) * s;
+        q[j] = (r(j, i) + r(i, j)) * s;
+        q[k] = (r(k, i) + r(i, k)) * s;
+    }
+    q
+}
+
+/// `Basis.get_rotation_quaternion()`: orthonormalized, negated when its determinant is negative,
+/// then [`quaternion`].
+pub fn rotation_quaternion(rows: &[Vec3; 3]) -> Quat {
+    let mut m = orthonormalized(rows);
+    if determinant(&m) < 0.0 {
+        m = [-m[0], -m[1], -m[2]];
+    }
+    quaternion(&m)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +374,32 @@ mod tests {
             Vec3::new(0.1, 0.2, 0.3).length(),
             (0.1f32 * 0.1 + 0.2 * 0.2 + 0.3 * 0.3).sqrt()
         );
+    }
+
+    #[test]
+    fn rotation_quaternion_of_a_quarter_turn_and_a_mirror() {
+        // A quarter turn about y: x goes to -z.
+        let rows = [
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(-1.0, 0.0, 0.0),
+        ];
+        let q = rotation_quaternion(&rows);
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        assert!((q[1] - h).abs() < 1e-6 && (q[3] - h).abs() < 1e-6, "{q:?}");
+        // A mirrored, scaled identity still reads as no rotation.
+        let m = [
+            Vec3::new(-2.0, 0.0, 0.0),
+            Vec3::new(0.0, -2.0, 0.0),
+            Vec3::new(0.0, 0.0, -2.0),
+        ];
+        assert_eq!(rotation_quaternion(&m), [0.0, 0.0, 0.0, 1.0]);
+        // A non-finite column normalizes to zero, as the engine's.
+        let n = [
+            Vec3::new(f32::NAN, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        ];
+        assert_eq!(orthonormalized(&n)[0].x, 0.0);
     }
 }
