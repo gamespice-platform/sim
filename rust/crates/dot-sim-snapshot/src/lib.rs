@@ -34,6 +34,8 @@ pub enum Kind {
     String,
     Bytes,
     Custom,
+    /// `PACKED_FLOAT32`: a flag (the array has `Decl::len` entries), then those float32s.
+    PackedFloat32,
 }
 
 impl Kind {
@@ -55,6 +57,7 @@ impl Kind {
             12 => String,
             13 => Bytes,
             14 => Custom,
+            15 => PackedFloat32,
             _ => return None,
         })
     }
@@ -67,6 +70,8 @@ pub struct Decl {
     pub bits: i64,
     pub min: f64,
     pub max: f64,
+    /// `DotNetVar.length`: a `PackedFloat32`'s entries.
+    pub len: i64,
     /// False for what the script must do itself (see the crate docs).
     pub native: bool,
 }
@@ -74,7 +79,7 @@ pub struct Decl {
 impl Decl {
     /// From a row of `DotNetBehaviour._native_spec()`: `[type, audience, max_rate, epsilon,
     /// on_spawn_only, bit_width, min, max, extent, position_bits, max_speed, velocity_bits,
-    /// rotation_bits, slot]`.
+    /// rotation_bits, slot, length]` (a row without `length` reads it as 0).
     pub fn from_spec(row: &[f64]) -> Decl {
         let get = |i: usize| row.get(i).copied().unwrap_or(0.0);
         let kind = Kind::from_index(get(0) as i64).unwrap_or(Kind::Custom);
@@ -87,6 +92,8 @@ impl Decl {
         let native = match kind {
             Kind::String | Kind::Custom => false,
             Kind::Bool | Kind::Varint | Kind::Float | Kind::Bytes => true,
+            // A negative length makes the script's read fail its resize; leave it the script's.
+            Kind::PackedFloat32 => get(14) >= 0.0,
             // A width out of 1..=64 makes the script push an error; a float field past 32 bits
             // rounds through an int conversion C++ and Rust disagree on at the top.
             Kind::Uint | Kind::Int => (1..=64).contains(&bits),
@@ -97,6 +104,7 @@ impl Decl {
             bits,
             min,
             max,
+            len: get(14) as i64,
             native,
         }
     }
@@ -111,6 +119,18 @@ pub enum Value {
     Vec3([f32; 3]),
     Quat([f32; 4]),
     Bytes(Vec<u8>),
+    /// A `PackedFloat32Array` (any other value is written as an empty one, as the script does).
+    F32s(Vec<f32>),
+}
+
+/// A float32 as it comes out of the script's float conversions: a signalling NaN quieted, as
+/// x86's and ARM's f32<->f64 conversions do (done by hand: a compiler may fold `x as f64 as f32`).
+pub fn quiet_f32(f: f32) -> f32 {
+    if f.is_nan() {
+        f32::from_bits(f.to_bits() | 0x0040_0000)
+    } else {
+        f
+    }
 }
 
 /// The script's 0.7071067811865476, the same double.
@@ -235,6 +255,19 @@ impl Writer {
         }
     }
 
+    /// `PACKED_FLOAT32`: the flag, then each entry as `write_float32` writes it.
+    pub fn write_f32s(&mut self, values: &[f32], len: i64) {
+        let whole = values.len() as i64 == len;
+        self.write_bits(whole as i64, 1);
+        if whole {
+            for f in values {
+                for b in quiet_f32(*f).to_le_bytes() {
+                    self.write_bits(b as i64, 8);
+                }
+            }
+        }
+    }
+
     pub fn write_vec3_range(&mut self, v: [f32; 3], min: f64, max: f64, bits: i64) {
         for c in v {
             self.write_float_range(c as f64, min, max, bits);
@@ -297,6 +330,7 @@ impl Writer {
             (Kind::Direction, Value::Vec3(v)) => self.write_direction(*v, d.bits),
             (Kind::Quaternion, Value::Quat(q)) => self.write_quaternion(*q, d.bits),
             (Kind::Bytes, Value::Bytes(b)) => self.write_bytes(b),
+            (Kind::PackedFloat32, Value::F32s(v)) => self.write_f32s(v, d.len),
             _ => return false,
         }
         true
@@ -362,6 +396,27 @@ impl Reader<'_> {
             return 0.0;
         }
         f32::from_le_bytes(b) as f64
+    }
+
+    /// `PACKED_FLOAT32`: empty when the flag is clear, else `len` entries read as
+    /// `read_float32` reads them (0.0 once the reader is exhausted).
+    pub fn read_f32s(&mut self, len: i64) -> Vec<f32> {
+        if self.read_bits(1) != 1 {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for _ in 0..len {
+            let mut b = [0u8; 4];
+            for x in b.iter_mut() {
+                *x = self.read_bits(8) as u8;
+            }
+            out.push(if self.exhausted {
+                0.0
+            } else {
+                quiet_f32(f32::from_le_bytes(b))
+            });
+        }
+        out
     }
 
     pub fn read_vec3_range(&mut self, min: f64, max: f64, bits: i64) -> [f32; 3] {
@@ -449,6 +504,7 @@ impl Reader<'_> {
             Kind::Direction => Value::Vec3(self.read_direction(d.bits)),
             Kind::Quaternion => Value::Quat(self.read_quaternion(d.bits)),
             Kind::Bytes => Value::Bytes(self.read_bytes(MAX_READ_BYTES)),
+            Kind::PackedFloat32 => Value::F32s(self.read_f32s(d.len)),
             Kind::String | Kind::Custom => return None,
         })
     }

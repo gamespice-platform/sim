@@ -60,6 +60,12 @@ fn to_value(d: &Decl, v: &Variant) -> Option<Value> {
             }
             Value::Bytes(v.to::<PackedByteArray>().as_slice().to_vec())
         }
+        // The script writes anything but a `PackedFloat32Array` as an empty one.
+        Kind::PackedFloat32 => Value::F32s(if t == VariantType::PACKED_FLOAT32_ARRAY {
+            v.to::<PackedFloat32Array>().as_slice().to_vec()
+        } else {
+            Vec::new()
+        }),
         Kind::String | Kind::Custom => return None,
     })
 }
@@ -72,6 +78,7 @@ fn to_variant(v: &Value) -> Variant {
         Value::Vec3(p) => Vector3::new(p[0], p[1], p[2]).to_variant(),
         Value::Quat(q) => Quaternion::new(q[0], q[1], q[2], q[3]).to_variant(),
         Value::Bytes(b) => PackedByteArray::from(b.as_slice()).to_variant(),
+        Value::F32s(f) => PackedFloat32Array::from(f.as_slice()).to_variant(),
     }
 }
 

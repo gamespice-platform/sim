@@ -71,11 +71,12 @@ The saving grows with the bot count because the scan is quadratic in bodies. At 
 `DotSimSnapshotCodec` is one behaviour's declarations (kinds, bits, ranges, pads) and two calls: `encode(values, changed, pad)` writes a state exactly as `DotNetBehaviour._encode` does, and `decode(bytes, pad)` reads one exactly as `read_state` does. dot-net drives it through `DotNetSimCodec`; dot-net names the class only as a `StringName` for `ClassDB`, so it does not depend on dot-sim.
 
 - Any value the script writes differently (a custom codec, a string, a 40-bit float range, a value of the wrong type) makes that state's encode fall back to the script; on decode the codec stops with `SCRIPT`, the script reads that one value, and the native read continues.
+- A fixed-length float32 array (`DotNetVar.of_length(n)`, `PACKED_FLOAT32`, dot-net API 20) is the codec's: a whole-array flag, then each float as its 32 bits, with signalling NaNs quieted as the script's float conversions quiet them. An older dot-net never sends that kind; an older dot-sim reads it as custom and leaves it to the script.
 - Only the main thread encodes natively; snapshot workers keep the script.
 - Off with `DotNetConfig.sim_codec` (`DOT_NET_SIM_CODEC=0`, `--net-sim-codec=false`) or `DotNetSimCodec.enabled`; the web never loads it.
 - dot-net's own C++ core (`DotNetConfig.native`) already encodes on the server, so the codec matters there only with that core off; on a client it is the decode.
 
-`examples/snapshot_selftest.tscn` holds it: 4000 random states encoded by both at every pad, every packet plus cut-short and noise packets decoded by both, and five scripted three-peer games (22 and 33 Hz, 10-20 % seeded loss, duplicates and jitter, interest rings, workers) whose payloads and received values must hash the same. The crate's `golden_player_state` test pins the bytes of one arena-like state.
+`examples/snapshot_selftest.tscn` holds it: 4000 random states encoded by both at every pad, every packet plus cut-short and noise packets decoded by both, and five scripted three-peer games (22 and 33 Hz, 10-20 % seeded loss, duplicates and jitter, interest rings, workers) whose payloads and received values must hash the same. The crate's `golden_player_state` test pins the bytes of one FC-like state, and `golden_packed_float32` those of a packed float array.
 
 ## Measured: snapshot (build machine, headless)
 

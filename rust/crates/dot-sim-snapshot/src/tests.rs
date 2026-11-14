@@ -243,3 +243,60 @@ fn golden_player_state() {
         "48801f0382f9ef3f8641140220f3090b3c744f340b450f960a6680840102"
     );
 }
+
+fn packed(len: f64) -> Decl {
+    let mut row = vec![0.0; 15];
+    row[0] = Kind::PackedFloat32 as i64 as f64;
+    row[14] = len;
+    Decl::from_spec(&row)
+}
+
+/// `PACKED_FLOAT32` as the script writes it (FC's net_exact): a flag, then whole float32s, a
+/// signalling NaN quieted as the script's float conversions quiet it. Pad 3, one entry.
+#[test]
+fn golden_packed_float32() {
+    let decls = vec![packed(3.0)];
+    let snan = f32::from_bits(0x7f80_0001);
+    let entries = vec![(0, Value::F32s(vec![1.0, -0.0, snan]))];
+    let mut w = Writer::new();
+    assert!(encode_state(&decls, 3, 1, &entries, &mut w));
+    assert_eq!(w.bit_length(), 112);
+    let hex: String = w.bytes.iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(hex, "08800000803f000000800100c07f");
+
+    let mut r = Reader::new(&w.bytes);
+    r.read_bits(3);
+    let mut out = Decoded::default();
+    assert_eq!(decode_state(&decls, &mut r, -1, &mut out), Stop::Done);
+    let Value::F32s(back) = &out.entries[0].1 else {
+        panic!("not F32s: {:?}", out.entries[0].1);
+    };
+    let bits: Vec<u32> = back.iter().map(|f| f.to_bits()).collect();
+    assert_eq!(bits, vec![0x3f80_0000, 0x8000_0000, 0x7fc0_0001]);
+}
+
+#[test]
+fn packed_float32_wrong_size_and_cut_short() {
+    let d = packed(14.0);
+    assert!(d.native && d.len == 14);
+    assert!(!packed(-1.0).native);
+    // A wrong size is the flag alone and reads back empty.
+    let mut w = Writer::new();
+    assert!(w.write_value(&d, &Value::F32s(vec![1.0; 13])));
+    assert_eq!(w.bit_length(), 1);
+    let mut r = Reader::new(&w.bytes);
+    assert_eq!(r.read_value(&d), Some(Value::F32s(Vec::new())));
+    // A whole one is 1 + 14 * 32 bits; cut short, the reader is exhausted (the state's error).
+    let mut w = Writer::new();
+    let v: Vec<f32> = (0..14).map(|i| i as f32 * 0.25 - 1.0).collect();
+    assert!(w.write_value(&d, &Value::F32s(v.clone())));
+    assert_eq!(w.bit_length(), 1 + 14 * 32);
+    let mut r = Reader::new(&w.bytes);
+    assert_eq!(r.read_value(&d), Some(Value::F32s(v)));
+    let cut = &w.bytes[..20];
+    let mut r = Reader::new(cut);
+    let _ = r.read_value(&d);
+    assert!(r.exhausted);
+    // A value of another kind is the script's.
+    assert!(!Writer::new().write_value(&d, &Value::Float(1.0)));
+}

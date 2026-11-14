@@ -30,6 +30,7 @@ class Every extends DotNetBehaviour:
 	var by: Variant = PackedByteArray()
 	var c: Variant = 0
 	var rated: Variant = 0
+	var px: Variant = PackedFloat32Array()
 	var log: Array = []
 
 	func _register_net_vars() -> void:
@@ -53,6 +54,7 @@ class Every extends DotNetBehaviour:
 		replicate(&"by", DotNetVar.Type.BYTES)
 		replicate_custom(&"c", _write_c, _read_c)
 		replicate(&"rated", DotNetVar.Type.UINT).bits(12).at_most(10.0)
+		replicate(&"px", DotNetVar.Type.FLOAT).of_length(14)
 		for declaration in net_vars:
 			var property := declaration.property
 			var _h := declaration.on_change(func(previous: Variant, value: Variant) -> void:
@@ -68,7 +70,46 @@ class Every extends DotNetBehaviour:
 		return low
 
 
-## A player as arena sends it: what a client applies 128 of per snapshot.
+## FC's exact floats alone: the crate's PACKED_FLOAT32 golden test.
+class Exact extends DotNetBehaviour:
+	var exact: Variant = PackedFloat32Array()
+
+	func _register_net_vars() -> void:
+		replicate(&"exact", DotNetVar.Type.FLOAT).of_length(3)
+
+
+## FC's net_exact as it is now: 14 floats, the codec's own.
+class Exact14 extends DotNetBehaviour:
+	var exact: Variant = PackedFloat32Array()
+
+	func _register_net_vars() -> void:
+		replicate(&"exact", DotNetVar.Type.PACKED_FLOAT32).of_length(14)
+
+
+## FC's net_exact before PACKED_FLOAT32: a custom codec, the script's 14 read_float32 calls.
+class ExactCustom extends DotNetBehaviour:
+	var exact: Variant = PackedFloat32Array()
+
+	func _register_net_vars() -> void:
+		replicate(&"exact", DotNetVar.Type.CUSTOM).codec(_write, _read)
+
+	static func _write(writer: DotNetWriter, value: Variant) -> void:
+		var floats: PackedFloat32Array = value if value is PackedFloat32Array else PackedFloat32Array()
+		writer.write_bool(floats.size() == 14)
+		if floats.size() == 14:
+			for f in floats:
+				writer.write_float32(f)
+
+	static func _read(reader: DotNetReader) -> Variant:
+		var floats := PackedFloat32Array()
+		if reader.read_bool():
+			floats.resize(14)
+			for i in 14:
+				floats[i] = reader.read_float32()
+		return floats
+
+
+## A player as FC sends it: what a client applies 128 of per snapshot.
 class Player extends DotNetBehaviour:
 	var position := Vector3.ZERO
 	var velocity := Vector3.ZERO
@@ -160,6 +201,7 @@ func _run() -> void:
 		_test_wire(33, 33, 0.2, 3, true, 2)
 		_test_wire(66, 33, 0.1, 2, true, 0)
 		_bench()
+		_bench_exact()
 		_golden()
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -239,7 +281,28 @@ func _value(rng: RandomNumberGenerator, d: DotNetVar) -> Variant:
 			for i in rng.randi_range(0, 9 if not edge else 300):
 				out.append(rng.randi_range(0, 255))
 			return out
+		DotNetVar.Type.PACKED_FLOAT32:
+			if edge:
+				return [PackedFloat32Array(), PackedFloat32Array([1.0]), null, 2.5, [1.0], _odd_floats(rng, d.length + 1)][rng.randi_range(0, 5)]
+			if rng.randi_range(0, 3) == 0:
+				return _odd_floats(rng, d.length)
+			var floats := PackedFloat32Array()
+			for i in d.length:
+				floats.append(rng.randf_range(-5000.0, 5000.0))
+			return floats
 	return rng.randi_range(0, 1000)
+
+
+## [param count] floats from raw bits: signalling and quiet NaNs with payloads, signed zeros,
+## infinities, denormals and anything else (a byte array's view keeps the bits as they are).
+func _odd_floats(rng: RandomNumberGenerator, count: int) -> PackedFloat32Array:
+	var raw := PackedByteArray()
+	raw.resize(count * 4)
+	for i in count:
+		var u: int = [0x7f800001, 0x7fbfffff, 0xffc00123, 0x7fc00000, 0x80000000, 0x00000001, 0x807fffff,
+			0x7f800000, 0xff800000, 0x7f7fffff, rng.randi()][rng.randi_range(0, 10)]
+		raw.encode_u32(i * 4, u)
+	return raw.to_float32_array()
 
 
 ## The same declarations, values and pad: script and codec write the same bytes, end bit,
@@ -291,9 +354,9 @@ func _test_encode_parity() -> void:
 	# script's whole, so about 0.6^3 of the rounds are the codec's.
 	_check(native_hits > ROUNDS / 6, "the codec wrote %d of them itself" % native_hits)
 	var types := 0
-	for t in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13]:
+	for t in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15]:
 		types += 1 if per_type.has(t) else 0
-	_check(types == 13, "every built-in type but string went through the codec (%d of 13)" % types)
+	_check(types == 14, "every built-in type but string went through the codec (%d of 14)" % types)
 	# A value of a type only the script converts hands the whole state back.
 	native.i32 = "12"
 	var only: Array[DotNetVar] = [native.net_vars[4]]
@@ -656,6 +719,52 @@ func _bench() -> void:
 	_check(true, "bench ran")
 
 
+## FC's exact floats, 128 owners a snapshot: the custom codec they had, PACKED_FLOAT32 in the
+## script (the web) and in the codec. All three read the same packets to the same bits.
+func _bench_exact() -> void:
+	const N := 128
+	const LAPS := 30
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 14
+	var packets: Array[PackedByteArray] = []
+	var sent: Array[PackedFloat32Array] = []
+	for i in N:
+		var w := Exact14.new()
+		w._bind(_config)
+		w._sim_codec = null
+		var floats := PackedFloat32Array()
+		for k in 14:
+			floats.append(rng.randf_range(-4000.0, 4000.0))
+		w.exact = floats
+		sent.append(floats)
+		packets.append(w._encode(w.net_vars, 0)[0])
+	var ms := {}
+	var same := 0
+	for way in ["custom", "script", "codec"]:
+		var readers: Array[DotNetBehaviour] = []
+		for i in N:
+			var r: DotNetBehaviour
+			if way == "custom":
+				r = ExactCustom.new()
+			else:
+				r = Exact14.new()
+			r._bind(_config)
+			if way != "codec":
+				r._sim_codec = null
+			readers.append(r)
+		var at := Time.get_ticks_usec()
+		for lap in LAPS:
+			for i in N:
+				var _r := readers[i].read_state(DotNetReader.new(packets[i]), lap)
+		ms[way] = float(Time.get_ticks_usec() - at) / LAPS / 1000.0
+		for i in N:
+			same += 1 if var_to_bytes(readers[i].get(&"exact")) == var_to_bytes(sent[i]) else 0
+	_check(same == 3 * N, "exact floats: custom codec, script and codec read the same bits", "%d of %d" % [same, 3 * N])
+	print("  decode+apply %d exact states: custom %.3f ms, script %.3f ms, codec %.3f ms" % [N, ms["custom"], ms["script"], ms["codec"]])
+	print("BENCH_EXACT %s" % JSON.stringify({"entities": N, "custom_ms": snappedf(ms["custom"], 0.001),
+		"script_ms": snappedf(ms["script"], 0.001), "codec_ms": snappedf(ms["codec"], 0.001)}))
+
+
 ## Bytes for the crate's own golden test (rust/crates/dot-sim-snapshot/src/tests.rs).
 func _golden() -> void:
 	var p := Player.new()
@@ -676,3 +785,16 @@ func _golden() -> void:
 	var e := p._encode(decls, 3)
 	print("GOLDEN pad 3, %d bits: %s" % [e[1], (e[0] as PackedByteArray).hex_encode()])
 	_check(true, "golden printed")
+	# The crate's golden_packed_float32: a signalling NaN goes out quieted.
+	var x := Exact.new()
+	x._bind(DotNetConfig.new())
+	x._sim_codec = null
+	var raw := PackedByteArray()
+	raw.resize(12)
+	raw.encode_float(0, 1.0)
+	raw.encode_float(4, -0.0)
+	raw.encode_u32(8, 0x7f800001)
+	x.exact = raw.to_float32_array()
+	var xe := x._encode(x.net_vars, 3)
+	var hex := (xe[0] as PackedByteArray).hex_encode()
+	_check(int(xe[1]) == 112 and hex == "08800000803f000000800100c07f", "PACKED_FLOAT32 golden bytes", "%d bits %s" % [xe[1], hex])
