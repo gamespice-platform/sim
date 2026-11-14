@@ -1,5 +1,3 @@
-# dot-sim
-
 Optional native (Rust GDExtension) versions of hot simulation code from the dot addons. Each module gives the same answers as the script it replaces. A game without the library, and every web export, simply runs the script.
 
 | Module | Replaces |
