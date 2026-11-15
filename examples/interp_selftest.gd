@@ -3,8 +3,9 @@ extends Node
 ## The interp module's suite: dot-net's [code]DotNetInterpolator.apply[/code] in GDScript and in
 ## [code]DotSimInterpolator[/code] on the same seeded streams (loss, reordering, duplicate and partial
 ## ticks, stalls, extrapolation past its cap, resumes eased and teleports not, vectors, rotations,
-## colours, discrete and type-switching values, a write hook, a plan that changes, forget and prune),
-## frame for frame. Every property written, every [code]_net_interpolated[/code] tick and every
+## colours, discrete and type-switching values, a write hook, a plan that changes, forget and prune,
+## an entity turned predicted and back), frame for frame, odd seeds through [code]apply_frame[/code]
+## (one library call a frame) and even seeds through [code]apply[/code] per entity. Every property written, every [code]_net_interpolated[/code] tick and every
 ## counter must be equal to the bit. With no library it checks the fallback and says the native half
 ## was skipped. With [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
 
@@ -269,9 +270,18 @@ func _test_stream(run_seed: int) -> void:
 		if frame == 1900:
 			for side in sides:
 				side.interpolator.clear()
+		# An entity the local peer predicts for a while: neither path may write it.
+		if frame == 300 or frame == 900:
+			for side in sides:
+				var identity := side.identities[2]
+				identity.authority = DotNetIdentity.Authority.SHARED if frame == 300 else DotNetIdentity.Authority.SERVER
+				identity.is_owner = frame == 300
 		for side in sides:
-			for identity in side.identities:
-				side.interpolator.apply(identity, now)
+			if run_seed % 2 == 1:
+				side.interpolator.apply_frame(side.identities, now)
+			else:
+				for identity in side.identities:
+					side.interpolator.apply(identity, now)
 		if first_bad < 0:
 			var diff := _first_difference(a, b)
 			if a.state() != b.state():
@@ -323,5 +333,11 @@ func _bench() -> void:
 			for identity in side.identities:
 				side.interpolator.apply(identity, now)
 		var ms := float(Time.get_ticks_usec() - started) / 1000.0 / 400.0
-		print("  bench  apply, 64 entities, %s: %.3f ms per frame" % ["native" if native else "GDScript", ms])
+		started = Time.get_ticks_usec()
+		for frame in range(400):
+			now += 64.0 / 144.0 * 0.05
+			side.interpolator.advance(1.0 / 144.0)
+			side.interpolator.apply_frame(side.identities, now)
+		var frame_ms := float(Time.get_ticks_usec() - started) / 1000.0 / 400.0
+		print("  bench  64 entities, %s: apply %.3f ms, apply_frame %.3f ms per frame" % ["native" if native else "GDScript", ms, frame_ms])
 		side.free_all()

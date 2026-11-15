@@ -141,6 +141,59 @@ impl DotSimInterpolator {
     }
 }
 
+impl DotSimInterpolator {
+    /// `apply` for one entity, its config worked out by the caller.
+    fn apply_one(
+        &mut self,
+        net_id: i64,
+        behaviours: &AnyArray,
+        tick: &Variant,
+        render: f64,
+        frame_elapsed: f64,
+        cfg: &Config,
+    ) -> bool {
+        let Some(values) = self.interp.draw(net_id, render, frame_elapsed, cfg) else {
+            return false;
+        };
+        let list: Vec<Gd<Object>> = behaviours
+            .iter_shared()
+            .filter_map(|b| b.try_to::<Gd<Object>>().ok())
+            .collect();
+        // Out of the track while hooks run, back in after.
+        let mut plan = self
+            .interp
+            .plan_mut(net_id)
+            .map(std::mem::take)
+            .unwrap_or_default();
+        if !plan_fits(&plan, &list) {
+            plan = self.build_plan(&list);
+        }
+        for (part, behaviour) in plan.0.iter().zip(list.iter()) {
+            let mut behaviour = behaviour.clone();
+            let mut wrote = false;
+            for (key, name) in &part.props {
+                let Some((_, value)) = values.iter().find(|(k, _)| k == key) else {
+                    continue;
+                };
+                let value = to_variant(value);
+                if part.hook {
+                    behaviour.call("_net_write_property", &[name.to_variant(), value]);
+                } else {
+                    behaviour.set(name, &value);
+                }
+                wrote = true;
+            }
+            if wrote {
+                behaviour.call("_net_interpolated", std::slice::from_ref(tick));
+            }
+        }
+        if let Some(slot) = self.interp.plan_mut(net_id) {
+            *slot = plan;
+        }
+        true
+    }
+}
+
 fn plan_fits(plan: &Plan, behaviours: &[Gd<Object>]) -> bool {
     plan.0.len() == behaviours.len()
         && plan.0.iter().zip(behaviours).all(|(part, b)| {
@@ -188,46 +241,50 @@ impl DotSimInterpolator {
             ease_max,
             ease_sec,
         };
-        let Some(values) = self.interp.draw(net_id, render, frame_elapsed, &cfg) else {
-            return false;
-        };
-        let list: Vec<Gd<Object>> = behaviours
-            .iter_shared()
-            .filter_map(|b| b.try_to::<Gd<Object>>().ok())
-            .collect();
-        // Out of the track while hooks run, back in after.
-        let mut plan = self
-            .interp
-            .plan_mut(net_id)
-            .map(std::mem::take)
-            .unwrap_or_default();
-        if !plan_fits(&plan, &list) {
-            plan = self.build_plan(&list);
-        }
         let tick = (server_tick as i64).to_variant();
-        for (part, behaviour) in plan.0.iter().zip(list.iter()) {
-            let mut behaviour = behaviour.clone();
-            let mut wrote = false;
-            for (key, name) in &part.props {
-                let Some((_, value)) = values.iter().find(|(k, _)| k == key) else {
-                    continue;
-                };
-                let value = to_variant(value);
-                if part.hook {
-                    behaviour.call("_net_write_property", &[name.to_variant(), value]);
-                } else {
-                    behaviour.set(name, &value);
-                }
-                wrote = true;
+        self.apply_one(net_id, &behaviours, &tick, render, frame_elapsed, &cfg)
+    }
+
+    /// `DotNetInterpolator.apply_frame` in one call: `apply` for each identity in `identities`,
+    /// in order, skipping a null one and one whose `is_predicted()` is true, as the script's loop
+    /// does. Returns how many were sampled.
+    #[allow(clippy::too_many_arguments)]
+    #[func]
+    fn apply_all(
+        &mut self,
+        identities: AnyArray,
+        server_tick: f64,
+        render: f64,
+        frame_elapsed: f64,
+        max_ticks: f64,
+        ease_max: f64,
+        ease_sec: f64,
+    ) -> i64 {
+        let cfg = Config {
+            max_ticks,
+            ease_max,
+            ease_sec,
+        };
+        let tick = (server_tick as i64).to_variant();
+        let net_id_name = StringName::from("net_id");
+        let behaviours_name = StringName::from("behaviours");
+        let mut sampled = 0;
+        for identity in identities.iter_shared() {
+            let Ok(mut identity) = identity.try_to::<Gd<Object>>() else {
+                continue;
+            };
+            if identity.call("is_predicted", &[]).booleanize() {
+                continue;
             }
-            if wrote {
-                behaviour.call("_net_interpolated", std::slice::from_ref(&tick));
+            let net_id = identity.get(&net_id_name).to::<i64>();
+            let Ok(behaviours) = identity.get(&behaviours_name).try_to::<AnyArray>() else {
+                continue;
+            };
+            if self.apply_one(net_id, &behaviours, &tick, render, frame_elapsed, &cfg) {
+                sampled += 1;
             }
         }
-        if let Some(slot) = self.interp.plan_mut(net_id) {
-            *slot = plan;
-        }
-        true
+        sampled
     }
 
     /// `DotNetInterpolator.sample` at `render`, counted as it counts: for a suite.
