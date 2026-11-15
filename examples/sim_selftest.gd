@@ -16,6 +16,8 @@ const BOTS := 24
 const TICKS := 600
 const RATE := 30.0
 
+## Line-of-sight calls of the last [method _play].
+var _rays := 0
 var _passed := 0
 var _failed := 0
 
@@ -130,10 +132,36 @@ func _test_brain_parity() -> void:
 	for line: String in script_run:
 		fights += line.count("fight")
 	_check(fights > BOTS * TICKS / 20, "the run has fights in it", str(fights))
+	_test_sight_lod_parity()
+
+
+## The same fight with the sight LOD on (far 20 m, hold 0.15 s): every intent equal, script against native, and fewer rays than without it.
+func _test_sight_lod_parity() -> void:
+	print("sight LOD: native against script")
+	DotBotWorld.native_enabled = false
+	var script_run := _play(20.0, 0.15)
+	var rays_script_lod := _rays
+	var plain := _play()
+	var rays_script_plain := _rays
+	DotBotWorld.native_enabled = true
+	var native_run := _play(20.0, 0.15)
+	var rays_lod := _rays
+	var first := -1
+	for t in mini(script_run.size(), native_run.size()):
+		if script_run[t] != native_run[t]:
+			first = t
+			break
+	_check(first < 0, "%d bots x %d ticks with sight_far on: every intent the same" % [BOTS, TICKS], "" if first < 0 else "tick %d: %s vs %s" % [first, script_run[first], native_run[first]])
+	print("  rays over the run: script plain %d, script LOD %d, native LOD %d" % [rays_script_plain, rays_script_lod, rays_lod])
+	_check(rays_lod == rays_script_lod, "native and script trace the same number of rays under the LOD", "%d vs %d" % [rays_lod, rays_script_lod])
+	_check(rays_script_lod < rays_script_plain, "the LOD traces fewer rays than plain reuse", "%d vs %d" % [rays_script_lod, rays_script_plain])
+	_bench_sight_lod()
+	_check(plain.size() == TICKS, "the plain run still plays every tick")
 
 
 ## One fight of [constant BOTS] bots, two teams, pillars that block sight; one line of intents per tick.
-func _play() -> PackedStringArray:
+## [param think_every] 2 or more thinks a bot on every n-th tick only (a crowd's think tier), its last intent kept between; [param cover] is the number of sight-blocking pillars.
+func _play(sight_far: float = 0.0, sight_far_reuse: float = 0.15, think_every: int = 1, cover: int = 10) -> PackedStringArray:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
 	var bodies := []
@@ -144,9 +172,13 @@ func _play() -> PackedStringArray:
 		bodies.append(c)
 	var world := _world(bodies)
 	var pillars: Array[Vector3] = []
-	for i in 10:
+	for i in cover:
 		pillars.append(Vector3(rng.randf_range(-25, 25), 1.4, rng.randf_range(-25, 25)))
+	world.sight_far = sight_far
+	world.sight_far_reuse = sight_far_reuse
+	_rays = 0
 	world.line_of_sight_fn = func(a: Vector3, b: Vector3) -> bool:
+		_rays += 1
 		for q in pillars:
 			if DotBotWorld.segment_hits_sphere(a, b, q, 2.0):
 				return false
@@ -156,6 +188,7 @@ func _play() -> PackedStringArray:
 	for c: DotBotContact in bodies:
 		brains.append(DotBotBrain.new(c.id))
 	var out := PackedStringArray()
+	var last := {}
 	var dt := 1.0 / RATE
 	for t in TICKS:
 		var now := t * dt
@@ -166,7 +199,8 @@ func _play() -> PackedStringArray:
 		var intents: Array[DotBotIntent] = []
 		for i in BOTS:
 			var me: DotBotContact = bodies[i]
-			var it := brains[i].think(me, world, now)
+			var it: DotBotIntent = brains[i].think(me, world, now) if (t + i) % think_every == 0 or t == 0 else last[i]
+			last[i] = it
 			intents.append(it)
 			line += "%d:%s %.4f %.4f %s %s %d|" % [me.id, it.state, it.yaw, it.pitch, it.move, it.fire, it.target_id]
 		for i in BOTS:
@@ -188,6 +222,26 @@ func _play() -> PackedStringArray:
 				c.health = 1.0
 		out.append(line)
 	return out
+
+
+## What the LOD saves for a crowd that thinks every third tick: rays and wall time of the native mind, off against on.
+func _bench_sight_lod() -> void:
+	DotBotWorld.native_enabled = true
+	var off_us := 0
+	var on_us := 0
+	var off_rays := 0
+	var on_rays := 0
+	for rep in 3:
+		var t0 := Time.get_ticks_usec()
+		_play(0.0, 0.15, 3, 80)
+		off_us += Time.get_ticks_usec() - t0
+		off_rays = _rays
+		t0 = Time.get_ticks_usec()
+		_play(20.0, 0.15, 3, 80)
+		on_us += Time.get_ticks_usec() - t0
+		on_rays = _rays
+	print("  thinking every 3rd tick, 80 pillars of cover, native: rays %d -> %d (%.1f%%), wall %.0f -> %.0f ms per run" % [off_rays, on_rays, 100.0 * (on_rays - off_rays) / maxf(off_rays, 1), off_us / 3000.0, on_us / 3000.0])
+	_check(on_rays < off_rays, "the LOD saves rays for a crowd thinking every third tick", "%d vs %d" % [on_rays, off_rays])
 
 
 ## dot-bot's think tiers (DotSimThinkTier): random settings, people and bots; every schedule, period and body period equal, and the same counts.

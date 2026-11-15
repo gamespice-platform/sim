@@ -82,15 +82,28 @@ pub struct DotSimBotMind {
     brain_key: i64,
     /// Per target id: when sight was last asked, the answer and the world's sight stamp then.
     sight: HashMap<i64, (f64, bool, i64)>,
+    /// Sight LOD (`set_sight_lod`): beyond `far` m (0 = off) a "not seen" is held `far_reuse` s.
+    far: f64,
+    far_reuse: f64,
     found: Found,
 }
 
 impl DotSimBotMind {
     /// The cached answer for `id`, if it is still good at `now` under `stamp`.
     fn sight_held(&self, id: i64, now: f64, stamp: i64) -> Option<bool> {
+        self.sight_held_far(id, now, stamp, 0.0)
+    }
+
+    /// [`Self::sight_held`] with the sight LOD: a "not seen" is also good for `far_reuse` s
+    /// (never a "seen"; 0 or less holds nothing longer).
+    fn sight_held_far(&self, id: i64, now: f64, stamp: i64, far_reuse: f64) -> Option<bool> {
         match self.sight.get(&id) {
-            Some(&(at, seen, st)) if st == stamp && now >= at && now - at < SIGHT_REUSE => {
-                Some(seen)
+            Some(&(at, seen, st)) if st == stamp && now >= at => {
+                if now - at < SIGHT_REUSE || (!seen && now - at < far_reuse) {
+                    Some(seen)
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -108,6 +121,8 @@ impl IRefCounted for DotSimBotMind {
             aim: Aim::new(0),
             brain_key: 0,
             sight: HashMap::new(),
+            far: 0.0,
+            far_reuse: 0.0,
             found: Found::default(),
         }
     }
@@ -393,6 +408,23 @@ impl DotSimBotMind {
         }
     }
 
+    /// [`Self::sight_cached`] under the sight LOD: `far_reuse` is how long a "not seen" about `id`
+    /// is held (the caller measured the distance; 0 for a near body or the target).
+    #[func]
+    fn sight_cached_far(&self, id: i64, now: f64, stamp: i64, far_reuse: f64) -> i64 {
+        match self.sight_held_far(id, now, stamp, far_reuse) {
+            Some(seen) => seen as i64,
+            None => -1,
+        }
+    }
+
+    /// The sight LOD `perceive` applies (DotBotWorld.sight_far, sight_far_reuse); `far` 0 is off.
+    #[func]
+    fn set_sight_lod(&mut self, far: f64, far_reuse: f64) {
+        self.far = far;
+        self.far_reuse = far_reuse;
+    }
+
     /// Files a sight answer about `id`.
     #[func]
     fn sight_put(&mut self, id: i64, now: f64, seen: bool, stamp: i64) {
@@ -425,9 +457,11 @@ impl DotSimBotMind {
     ) -> PackedInt32Array {
         let held = senses.bind();
         let table = &held.table;
-        if held.eyes.len() != table.len() {
+        if held.eyes.len() != table.len() || (self.far > 0.0 && held.positions.len() != table.len())
+        {
             return PackedInt32Array::new();
         }
+        let (far, far_reuse) = (self.far, self.far_reuse);
         let visible = flags & 1 != 0;
         let through = flags & 2 != 0;
         let eye3 = v3(eye);
@@ -452,7 +486,16 @@ impl DotSimBotMind {
         };
         let sees = |mind: &mut Self, row: usize| -> bool {
             let id = table.ids[row];
-            if let Some(seen) = mind.sight_held(id, now, stamp) {
+            // Sight LOD: a far body (never the target) keeps a "not seen" longer.
+            let mut reuse = 0.0;
+            if far > 0.0 && id != target_id {
+                let p = held.positions[row];
+                let (dx, dy, dz) = (eye3.x - p.x, eye3.y - p.y, eye3.z - p.z);
+                if ((dx * dx + dy * dy + dz * dz) as f64) > far * far {
+                    reuse = far_reuse;
+                }
+            }
+            if let Some(seen) = mind.sight_held_far(id, now, stamp, reuse) {
                 return seen;
             }
             let ask = |to: V3| {

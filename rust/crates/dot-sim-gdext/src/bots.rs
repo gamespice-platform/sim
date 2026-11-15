@@ -10,6 +10,8 @@ pub struct DotSimBotSenses {
     pub(crate) table: Contacts,
     /// The bodies' eyes, row for row with `table` once [`Self::load_eyes`] gave them.
     pub(crate) eyes: Vec<V3>,
+    /// The bodies' positions (feet), row for row, for the sight LOD's distance.
+    pub(crate) positions: Vec<V3>,
     found: Found,
 }
 
@@ -30,6 +32,7 @@ impl DotSimBotSenses {
             .min(teams.len())
             .min(alive.len());
         self.eyes.clear();
+        self.positions.clear();
         let t = &mut self.table;
         t.ids.clear();
         t.points.clear();
@@ -53,6 +56,15 @@ impl DotSimBotSenses {
         self.eyes.clear();
         self.eyes
             .extend(eyes.as_slice().iter().map(|p| V3::new(p.x, p.y, p.z)));
+    }
+
+    /// The bodies' positions, in the rows [`Self::load_contacts`] was given; the native perceive
+    /// measures the sight LOD's distance to them.
+    #[func]
+    fn load_positions(&mut self, positions: PackedVector3Array) {
+        self.positions.clear();
+        self.positions
+            .extend(positions.as_slice().iter().map(|p| V3::new(p.x, p.y, p.z)));
     }
 
     /// Indices of the bodies inside range and cone (or still tracked), in table order.
