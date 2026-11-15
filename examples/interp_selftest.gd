@@ -256,26 +256,7 @@ func _test_stream(run_seed: int) -> void:
 				side.interpolator.note_lateness(item[1], int(now))
 		for side in sides:
 			side.interpolator.advance(dt)
-		# Housekeeping now and then: an entity forgotten, the set pruned, a behaviour's plan grown.
-		if frame == 700:
-			for side in sides:
-				side.interpolator.forget(11)
-		if frame == 1100:
-			for side in sides:
-				side.interpolator.prune(PackedInt64Array([10, 11, 13]))
-		if frame == 1500:
-			for side in sides:
-				var body := side.identities[0].behaviours[0] as Body
-				body.replicate(&"health", DotNetVar.Type.UINT).interpolated()
-		if frame == 1900:
-			for side in sides:
-				side.interpolator.clear()
-		# An entity the local peer predicts for a while: neither path may write it.
-		if frame == 300 or frame == 900:
-			for side in sides:
-				var identity := side.identities[2]
-				identity.authority = DotNetIdentity.Authority.SHARED if frame == 300 else DotNetIdentity.Authority.SERVER
-				identity.is_owner = frame == 300
+		_stream_housekeeping(sides, frame)
 		for side in sides:
 			if run_seed % 2 == 1:
 				side.interpolator.apply_frame(side.identities, now)
@@ -302,6 +283,29 @@ func _test_stream(run_seed: int) -> void:
 	_check(b.interpolator.sample_count() == 0 and b.interpolator.track_count() == a.interpolator.track_count(), "seed %d reset and track count" % run_seed)
 	a.free_all()
 	b.free_all()
+
+
+## Housekeeping now and then: an entity forgotten, the set pruned, a behaviour's plan grown.
+func _stream_housekeeping(sides: Array[Rig], frame: int) -> void:
+	if frame == 700:
+		for side in sides:
+			side.interpolator.forget(11)
+	if frame == 1100:
+		for side in sides:
+			side.interpolator.prune(PackedInt64Array([10, 11, 13]))
+	if frame == 1500:
+		for side in sides:
+			var body := side.identities[0].behaviours[0] as Body
+			body.replicate(&"health", DotNetVar.Type.UINT).interpolated()
+	if frame == 1900:
+		for side in sides:
+			side.interpolator.clear()
+	# An entity the local peer predicts for a while: neither path may write it.
+	if frame == 300 or frame == 900:
+		for side in sides:
+			var identity := side.identities[2]
+			identity.authority = DotNetIdentity.Authority.SHARED if frame == 300 else DotNetIdentity.Authority.SERVER
+			identity.is_owner = frame == 300
 
 
 func _first_difference(a: Rig, b: Rig) -> String:
