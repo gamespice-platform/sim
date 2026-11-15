@@ -16,6 +16,7 @@ const MODULES := {
 	&"audio": &"DotSimAudioSteps",
 	&"ragdoll": &"DotSimRagdollPose",
 	&"killview": &"DotSimKillViewTrack",
+	&"crowd": &"DotSimCrowdGrid",
 }
 
 
