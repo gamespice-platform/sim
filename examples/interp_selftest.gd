@@ -1,13 +1,8 @@
 extends Node
 
-## The interp module's suite: dot-net's [code]DotNetInterpolator.apply[/code] in GDScript and in
-## [code]DotSimInterpolator[/code] on the same seeded streams (loss, reordering, duplicate and partial
-## ticks, stalls, extrapolation past its cap, resumes eased and teleports not, vectors, rotations,
-## colours, discrete and type-switching values, a write hook, a plan that changes, forget and prune,
-## an entity turned predicted and back), frame for frame, odd seeds through [code]apply_frame[/code]
-## (one library call a frame) and even seeds through [code]apply[/code] per entity. Every property written, every [code]_net_interpolated[/code] tick and every
-## counter must be equal to the bit. With no library it checks the fallback and says the native half
-## was skipped. With [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
+## The interp module's suite: dot-net's [code]DotNetInterpolator.apply[/code] in GDScript and [code]DotSimInterpolator[/code] on the same seeded streams (loss, reordering, duplicate and partial ticks, stalls, extrapolation past its cap,
+## resumes eased and teleports not, vectors, rotations, colours, discrete and type-switching values, a write hook, a plan that changes, forget and prune, an entity turned predicted and back), frame for frame, odd seeds through [code]apply_frame[/code] (one library call a frame) and even seeds through [code]apply[/code] per entity.
+## Every property written, every [code]_net_interpolated[/code] tick and every counter must be equal to the bit. With no library it checks the fallback and says the native half was skipped; with [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
 
 const ENTITIES := 4
 const FRAMES := 2400
