@@ -8,8 +8,8 @@
 use crate::Vec3;
 use dot_sim_math::{maxf, minf};
 
-/// The longest period `load_scale` may stretch a tier to (DotBotThinkTier.MAX_PERIOD).
-pub const MAX_PERIOD: i64 = 8;
+/// The default longest period a tier may take (DotBotThinkTier.DEFAULT_MAX_PERIOD); a setting, 0 is unlimited.
+pub const DEFAULT_MAX_PERIOD: i64 = 8;
 
 /// Why a bot got its period; the order of [`Tier::counts`] and of the script's reasons.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,6 +47,8 @@ pub struct TierConfig {
     pub body_near_every: i64,
     pub body_far_every: i64,
     pub body_above: i64,
+    /// The longest period `load_scale` stretches to and body periods may take; 0 is unlimited.
+    pub max_period: i64,
 }
 
 impl Default for TierConfig {
@@ -67,7 +69,21 @@ impl Default for TierConfig {
             body_near_every: 2,
             body_far_every: 4,
             body_above: 24,
+            max_period: DEFAULT_MAX_PERIOD,
         }
+    }
+}
+
+impl TierConfig {
+    /// Refuses a setting that has no meaning, loudly (the caller reports it): a negative `max_period`.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.max_period < 0 {
+            return Err(format!(
+                "max_period {} is negative (0 is unlimited)",
+                self.max_period
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -238,7 +254,11 @@ impl Tier {
             return 1;
         }
         let s = (every as f64 * maxf(self.config.load_scale, 1.0) - 0.001).ceil();
-        (s as i64).clamp(1, MAX_PERIOD.max(every))
+        let s = (s as i64).max(1);
+        match self.config.max_period {
+            0 => s,
+            m => s.min(m.max(every)),
+        }
     }
 
     fn unseen_every(&self, best_sq: f64) -> i64 {
@@ -271,9 +291,13 @@ impl Tier {
     /// The body period of a classified bot, counted above 1, as the script's `body_period`.
     fn body_of(&mut self, reason: Reason) -> i64 {
         let c = &self.config;
+        let held = |e: i64| match c.max_period {
+            0 => e.max(1),
+            m => e.clamp(1, m),
+        };
         let (every, slot) = match reason {
-            Reason::Near => (c.body_near_every.clamp(1, MAX_PERIOD), 0),
-            Reason::Far => (c.body_far_every.clamp(1, MAX_PERIOD), 1),
+            Reason::Near => (held(c.body_near_every), 0),
+            Reason::Far => (held(c.body_far_every), 1),
             _ => (1, 0),
         };
         if every > 1 {
@@ -436,6 +460,23 @@ mod tests {
         assert_eq!(t.period(13, v(0.0, 0.0, 100.0), false, false), 8);
         t.config.load_scale = 1.5;
         assert_eq!(t.period(11, v(0.0, 0.0, 30.0), false, false), 3);
+    }
+
+    #[test]
+    fn max_period_is_a_setting() {
+        let mut t = tier(32);
+        t.config.load_scale = 30.0;
+        t.config.max_period = 0;
+        assert_eq!(t.period(13, v(0.0, 0.0, 100.0), false, false), 120);
+        t.config.max_period = 16;
+        assert_eq!(t.period(13, v(0.0, 0.0, 100.0), false, false), 16);
+        t.config.body_far_every = 100;
+        assert_eq!(t.body_period(13, v(0.0, 0.0, 100.0), false, false), 16);
+        t.config.max_period = 0;
+        assert_eq!(t.body_period(13, v(0.0, 0.0, 100.0), false, false), 100);
+        assert!(t.config.validate().is_ok());
+        t.config.max_period = -1;
+        assert!(t.config.validate().is_err());
     }
 
     #[test]

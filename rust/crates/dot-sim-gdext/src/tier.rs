@@ -24,14 +24,15 @@ pub struct DotSimThinkTier {
 impl DotSimThinkTier {
     /// The settings, in this order: above, near_every, far_every, far_range, close_range, nearest,
     /// engaged_far_every, engaged_range, idle_view_every, load_scale, view_range, view_cos,
-    /// body_near_every, body_far_every, body_above. Missing values keep their defaults.
+    /// body_near_every, body_far_every, body_above, max_period (0: unlimited). Missing values keep their defaults.
+    /// Returns false, with an error logged and the old settings kept, for a setting it refuses.
     #[func]
-    fn configure(&mut self, values: PackedFloat64Array) {
+    fn configure(&mut self, values: PackedFloat64Array) -> bool {
         let v = values.as_slice();
         let d = TierConfig::default();
         let f = |i: usize, def: f64| v.get(i).copied().unwrap_or(def);
         let n = |i: usize, def: i64| v.get(i).map_or(def, |x| *x as i64);
-        self.tier.config = TierConfig {
+        let config = TierConfig {
             above: n(0, d.above),
             near_every: n(1, d.near_every),
             far_every: n(2, d.far_every),
@@ -47,7 +48,20 @@ impl DotSimThinkTier {
             body_near_every: n(12, d.body_near_every),
             body_far_every: n(13, d.body_far_every),
             body_above: n(14, d.body_above),
+            max_period: n(15, d.max_period),
         };
+        if let Err(e) = config.validate() {
+            godot_error!("DotSimThinkTier.configure: {e}");
+            return false;
+        }
+        self.tier.config = config;
+        true
+    }
+
+    /// The longest period the tier takes (0: unlimited); its presence tells a script this library honours `max_period`.
+    #[func]
+    fn max_period(&self) -> i64 {
+        self.tier.config.max_period
     }
 
     /// Starts a tick (the script's `begin`); returns the bots pinned.

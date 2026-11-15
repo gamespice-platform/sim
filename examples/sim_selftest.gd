@@ -219,6 +219,8 @@ func _test_tier_parity() -> void:
 			t.body_near_every = rng.randi_range(1, 3)
 			t.body_far_every = rng.randi_range(1, 6)
 			t.body_above = rng.randi_range(0, 10)
+			t.max_period = [8, 0, 3, 16][rng.randi_range(0, 3)]
+			t.load_scale *= [1.0, 1.0, 6.0][rng.randi_range(0, 2)]
 		rng.seed = round * 104729 + 3
 		var people := rng.randi_range(0, 6)
 		var eyes := PackedVector3Array()
