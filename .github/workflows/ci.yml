@@ -16,7 +16,7 @@ on:
 
 jobs:
     validate:
-        uses: modcommunity/dot-ci/.github/workflows/validate.yml@v1
+        uses: gamespice-platform/ci/.github/workflows/validate.yml@v1
         with:
             efficiency: true
             hygiene: true
@@ -122,7 +122,7 @@ jobs:
             - uses: actions/checkout@v4
               if: env.SKIP != '1'
               with:
-                  repository: modcommunity/dot-ci
+                  repository: gamespice-platform/ci
                   ref: v1
                   path: dot-ci
             - name: Godot for the API dump
@@ -173,7 +173,7 @@ jobs:
                   path: project
             - uses: actions/checkout@v4
               with:
-                  repository: modcommunity/dot-ci
+                  repository: gamespice-platform/ci
                   ref: v1
                   path: dot-ci
             - name: Install the runtime's shared libraries
