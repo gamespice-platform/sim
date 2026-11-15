@@ -49,9 +49,11 @@ jobs:
                     - platform: windows-x86_64
                       target: x86_64-pc-windows-msvc
                       runner: windows-2022
+                    # Cross-built on the Intel runner: the macos-14 (arm64) label is refused for this
+                    # account ("macos-14-arm64-us-default is not supported"), so the job never started.
                     - platform: macos-arm64
                       target: aarch64-apple-darwin
-                      runner: macos-14
+                      runner: macos-15-intel
                     - platform: macos-x86_64
                       target: x86_64-apple-darwin
                       runner: macos-15-intel
@@ -81,8 +83,9 @@ jobs:
               run: |
                   cargo fmt --all --manifest-path rust/Cargo.toml --check
                   cargo clippy --manifest-path rust/Cargo.toml --target ${{ matrix.target }} --locked -- -D warnings
+            # Not on macos-arm64: an Intel runner cannot execute arm64 tests (macos-x86_64 runs them).
             - name: Unit tests (the library's own, no engine needed)
-              if: steps.crate.outputs.present == 'true'
+              if: steps.crate.outputs.present == 'true' && matrix.platform != 'macos-arm64'
               run: cargo test --manifest-path rust/Cargo.toml --target ${{ matrix.target }} --locked
             - name: Build and lay out the library
               if: steps.crate.outputs.present == 'true'
