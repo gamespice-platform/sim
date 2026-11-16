@@ -944,6 +944,13 @@ impl DotSimFpsBody {
         PackedFloat64Array::from(&o[..])
     }
 
+    /// Whether `motor_tick` (and `DotSimMotorBatch.run_rows`) starts a wall run after a wall jump
+    /// in the same air at `_run_speed`'s speed, so the script need not run those ticks itself.
+    #[func]
+    fn runs_after_wall_jump() -> bool {
+        true
+    }
+
     /// Times every engine query and every `motor_tick` from now on (all bodies), for a profile run.
     #[func]
     fn set_profile(on: bool) {

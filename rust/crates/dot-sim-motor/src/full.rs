@@ -685,11 +685,26 @@ fn turn_along(
     }
 }
 
+/// `DotFpsMotorWalls._run_speed`: the speed a run starts at. All of the horizontal speed, except
+/// after a wall jump in this air, where the part going into the new wall is dropped.
+fn run_speed(wall_jumps_in_air: i64, f: Vec3, normal: Vec3) -> f64 {
+    if wall_jumps_in_air <= 0 {
+        return f.length() as f64;
+    }
+    (f - normal.scale(minf(f.dot(normal) as f64, 0.0))).length() as f64
+}
+
 /// The checks `_try_jump_run` and `_try_auto_run` share after their own: the run's heading, or none.
-fn run_heading<S: Space>(m: &mut Mover<'_, S>, s: &State, x: &Ctx, wall: &Hit) -> Option<Vec3> {
+fn run_heading<S: Space>(
+    m: &mut Mover<'_, S>,
+    s: &State,
+    x: &Ctx,
+    mv: &Moves,
+    wall: &Hit,
+) -> Option<Vec3> {
     let normal = flat_normal(wall.normal);
     let f = flat(s.velocity);
-    let speed = f.length() as f64;
+    let speed = run_speed(mv.wall_jumps_in_air, f, normal);
     if normal == Vec3::default() || speed < x.ft.wall_run_jump_min_speed {
         return None;
     }
@@ -737,7 +752,7 @@ fn try_jump_run<S: Space>(
     {
         return false;
     }
-    let Some(turned) = run_heading(m, s, x, wall) else {
+    let Some(turned) = run_heading(m, s, x, mv, wall) else {
         return false;
     };
     turn_along(s, x, mv, turned, view_turn, mc);
@@ -775,7 +790,7 @@ fn try_auto_run<S: Space>(
     if (s.velocity.y as f64) < -ft.wall_run_max_fall_speed {
         return;
     }
-    if let Some(turned) = run_heading(m, s, x, wall) {
+    if let Some(turned) = run_heading(m, s, x, mv, wall) {
         turn_along(s, x, mv, turned, view_turn, mc);
     }
 }
@@ -1102,6 +1117,29 @@ mod tests {
             (mv.time_since_grounded, mv.time_since_jump_pressed),
             (0.25, 0.25)
         );
+    }
+
+    #[test]
+    fn a_run_after_a_wall_jump_drops_the_push_into_the_wall() {
+        let normal = Vec3::new(1.0, 0.0, 0.0);
+        let f = Vec3::new(-3.0, 0.0, 4.0);
+        assert_eq!(run_speed(0, f, normal), 5.0, "no wall jump: all of it");
+        assert_eq!(
+            run_speed(1, f, normal),
+            4.0,
+            "after one: only the part along the wall"
+        );
+        let away = Vec3::new(3.0, 0.0, 4.0);
+        assert_eq!(
+            run_speed(2, away, normal),
+            5.0,
+            "leaving the wall drops nothing"
+        );
+        let g = Vec3::new(-0.3, 0.0, 0.7);
+        let n = Vec3::new(0.6, 0.0, 0.8);
+        let d = minf(g.dot(n) as f64, 0.0) as f32;
+        let want = Vec3::new(g.x - n.x * d, g.y - n.y * d, g.z - n.z * d).length() as f64;
+        assert_eq!(run_speed(1, g, n), want, "the engine's f32 order");
     }
 
     #[test]
