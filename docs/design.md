@@ -2,7 +2,7 @@
 
 ## What it is
 
-Native (Rust, GDExtension) twins of hot script code in the dot family, one module per job. Each module has a script original that stays the specification and the fallback: the game chooses at run time with `ClassDB.class_exists`, and the suite holds the two to the same answers. Nothing in a game may need dot-sim to run.
+Native (Rust, GDExtension) twins of hot script code in the Gamespice family, one module per job. Each module has a script original that stays the specification and the fallback: the game chooses at run time with `ClassDB.class_exists`, and the suite holds the two to the same answers. Nothing in a game may need dot-sim to run.
 
 | Module | Crate | Native class | Script original | State |
 | --- | --- | --- | --- | --- |
