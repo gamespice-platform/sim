@@ -273,6 +273,13 @@ func _test_stream(run_seed: int, settle: bool = false) -> void:
 		var settled := [a.interpolator.settled_count(), b.interpolator.settled_count()]
 		_check(settled[0] == settled[1] and int(settled[0]) > 0, "seed %d settled skips %s" % [run_seed, settled])
 	_check(first_bad < 0, label + " write for write", "first difference at frame %d: %s" % [first_bad, bad_what])
+	_check_stream_counters(a, b, run_seed)
+	a.free_all()
+	b.free_all()
+
+
+## Counters, the write hook and reset agree between the two interpolators after a stream.
+func _check_stream_counters(a: Rig, b: Rig, run_seed: int) -> void:
 	var counts_a := [a.interpolator.sample_count(), a.interpolator.stall_count(), a.interpolator.extrapolation_count()]
 	var counts_b := [b.interpolator.sample_count(), b.interpolator.stall_count(), b.interpolator.extrapolation_count()]
 	_check(counts_a == counts_b and int(counts_a[2]) > 0, "seed %d counters %s" % [run_seed, counts_a], str(counts_b))
@@ -280,11 +287,9 @@ func _test_stream(run_seed: int, settle: bool = false) -> void:
 	for identity in a.identities:
 		eased += (identity.behaviours[1] as Hooked).write_count
 	_check(eased > 0, "seed %d write hook called %d times on both" % [run_seed, eased])
-	for side in sides:
-		side.interpolator.reset_counts()
+	a.interpolator.reset_counts()
+	b.interpolator.reset_counts()
 	_check(b.interpolator.sample_count() == 0 and b.interpolator.track_count() == a.interpolator.track_count(), "seed %d reset and track count" % run_seed)
-	a.free_all()
-	b.free_all()
 
 
 ## Housekeeping now and then: an entity forgotten, the set pruned, a behaviour's plan grown.
