@@ -12,8 +12,9 @@ use dot_sim_motor::Vec3 as V3;
 use godot::prelude::*;
 
 /// Per row in [`DotSimMotorBatch::run`]'s `meta`: hulls mode (0 or 3), collision mask, pass-out
-/// mask.
+/// mask; [`DotSimMotorBatch::run_rows`] adds the row's timers flags (`tick_into`'s `timers`).
 const META_LEN: usize = 3;
+const ROWS_META_LEN: usize = 4;
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
@@ -47,51 +48,38 @@ impl DotSimMotorBatch {
         from: i64,
         to: i64,
     ) -> PackedFloat64Array {
-        let (mp, ip) = (meta.as_slice(), input.as_slice());
-        let hulls = VarArray::new();
-        self.out.clear();
-        self.runs += 1;
-        let from = usize::try_from(from).unwrap_or(0);
-        let to = usize::try_from(to)
-            .unwrap_or(0)
-            .min(bodies.len())
-            .min(tuns.len())
-            .min(mp.len() / META_LEN)
-            .min(ip.len() / TICK_IN_LEN);
-        for row in from..to {
-            let (Some(bv), Some(tv)) = (bodies.get(row), tuns.get(row)) else {
-                break;
-            };
-            let (Ok(mut body), Ok(tun)) = (
-                bv.try_to::<Gd<DotSimFpsBody>>(),
-                tv.try_to::<PackedFloat64Array>(),
-            ) else {
-                break;
-            };
-            let m = &mp[row * META_LEN..(row + 1) * META_LEN];
-            let sp = &ip[row * TICK_IN_LEN..(row + 1) * TICK_IN_LEN];
-            let at = self.out.len();
-            let mut b = body.bind_mut();
-            if !b.tick_into(sp, tun.as_slice(), m[0], &hulls, m[1], m[2], &mut self.out) {
-                break;
-            }
-            debug_assert_eq!(self.out.len(), at + TICK_OUT_LEN);
-            self.rows += 1;
-            if m[0] != 3 {
-                continue;
-            }
-            let Some((mut world, slot)) = b.hull_world() else {
-                continue;
-            };
-            let mut w = world.bind_mut();
-            if let Some(old) = w.feet(slot) {
-                let o = &self.out[at..];
-                w.set_feet(slot, V3::new(o[0] as f32, o[1] as f32, o[2] as f32));
-                drop(w);
-                self.moved.push((row, world, slot, old));
-            }
-        }
-        PackedFloat64Array::from(&self.out[..])
+        self.ticks(
+            &bodies,
+            &tuns,
+            meta.as_slice(),
+            META_LEN,
+            input.as_slice(),
+            from,
+            to,
+        )
+    }
+
+    /// [`Self::run`] with four values per row in `meta`, the fourth `tick_into`'s `timers`: a row
+    /// may leave its clocks and cooldowns to this call; dot-player-controller 31 and later call it.
+    #[func]
+    fn run_rows(
+        &mut self,
+        bodies: VarArray,
+        tuns: VarArray,
+        meta: PackedInt64Array,
+        input: PackedFloat64Array,
+        from: i64,
+        to: i64,
+    ) -> PackedFloat64Array {
+        self.ticks(
+            &bodies,
+            &tuns,
+            meta.as_slice(),
+            ROWS_META_LEN,
+            input.as_slice(),
+            from,
+            to,
+        )
     }
 
     /// Takes rows `from` and later back: the hull world holds again the feet it held before
@@ -118,5 +106,74 @@ impl DotSimMotorBatch {
     fn reset_counters(&mut self) {
         self.rows = 0;
         self.runs = 0;
+    }
+}
+
+impl DotSimMotorBatch {
+    #[allow(clippy::too_many_arguments)]
+    fn ticks(
+        &mut self,
+        bodies: &VarArray,
+        tuns: &VarArray,
+        mp: &[i64],
+        stride: usize,
+        ip: &[f64],
+        from: i64,
+        to: i64,
+    ) -> PackedFloat64Array {
+        let hulls = VarArray::new();
+        self.out.clear();
+        self.runs += 1;
+        let from = usize::try_from(from).unwrap_or(0);
+        let to = usize::try_from(to)
+            .unwrap_or(0)
+            .min(bodies.len())
+            .min(tuns.len())
+            .min(mp.len() / stride)
+            .min(ip.len() / TICK_IN_LEN);
+        for row in from..to {
+            let (Some(bv), Some(tv)) = (bodies.get(row), tuns.get(row)) else {
+                break;
+            };
+            let (Ok(mut body), Ok(tun)) = (
+                bv.try_to::<Gd<DotSimFpsBody>>(),
+                tv.try_to::<PackedFloat64Array>(),
+            ) else {
+                break;
+            };
+            let m = &mp[row * stride..(row + 1) * stride];
+            let timers = if stride > META_LEN { m[META_LEN] } else { 0 };
+            let sp = &ip[row * TICK_IN_LEN..(row + 1) * TICK_IN_LEN];
+            let at = self.out.len();
+            let mut b = body.bind_mut();
+            if !b.tick_into(
+                sp,
+                tun.as_slice(),
+                m[0],
+                &hulls,
+                m[1],
+                m[2],
+                timers,
+                &mut self.out,
+            ) {
+                break;
+            }
+            debug_assert_eq!(self.out.len(), at + TICK_OUT_LEN);
+            self.rows += 1;
+            if m[0] != 3 {
+                continue;
+            }
+            let Some((mut world, slot)) = b.hull_world() else {
+                continue;
+            };
+            let mut w = world.bind_mut();
+            if let Some(old) = w.feet(slot) {
+                let o = &self.out[at..];
+                w.set_feet(slot, V3::new(o[0] as f32, o[1] as f32, o[2] as f32));
+                drop(w);
+                self.moved.push((row, world, slot, old));
+            }
+        }
+        PackedFloat64Array::from(&self.out[..])
     }
 }

@@ -895,6 +895,7 @@ impl DotSimFpsBody {
             &hulls,
             collision_mask,
             pass_out_mask,
+            0,
             &mut o,
         ) {
             return PackedFloat64Array::new();
@@ -977,7 +978,9 @@ pub(crate) const TICK_OUT_LEN: usize = 45;
 
 impl DotSimFpsBody {
     /// `motor_tick` on slices, its answer appended to `o`; false (nothing appended) where
-    /// `motor_tick` answers empty. One body for the single call and [`crate::batch`]'s.
+    /// `motor_tick` answers empty. One body for the single call and [`crate::batch`]'s. `timers`
+    /// bit 0: the input's timers are the ones before this tick and [`full::advance_timers`] moves
+    /// them first, bit 1 with the tick started on the ground.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn tick_into(
         &mut self,
@@ -987,6 +990,7 @@ impl DotSimFpsBody {
         hulls: &VarArray,
         collision_mask: i64,
         pass_out_mask: i64,
+        timers: i64,
         o: &mut Vec<f64>,
     ) -> bool {
         let at = prof_start();
@@ -1009,7 +1013,10 @@ impl DotSimFpsBody {
             None
         };
         let mut s = read_state(sp);
-        let (inp, mut mv) = full_in(sp);
+        let (mut inp, mut mv) = full_in(sp);
+        if timers & 1 != 0 {
+            full::advance_timers(&mut mv, &mut inp, &ft, timers & 2 != 0);
+        }
         let mut c = TickCounters::default();
         let mut mc = MoveCounters::default();
         // No script runs inside this call, so nothing the space sees can move: an identical

@@ -1,7 +1,8 @@
 //! The whole of `DotFpsMotor._simulate` from the start ground check to the end one, for a plain
 //! walker (GROUND or AIR, no surfaces, no edge friction): [`tick::pre`], the jump, the wall moves,
 //! the launch, the dash, the slide and the wall run, then [`tick::post`]. The script keeps the
-//! timers, effects, noclip, crouch and the idle tick, which run before it.
+//! effects, noclip, crouch and the idle tick, which run before it, and the timers unless the
+//! caller hands them to [`advance_timers`].
 //!
 //! The same arithmetic rules as [`crate::tick`]: script floats are `f64`, vectors `f32`.
 
@@ -27,6 +28,8 @@ const WALL_RUN_TIME_SLACK: f64 = 1e-4;
 /// `DotFpsTunables.WALL_RUN_TIME_LIMIT`.
 const WALL_RUN_TIME_LIMIT: f64 = 1.9;
 const WALL_ENTRY_MIN_AIR: f64 = 0.08;
+/// `DotFpsMotor.TIMER_CAP`.
+const TIMER_CAP: f64 = 1000.0;
 const WALL_PROBE_STEP: f64 = 0.25;
 const WALL_PROBE_STANDOFF: f64 = 0.12;
 const WALL_PROBE_RADIUS: f64 = 0.05;
@@ -605,6 +608,40 @@ fn wall_runnable<S: Space>(m: &mut Mover<'_, S>, s: &State, x: &Ctx, wall: &Hit)
     true
 }
 
+/// `DotFpsMotor._advance_timers` without the ground ticks and stamina (the script keeps those):
+/// the clocks, cooldowns, the landing crouch press and the wall reset on the ground. `grounded` is
+/// the mode the tick started in, before the crouch the script ran in between, which reads none of
+/// these.
+pub fn advance_timers(mv: &mut Moves, inp: &mut FullIn, ft: &FullTun, grounded: bool) {
+    let delta = inp.delta;
+    mv.time_since_jump = minf(mv.time_since_jump + delta, TIMER_CAP);
+    if grounded {
+        if ft.slide_enabled
+            && !mv.sliding()
+            && mv.time_since_grounded >= WALL_ENTRY_MIN_AIR
+            && inp.buttons & BUTTON_CROUCH != 0
+            && (ft.launch_button | ft.dash_button) & BUTTON_CROUCH == 0
+        {
+            inp.previous_buttons &= !BUTTON_CROUCH;
+        }
+        mv.time_since_grounded = 0.0;
+        if ft.wall_run_enabled || ft.wall_jump_enabled {
+            reset_walls(mv);
+        }
+    } else {
+        mv.time_since_grounded = minf(mv.time_since_grounded + delta, TIMER_CAP);
+    }
+    if (inp.buttons & !inp.previous_buttons) & BUTTON_JUMP != 0 {
+        mv.time_since_jump_pressed = 0.0;
+    } else {
+        mv.time_since_jump_pressed = minf(mv.time_since_jump_pressed + delta, TIMER_CAP);
+    }
+    mv.slide_cooldown_left = maxf(mv.slide_cooldown_left - delta, 0.0);
+    mv.launch_cooldown_left = maxf(mv.launch_cooldown_left - delta, 0.0);
+    mv.dash_cooldown_left = maxf(mv.dash_cooldown_left - delta, 0.0);
+    mv.wall_run_cooldown_left = maxf(mv.wall_run_cooldown_left - delta, 0.0);
+}
+
 fn reset_walls(mv: &mut Moves) {
     mv.wall_run_time = -1.0;
     mv.wall_run_spent = false;
@@ -1022,6 +1059,50 @@ mod tests {
         max_slope: 46.0 * PI / 180.0,
         math_checks: true,
     };
+
+    #[test]
+    fn advance_timers_is_the_scripts_clock_step() {
+        let ft = FullTun {
+            slide_enabled: true,
+            wall_run_enabled: true,
+            ..FullTun::default()
+        };
+        let mut inp = FullIn {
+            delta: 0.25,
+            buttons: BUTTON_CROUCH | BUTTON_JUMP,
+            previous_buttons: BUTTON_CROUCH,
+            ..FullIn::default()
+        };
+        let mut mv = Moves {
+            time_since_jump: 999.9,
+            time_since_grounded: 0.5,
+            slide_time: -1.0,
+            dash_cooldown_left: 0.1,
+            launch_cooldown_left: 1.0,
+            wall_run_time: 0.3,
+            wall_jump_count: 2,
+            ..Moves::default()
+        };
+        advance_timers(&mut mv, &mut inp, &ft, true);
+        assert_eq!(mv.time_since_jump, TIMER_CAP);
+        assert_eq!(mv.time_since_grounded, 0.0);
+        assert_eq!(
+            inp.previous_buttons, 0,
+            "a landing with crouch held is a press"
+        );
+        assert_eq!(mv.time_since_jump_pressed, 0.0);
+        assert_eq!(
+            (mv.dash_cooldown_left, mv.launch_cooldown_left),
+            (0.0, 0.75)
+        );
+        assert_eq!((mv.wall_run_time, mv.wall_jump_count), (-1.0, 0));
+        inp.previous_buttons = BUTTON_JUMP;
+        advance_timers(&mut mv, &mut inp, &ft, false);
+        assert_eq!(
+            (mv.time_since_grounded, mv.time_since_jump_pressed),
+            (0.25, 0.25)
+        );
+    }
 
     #[test]
     fn wrapf_is_the_engine_wrap() {
