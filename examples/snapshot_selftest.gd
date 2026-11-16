@@ -2,7 +2,7 @@ extends Node
 
 ## The snapshot module's suite: dot-net's state codec in GDScript and in [code]DotSimSnapshotCodec[/code] on the same inputs (bytes, values, errors, reader positions), then servers and clients, codec off and on, over lossy 22-33 Hz links with interest rings.
 ## Every payload and value received must be equal. With no library it checks the fallback and says the native half was skipped.
-## With [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
+## With [code]GS_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
 
 const ROUNDS := 4000
 const NOISE := 1500
@@ -184,8 +184,8 @@ func _run() -> void:
 	print("dot-sim snapshot self-test")
 	_native = DotSim.has(&"snapshot")
 	print("  native snapshot module: %s" % ("loaded" if _native else "absent (script codec only)"))
-	if OS.get_environment("DOT_SIM_REQUIRE_NATIVE") == "1":
-		_check(_native, "the library is loaded (DOT_SIM_REQUIRE_NATIVE=1)")
+	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
+		_check(_native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	# Not the defaults: the spec must carry the config's grid, speed and rotation widths.
 	_config.world_extent = 1000.0
 	_config.max_speed = 37.0

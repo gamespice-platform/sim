@@ -2,7 +2,7 @@ extends Node
 
 ## The interp module's suite: dot-net's [code]DotNetInterpolator.apply[/code] in GDScript and [code]DotSimInterpolator[/code] on the same seeded streams (loss, reordering, duplicate and partial ticks, stalls, extrapolation past its cap,
 ## resumes eased and teleports not, vectors, rotations, colours, discrete and type-switching values, a write hook, a plan that changes, forget and prune, an entity turned predicted and back), frame for frame, odd seeds through [code]apply_frame[/code] (one library call a frame) and even seeds through [code]apply[/code] per entity.
-## Every property written, every [code]_net_interpolated[/code] tick and every counter must be equal to the bit. With no library it checks the fallback and says the native half was skipped; with [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
+## Every property written, every [code]_net_interpolated[/code] tick and every counter must be equal to the bit. With no library it checks the fallback and says the native half was skipped; with [code]GS_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
 
 const ENTITIES := 4
 const FRAMES := 2400
@@ -78,8 +78,8 @@ func _run() -> void:
 	print("dot-sim interp self-test")
 	_native = DotSim.has(&"interp")
 	print("  native interp module: %s" % ("loaded" if _native else "absent (script interpolator only)"))
-	if OS.get_environment("DOT_SIM_REQUIRE_NATIVE") == "1":
-		_check(_native, "the library is loaded (DOT_SIM_REQUIRE_NATIVE=1)")
+	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
+		_check(_native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	_test_fallback()
 	if _native:
 		for run_seed in [1, 2, 3, 4, 5, 6]:
