@@ -28,6 +28,8 @@ mod ragdoll;
 mod snapshot;
 #[cfg(feature = "bots")]
 mod tier;
+#[cfg(feature = "weapon")]
+mod weapon;
 
 struct DotSimExtension;
 

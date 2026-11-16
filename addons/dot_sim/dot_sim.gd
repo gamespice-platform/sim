@@ -17,6 +17,7 @@ const MODULES := {
 	&"ragdoll": &"DotSimRagdollPose",
 	&"killview": &"DotSimKillViewTrack",
 	&"crowd": &"DotSimCrowdGrid",
+	&"weapon": &"DotSimWeaponSpread",
 }
 
 

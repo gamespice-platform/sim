@@ -21,9 +21,10 @@ dot-sim-arms = { path = "../dot-sim-arms", optional = true }
 dot-sim-audio = { path = "../dot-sim-audio", optional = true }
 dot-sim-math = { path = "../dot-sim-math", optional = true }
 dot-sim-crowd = { path = "../dot-sim-crowd", optional = true }
+dot-sim-weapon = { path = "../dot-sim-weapon", optional = true }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd"]
+default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon"]
 bots = ["dep:dot-sim-bots"]
 brain = ["dep:dot-sim-brain", "bots"]
 snapshot = ["dep:dot-sim-snapshot"]
@@ -34,6 +35,7 @@ audio = ["dep:dot-sim-audio"]
 ragdoll = ["dep:dot-sim-math"]
 killview = ["dep:dot-sim-math"]
 crowd = ["dep:dot-sim-crowd", "dep:dot-sim-math"]
+weapon = ["dep:dot-sim-weapon"]
 # A web side module (wasm32-unknown-emscripten, nightly, -Zbuild-std); see docs/web.md.
 web = ["godot/api-custom", "godot/experimental-wasm", "godot/lazy-function-tables"]
 web-nothreads = ["web", "godot/experimental-wasm-nothreads"]

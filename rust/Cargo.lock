@@ -59,6 +59,7 @@ dependencies = [
  "dot-sim-math",
  "dot-sim-motor",
  "dot-sim-snapshot",
+ "dot-sim-weapon",
  "godot",
 ]
 
@@ -80,6 +81,13 @@ dependencies = [
 [[package]]
 name = "dot-sim-snapshot"
 version = "0.1.0"
+
+[[package]]
+name = "dot-sim-weapon"
+version = "0.1.0"
+dependencies = [
+ "dot-sim-math",
+]
 
 [[package]]
 name = "gdextension-api"

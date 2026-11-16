@@ -16,6 +16,11 @@
 # The arms parity test's script (examples/sim_selftest): dot-player-char's clearance scan.
 #   ln -s ../../../dot-player-char/addons/dot_player_char/nodes/dot_view_arms_clear.gd examples/linked/
 /examples/linked/
+# The weapon parity test's addon (examples/sim_selftest): dot-weapon.
+#   ln -s ../../dot-weapon/addons/dot_weapon addons/dot_weapon
+/addons/dot_weapon
+# dot-weapon's own dependency:
+/addons/dot_combat
 
 # The built library and its .gdextension, written by ci/install.sh; never committed.
 /addons/dot_sim/bin/

@@ -17,7 +17,7 @@ Keep `addons/dot_sim/bin/` and `dot_sim.gdextension` out of plain-template web e
 
 ## Testing
 
-Link the sibling addons (`addons/dot_core`, `addons/dot_bot`), install a library, then run `examples/sim_selftest.tscn` headless with Godot. Its arms section also needs dot-player-char's scan linked (`examples/linked/dot_view_arms_clear.gd`, skipped when absent). Without a library the suite checks the fallback and says the native half was skipped. `cargo test` in `rust/` tests the kernels alone.
+Link the sibling addons (`addons/dot_core`, `addons/dot_bot`), install a library, then run `examples/sim_selftest.tscn` headless with Godot. Its arms section also needs dot-player-char's scan linked (`examples/linked/dot_view_arms_clear.gd`, skipped when absent), and its weapon section dot-weapon's addon (`addons/dot_weapon`, skipped when absent). Without a library the suite checks the fallback and says the native half was skipped. `cargo test` in `rust/` tests the kernels alone.
 
 Design and numbers: [docs/design.md](docs/design.md).
 
