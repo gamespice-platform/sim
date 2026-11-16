@@ -84,6 +84,8 @@ func _run() -> void:
 	if _native:
 		for run_seed in [1, 2, 3, 4, 5, 6]:
 			_test_stream(run_seed)
+		for run_seed in [7, 9]:
+			_test_stream(run_seed, true)
 		_test_settings_off()
 		_bench()
 	print("")
@@ -200,8 +202,10 @@ func _values(rng: RandomNumberGenerator, tick: int, entity: int, partial: bool, 
 
 
 ## Both sides fed the same pushes, frames and housekeeping; compared after every frame.
-func _test_stream(run_seed: int) -> void:
+## With [param settle], [member DotNetConfig.skip_settled_interp] on both sides (odd seeds: [method DotNetInterpolator.apply_frame]).
+func _test_stream(run_seed: int, settle: bool = false) -> void:
 	var config := _config()
+	config.skip_settled_interp = settle
 	var rng := RandomNumberGenerator.new()
 	rng.seed = run_seed
 	var a := Rig.new(_interpolator(config, false), config, ENTITIES)
@@ -264,7 +268,10 @@ func _test_stream(run_seed: int) -> void:
 				first_bad = frame
 				bad_what = diff
 		drew += 1
-	var label := "seed %d (loss %.2f%s): %d frames" % [run_seed, loss, ", reordered" if run_seed % 3 == 1 else "", drew]
+	var label := "seed %d (loss %.2f%s%s): %d frames" % [run_seed, loss, ", reordered" if run_seed % 3 == 1 else "", ", settled skip" if settle else "", drew]
+	if settle:
+		var settled := [a.interpolator.settled_count(), b.interpolator.settled_count()]
+		_check(settled[0] == settled[1] and int(settled[0]) > 0, "seed %d settled skips %s" % [run_seed, settled])
 	_check(first_bad < 0, label + " write for write", "first difference at frame %d: %s" % [first_bad, bad_what])
 	var counts_a := [a.interpolator.sample_count(), a.interpolator.stall_count(), a.interpolator.extrapolation_count()]
 	var counts_b := [b.interpolator.sample_count(), b.interpolator.stall_count(), b.interpolator.extrapolation_count()]

@@ -11,6 +11,13 @@ use godot::prelude::*;
 #[derive(Clone)]
 struct Var(Variant);
 
+/// Same type and same value, as the script's `==` compares a drawn dictionary.
+impl PartialEq for Var {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.get_type() == other.0.get_type() && self.0 == other.0
+    }
+}
+
 impl Other for Var {
     fn same_kind(&self, other: &Self) -> bool {
         self.0.get_type() == other.0.get_type()
@@ -39,7 +46,13 @@ struct Part {
 }
 
 #[derive(Default)]
-struct Plan(Vec<Part>);
+struct Plan {
+    parts: Vec<Part>,
+    /// What the settled skip compares with: the last frame's draw, written in `frame`. Cleared by
+    /// a push, whose snapshot hooks may have overwritten what was written.
+    last: Option<Values<Var>>,
+    frame: u64,
+}
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
@@ -49,6 +62,11 @@ pub struct DotSimInterpolator {
     names: Vec<StringName>,
     /// Script instance id -> whether it overrides `_net_write_property`.
     hooks: HashMap<i64, bool>,
+    /// `set_settled_skip`: `apply_all` leaves an entity whose draw equals last frame's alone.
+    settle: bool,
+    /// `apply_all` calls so far, while `settle` is on.
+    frame: u64,
+    settled: i64,
 }
 
 fn to_value(v: &Variant) -> Value<Var> {
@@ -137,12 +155,17 @@ impl DotSimInterpolator {
                 hook: self.hooked(behaviour),
             });
         }
-        Plan(parts)
+        Plan {
+            parts,
+            ..Plan::default()
+        }
     }
 }
 
 impl DotSimInterpolator {
-    /// `apply` for one entity, its config worked out by the caller.
+    /// `apply` for one entity, its config worked out by the caller. With `frame`, a draw equal to
+    /// the one written the frame before (no push since) writes nothing and calls no hook.
+    #[allow(clippy::too_many_arguments)]
     fn apply_one(
         &mut self,
         net_id: i64,
@@ -151,6 +174,7 @@ impl DotSimInterpolator {
         render: f64,
         frame_elapsed: f64,
         cfg: &Config,
+        frame: Option<u64>,
     ) -> bool {
         let Some(values) = self.interp.draw(net_id, render, frame_elapsed, cfg) else {
             return false;
@@ -167,8 +191,18 @@ impl DotSimInterpolator {
             .unwrap_or_default();
         if !plan_fits(&plan, &list) {
             plan = self.build_plan(&list);
+        } else if let (Some(f), Some(last)) = (frame, &plan.last)
+            && plan.frame + 1 == f
+            && same_draw(last, &values)
+        {
+            plan.frame = f;
+            self.settled += 1;
+            if let Some(slot) = self.interp.plan_mut(net_id) {
+                *slot = plan;
+            }
+            return true;
         }
-        for (part, behaviour) in plan.0.iter().zip(list.iter()) {
+        for (part, behaviour) in plan.parts.iter().zip(list.iter()) {
             let mut behaviour = behaviour.clone();
             let mut wrote = false;
             for (key, name) in &part.props {
@@ -187,6 +221,8 @@ impl DotSimInterpolator {
                 behaviour.call("_net_interpolated", std::slice::from_ref(tick));
             }
         }
+        plan.last = frame.map(|_| values);
+        plan.frame = frame.unwrap_or(0);
         if let Some(slot) = self.interp.plan_mut(net_id) {
             *slot = plan;
         }
@@ -194,9 +230,17 @@ impl DotSimInterpolator {
     }
 }
 
+/// The script's dictionary `==`: the same properties with the same values, in any order (a
+/// merged retransmit reorders a sample's keys).
+fn same_draw(a: &Values<Var>, b: &Values<Var>) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .all(|(k, v)| b.iter().any(|(bk, bv)| bk == k && bv == v))
+}
+
 fn plan_fits(plan: &Plan, behaviours: &[Gd<Object>]) -> bool {
-    plan.0.len() == behaviours.len()
-        && plan.0.iter().zip(behaviours).all(|(part, b)| {
+    plan.parts.len() == behaviours.len()
+        && plan.parts.iter().zip(behaviours).all(|(part, b)| {
             part.id == b.instance_id() && net_vars(b).map_or(0, |v| v.len()) == part.size
         })
 }
@@ -217,6 +261,9 @@ impl DotSimInterpolator {
             out.push((self.key(name), to_value(&v)));
         }
         self.interp.push(net_id, tick, out);
+        if let Some(plan) = self.interp.plan_mut(net_id) {
+            plan.last = None;
+        }
     }
 
     /// `DotNetInterpolator.apply` past its predicted check: samples at `render` (the script's
@@ -242,7 +289,15 @@ impl DotSimInterpolator {
             ease_sec,
         };
         let tick = (server_tick as i64).to_variant();
-        self.apply_one(net_id, &behaviours, &tick, render, frame_elapsed, &cfg)
+        self.apply_one(
+            net_id,
+            &behaviours,
+            &tick,
+            render,
+            frame_elapsed,
+            &cfg,
+            None,
+        )
     }
 
     /// `DotNetInterpolator.apply_frame` in one call: `apply` for each identity in `identities`,
@@ -269,6 +324,12 @@ impl DotSimInterpolator {
         let net_id_name = StringName::from("net_id");
         let behaviours_name = StringName::from("behaviours");
         let mut sampled = 0;
+        let frame = if self.settle {
+            self.frame += 1;
+            Some(self.frame)
+        } else {
+            None
+        };
         for identity in identities.iter_shared() {
             let Ok(mut identity) = identity.try_to::<Gd<Object>>() else {
                 continue;
@@ -280,11 +341,33 @@ impl DotSimInterpolator {
             let Ok(behaviours) = identity.get(&behaviours_name).try_to::<AnyArray>() else {
                 continue;
             };
-            if self.apply_one(net_id, &behaviours, &tick, render, frame_elapsed, &cfg) {
+            if self.apply_one(
+                net_id,
+                &behaviours,
+                &tick,
+                render,
+                frame_elapsed,
+                &cfg,
+                frame,
+            ) {
                 sampled += 1;
             }
         }
         sampled
+    }
+
+    /// `DotNetInterpolator`'s settled skip, off by default: in `apply_all`, an entity whose draw
+    /// equals what was written the frame before, with no push since, is left alone (no writes,
+    /// no `_net_interpolated`). For games whose hook only copies the interpolated values.
+    #[func]
+    fn set_settled_skip(&mut self, on: bool) {
+        self.settle = on;
+    }
+
+    /// Entities `apply_all` left alone as settled since the last `reset_counts`.
+    #[func]
+    fn settled_count(&self) -> i64 {
+        self.settled
     }
 
     /// `DotNetInterpolator.sample` at `render`, counted as it counts: for a suite.
@@ -340,5 +423,6 @@ impl DotSimInterpolator {
     #[func]
     fn reset_counts(&mut self) {
         self.interp.counts = Counts::default();
+        self.settled = 0;
     }
 }
