@@ -98,7 +98,19 @@ struct GdSpace {
     ray: Gd<PhysicsRayQueryParameters3D>,
     ray_mask: i64,
     at: Option<V3>,
-    moving: bool,
+    /// The motion last written to `params` (zero for rests and overlaps).
+    motion: V3,
+    /// The ray's ends last written to `ray`.
+    ray_ends: Option<(V3, V3)>,
+    /// The result keys, built once: a `&str` key is a new string and Variant on every lookup.
+    keys: Keys,
+}
+
+struct Keys {
+    normal: Variant,
+    point: Variant,
+    position: Variant,
+    collider_id: Variant,
 }
 
 #[inline]
@@ -106,27 +118,39 @@ fn gv(v: V3) -> Vector3 {
     Vector3::new(v.x, v.y, v.z)
 }
 
+const ZERO3: V3 = V3::new(0.0, 0.0, 0.0);
+
+#[inline]
+fn same_bits(a: V3, b: V3) -> bool {
+    a.x.to_bits() == b.x.to_bits()
+        && a.y.to_bits() == b.y.to_bits()
+        && a.z.to_bits() == b.z.to_bits()
+}
+
 #[inline]
 fn mv(v: Vector3) -> V3 {
     V3::new(v.x, v.y, v.z)
 }
 
-fn contact(d: &VarDictionary, normal_key: &str, point_key: &str) -> Option<Contact> {
+/// A missing key reads as nil, which converts to neither type: the same zero a missing key gave.
+fn contact(
+    d: &VarDictionary,
+    normal_key: &Variant,
+    point_key: &Variant,
+    id_key: &Variant,
+) -> Option<Contact> {
     if d.is_empty() {
         return None;
     }
     let normal = d
-        .get(normal_key)
-        .and_then(|v| v.try_to::<Vector3>().ok())
+        .get_or_nil(normal_key)
+        .try_to::<Vector3>()
         .unwrap_or(Vector3::ZERO);
     let point = d
-        .get(point_key)
-        .and_then(|v| v.try_to::<Vector3>().ok())
+        .get_or_nil(point_key)
+        .try_to::<Vector3>()
         .unwrap_or(Vector3::ZERO);
-    let collider_id = d
-        .get("collider_id")
-        .and_then(|v| v.try_to::<i64>().ok())
-        .unwrap_or(0);
+    let collider_id = d.get_or_nil(id_key).try_to::<i64>().unwrap_or(0);
     Some(Contact {
         normal: mv(normal),
         point: mv(point),
@@ -150,7 +174,14 @@ impl GdSpace {
             ray,
             ray_mask: -1,
             at: None,
-            moving: false,
+            motion: ZERO3,
+            ray_ends: None,
+            keys: Keys {
+                normal: "normal".to_variant(),
+                point: "point".to_variant(),
+                position: "position".to_variant(),
+                collider_id: "collider_id".to_variant(),
+            },
         }
     }
 
@@ -160,16 +191,11 @@ impl GdSpace {
                 .set_transform(Transform3D::new(Basis::IDENTITY, gv(at)));
             self.at = Some(at);
         }
-        match motion {
-            Some(m) => {
-                self.params.set_motion(gv(m));
-                self.moving = true;
-            }
-            None if self.moving => {
-                self.params.set_motion(Vector3::ZERO);
-                self.moving = false;
-            }
-            None => {}
+        let m = motion.unwrap_or(ZERO3);
+        // Bitwise, so a -0.0 or a NaN is written as given, as every cast wrote it before.
+        if !same_bits(m, self.motion) {
+            self.params.set_motion(gv(m));
+            self.motion = m;
         }
     }
 }
@@ -204,7 +230,13 @@ impl Space for GdSpace {
         self.place(at, None);
         let space = self.space.as_ref()?;
         let at = prof_start();
-        let r = contact(&space.get_rest_info(&self.params), "normal", "point");
+        let k = &self.keys;
+        let r = contact(
+            &space.get_rest_info(&self.params),
+            &k.normal,
+            &k.point,
+            &k.collider_id,
+        );
         prof_end(1, at);
         r
     }
@@ -225,15 +257,24 @@ impl Space for GdSpace {
     }
 
     fn ray(&mut self, from: V3, to: V3, mask: i64) -> Option<Contact> {
-        self.ray.set_from(gv(from));
-        self.ray.set_to(gv(to));
+        if !matches!(self.ray_ends, Some((f, t)) if same_bits(f, from) && same_bits(t, to)) {
+            self.ray.set_from(gv(from));
+            self.ray.set_to(gv(to));
+            self.ray_ends = Some((from, to));
+        }
         if mask != self.ray_mask {
             self.ray.set_collision_mask(mask as u32);
             self.ray_mask = mask;
         }
         let space = self.space.as_mut()?;
         let at = prof_start();
-        let r = contact(&space.intersect_ray(&self.ray), "normal", "position");
+        let k = &self.keys;
+        let r = contact(
+            &space.intersect_ray(&self.ray),
+            &k.normal,
+            &k.position,
+            &k.collider_id,
+        );
         prof_end(3, at);
         r
     }
