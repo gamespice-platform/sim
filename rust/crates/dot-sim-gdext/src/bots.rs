@@ -2,17 +2,34 @@
 
 use dot_sim_bots::{Contacts, Found, Query, Vec3 as V3, candidates};
 use godot::prelude::*;
+use std::sync::Arc;
+
+/// One tick's packed bodies. Shared by `Arc`: a mind takes a handle on the main thread
+/// (`DotSimBotMind.hold_senses`) and reads it on a worker thread without binding the senses
+/// object, which several workers must never do at once.
+#[derive(Default, Debug, Clone)]
+pub struct Packed {
+    pub table: Contacts,
+    /// The bodies' eyes, row for row with `table` once [`DotSimBotSenses::load_eyes`] gave them.
+    pub eyes: Vec<V3>,
+    /// The bodies' positions (feet), row for row, for the sight LOD's distance.
+    pub positions: Vec<V3>,
+}
 
 /// The packed bodies of one tick and the last scan's answer.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
 pub struct DotSimBotSenses {
-    pub(crate) table: Contacts,
-    /// The bodies' eyes, row for row with `table` once [`Self::load_eyes`] gave them.
-    pub(crate) eyes: Vec<V3>,
-    /// The bodies' positions (feet), row for row, for the sight LOD's distance.
-    pub(crate) positions: Vec<V3>,
+    /// Refilled in place while no mind holds it, else copied on write, so a held tick stays whole.
+    pub(crate) packed: Arc<Packed>,
     found: Found,
+}
+
+impl DotSimBotSenses {
+    /// A handle on this tick's bodies for a mind to read later, on any thread.
+    pub(crate) fn share(&self) -> Arc<Packed> {
+        Arc::clone(&self.packed)
+    }
 }
 
 #[godot_api]
@@ -31,9 +48,10 @@ impl DotSimBotSenses {
             .min(points.len())
             .min(teams.len())
             .min(alive.len());
-        self.eyes.clear();
-        self.positions.clear();
-        let t = &mut self.table;
+        let pk = Arc::make_mut(&mut self.packed);
+        pk.eyes.clear();
+        pk.positions.clear();
+        let t = &mut pk.table;
         t.ids.clear();
         t.points.clear();
         t.teams.clear();
@@ -53,8 +71,9 @@ impl DotSimBotSenses {
     /// tests sight to them.
     #[func]
     fn load_eyes(&mut self, eyes: PackedVector3Array) {
-        self.eyes.clear();
-        self.eyes
+        let pk = Arc::make_mut(&mut self.packed);
+        pk.eyes.clear();
+        pk.eyes
             .extend(eyes.as_slice().iter().map(|p| V3::new(p.x, p.y, p.z)));
     }
 
@@ -62,8 +81,9 @@ impl DotSimBotSenses {
     /// measures the sight LOD's distance to them.
     #[func]
     fn load_positions(&mut self, positions: PackedVector3Array) {
-        self.positions.clear();
-        self.positions
+        let pk = Arc::make_mut(&mut self.packed);
+        pk.positions.clear();
+        pk.positions
             .extend(positions.as_slice().iter().map(|p| V3::new(p.x, p.y, p.z)));
     }
 
@@ -93,7 +113,7 @@ impl DotSimBotSenses {
             target_id,
             visible,
         };
-        candidates(&self.table, &q, &mut self.found);
+        candidates(&self.packed.table, &q, &mut self.found);
         PackedInt32Array::from(self.found.index.as_slice())
     }
 

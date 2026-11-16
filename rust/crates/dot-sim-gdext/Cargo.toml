@@ -23,6 +23,11 @@ dot-sim-math = { path = "../dot-sim-math", optional = true }
 dot-sim-crowd = { path = "../dot-sim-crowd", optional = true }
 dot-sim-weapon = { path = "../dot-sim-weapon", optional = true }
 
+# Native brains, aims and motors run on game worker threads (FC bot_threads): without this the
+# binding panics off the main thread. Not on the web: its builds are single-threaded.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+godot = { version = "0.5.5", features = ["experimental-threads"] }
+
 [features]
 default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon"]
 bots = ["dep:dot-sim-bots"]

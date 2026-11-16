@@ -3,7 +3,7 @@
 //! private ones (aim error, overshoot, tracked velocity, bursts, the aim's random stream) live here.
 //! The view comes back as `f64`s, never a `Vector2`, so the script's yaw keeps its precision.
 
-use crate::bots::DotSimBotSenses;
+use crate::bots::{DotSimBotSenses, Packed};
 use dot_sim_bots::{Found, Query, candidates};
 use dot_sim_brain::aim::direction;
 use dot_sim_brain::fight::FirstShot;
@@ -13,6 +13,7 @@ use dot_sim_brain::{
 };
 use godot::prelude::*;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// How long a line-of-sight answer is reused (DotBotBrain.SIGHT_REUSE).
 const SIGHT_REUSE: f64 = 0.045;
@@ -86,6 +87,8 @@ pub struct DotSimBotMind {
     far: f64,
     far_reuse: f64,
     found: Found,
+    /// The tick's bodies handed over on the main thread (`hold_senses`) for `perceive_held`.
+    held: Option<Arc<Packed>>,
 }
 
 impl DotSimBotMind {
@@ -124,6 +127,7 @@ impl IRefCounted for DotSimBotMind {
             far: 0.0,
             far_reuse: 0.0,
             found: Found::default(),
+            held: None,
         }
     }
 }
@@ -455,7 +459,104 @@ impl DotSimBotMind {
         stamp: i64,
         los: Callable,
     ) -> PackedInt32Array {
-        let held = senses.bind();
+        let held = senses.bind().share();
+        self.perceive_in(
+            &held,
+            me_id,
+            me_team,
+            eye,
+            yaw,
+            pitch,
+            half_fov_deg,
+            sight,
+            target_id,
+            flags,
+            now,
+            stamp,
+            los,
+        )
+    }
+
+    /// Whether this library's objects may be called on worker threads (one thread per object at a
+    /// time): desktop and server builds bind with godot-rust's thread-safe storage; web builds are
+    /// single-threaded and panic off the main thread, so their brains stay in script there.
+    #[func]
+    fn worker_safe() -> bool {
+        cfg!(not(target_family = "wasm"))
+    }
+
+    /// Keeps a handle on `senses`' bodies as packed now, for [`Self::perceive_held`]. Call it on the
+    /// main thread: the handle is what lets a brain perceive on a worker thread, where several
+    /// brains must not bind the one senses object at once. A later repack leaves the handle whole.
+    #[func]
+    fn hold_senses(&mut self, senses: Gd<DotSimBotSenses>) {
+        self.held = Some(senses.bind().share());
+    }
+
+    /// Drops the handle [`Self::hold_senses`] kept.
+    #[func]
+    fn drop_senses(&mut self) {
+        self.held = None;
+    }
+
+    /// [`Self::perceive`] over the bodies [`Self::hold_senses`] kept (the same choice to the bit),
+    /// safe on a worker thread; nothing when none is held (the script then perceives).
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn perceive_held(
+        &mut self,
+        me_id: i64,
+        me_team: i64,
+        eye: Vector3,
+        yaw: f64,
+        pitch: f64,
+        half_fov_deg: f64,
+        sight: f64,
+        target_id: i64,
+        flags: i64,
+        now: f64,
+        stamp: i64,
+        los: Callable,
+    ) -> PackedInt32Array {
+        let Some(held) = self.held.clone() else {
+            return PackedInt32Array::new();
+        };
+        self.perceive_in(
+            &held,
+            me_id,
+            me_team,
+            eye,
+            yaw,
+            pitch,
+            half_fov_deg,
+            sight,
+            target_id,
+            flags,
+            now,
+            stamp,
+            los,
+        )
+    }
+}
+
+impl DotSimBotMind {
+    #[allow(clippy::too_many_arguments)]
+    fn perceive_in(
+        &mut self,
+        held: &Packed,
+        me_id: i64,
+        me_team: i64,
+        eye: Vector3,
+        yaw: f64,
+        pitch: f64,
+        half_fov_deg: f64,
+        sight: f64,
+        target_id: i64,
+        flags: i64,
+        now: f64,
+        stamp: i64,
+        los: Callable,
+    ) -> PackedInt32Array {
         let table = &held.table;
         if held.eyes.len() != table.len() || (self.far > 0.0 && held.positions.len() != table.len())
         {

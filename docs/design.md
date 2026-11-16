@@ -56,7 +56,7 @@ Measured first (cp-orange-x3, 31 bots, headless on the build machine, per frame 
 - Each bot's scan is one call returning candidate indices; the scores and the "visible target died" flag are read after. The brain maps indices back to its `DotBotContact` list, so everything after the scan is unchanged script.
 - `DotBotWorld.native_enabled` (static) switches it off for the suite and for comparisons; a world that never bumps the version always uses the script.
 - dot-bot names the class only as a `StringName` for `ClassDB`, so dot-bot does not depend on dot-sim.
-- Only the main thread scans natively. The packed senses keep the last scan's answer, so a brain thinking on a worker thread (game-fatal-contact's `bot_threads`) scans in script.
+- A brain thinking on a worker thread (game-fatal-contact's `bot_threads`) stays native: before the workers start it takes a handle on this tick's packed scan (`DotSimBotMind.hold_senses`) and perceives over it (`perceive_held`), so workers never touch the shared senses. Desktop and server builds bind with godot-rust's thread-safe storage (`experimental-threads`) and report `worker_safe()`; the web build is single-threaded, so there a worker brain moves into script.
 - Games expose the switch as a setting (game-fatal-contact: cvar `bot_native`, on by default); without the library it is script either way.
 
 ## Measured (build machine, headless, script fast scan against native)
