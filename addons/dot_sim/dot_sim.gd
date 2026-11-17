@@ -18,6 +18,7 @@ const MODULES := {
 	&"killview": &"DotSimKillViewTrack",
 	&"crowd": &"DotSimCrowdGrid",
 	&"weapon": &"DotSimWeaponSpread",
+	&"senses": &"DotSimSenses",
 }
 
 

@@ -58,6 +58,7 @@ dependencies = [
  "dot-sim-interp",
  "dot-sim-math",
  "dot-sim-motor",
+ "dot-sim-senses",
  "dot-sim-snapshot",
  "dot-sim-weapon",
  "godot",
@@ -73,6 +74,13 @@ version = "0.1.0"
 
 [[package]]
 name = "dot-sim-motor"
+version = "0.1.0"
+dependencies = [
+ "dot-sim-math",
+]
+
+[[package]]
+name = "dot-sim-senses"
 version = "0.1.0"
 dependencies = [
  "dot-sim-math",

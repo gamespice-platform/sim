@@ -24,6 +24,8 @@ mod killview;
 mod motor;
 #[cfg(feature = "ragdoll")]
 mod ragdoll;
+#[cfg(feature = "senses")]
+mod senses;
 #[cfg(feature = "snapshot")]
 mod snapshot;
 #[cfg(feature = "bots")]
