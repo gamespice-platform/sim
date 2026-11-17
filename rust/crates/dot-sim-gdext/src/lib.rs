@@ -22,6 +22,8 @@ mod interp;
 mod killview;
 #[cfg(feature = "motor")]
 mod motor;
+#[cfg(feature = "zombie")]
+mod pace;
 #[cfg(feature = "ragdoll")]
 mod ragdoll;
 #[cfg(feature = "senses")]

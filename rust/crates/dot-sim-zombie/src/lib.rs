@@ -8,6 +8,7 @@
 
 use dot_sim_math::{Vec3, minf};
 
+pub mod pace;
 pub mod steer;
 
 #[cfg(test)]
