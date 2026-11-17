@@ -106,3 +106,52 @@ fn adopt_restores_a_cell_exactly() {
     g.remove(3);
     assert_eq!(g.bucket(key(0, 0)), &[1]);
 }
+
+#[test]
+fn judge_sorts_rivals_like_the_bot() {
+    let r = |id, x: f32, distance| Rival {
+        id,
+        x,
+        y: 0.0,
+        distance,
+    };
+    // Head mass 100, fear 1.15, eat 1.25: 115+ is a threat, 80- is prey, between is neither.
+    let rivals = [
+        r(1, 10.0, 10.0), // own piece: skipped, though nearest
+        r(2, 50.0, 50.0), // gone: skipped
+        r(3, 60.0, 60.0), // 115: threat, nearest enemy
+        r(4, 70.0, 70.0), // 80: prey
+        r(5, 65.0, 65.0), // 100: enemy only
+        r(6, 90.0, 90.0), // 200: a farther threat
+        r(7, 70.0, 70.0), // 10 at an equal distance: the first prey stays
+    ];
+    let j = judge(
+        &rivals,
+        |id| match id {
+            1 => Some((9, 1.0)),
+            3 => Some((4, 115.0)),
+            4 => Some((5, 80.0)),
+            5 => Some((6, 100.0)),
+            6 => Some((7, 200.0)),
+            7 => Some((8, 10.0)),
+            _ => None,
+        },
+        9,
+        100.0,
+        1.15,
+        1.25,
+    );
+    assert_eq!(
+        j,
+        Judged {
+            threat_distance: 60.0,
+            threat_x: 60.0,
+            threat_y: 0.0,
+            prey: 4,
+            prey_distance: 70.0,
+            enemy: 3,
+            enemy_distance: 60.0,
+        }
+    );
+    assert_eq!(judge(&[], |_| None, 0, 1.0, 1.15, 1.25), Judged::default());
+}

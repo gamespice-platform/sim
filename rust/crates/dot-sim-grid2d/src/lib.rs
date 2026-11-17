@@ -8,8 +8,9 @@
 //!
 //! [`Grid::forage`] is `HungryBot.command_for`'s neighbour loop: the rect query over the bot's
 //! sight, the `f32` distance to each id, and the snack pick (worth over distance plus a bias, the
-//! first of equals) in the script's `f64` order; pieces are handed back in query order for the
-//! script to judge, because their mass and owner live on the piece, not in the grid.
+//! first of equals) in the script's `f64` order; pieces are handed back in query order, because
+//! their mass and owner live on the piece, not in the grid. [`judge`] is the bot's verdict on
+//! them (`HungryBot._judge`), given a way to read each piece's owner and mass.
 
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
@@ -354,6 +355,72 @@ impl Grid {
         self.scratch = ids;
         out
     }
+}
+
+/// What a bot makes of the pieces it sees ([`judge`]): the nearest enemy piece, the nearest that
+/// can eat the head and the nearest it can eat. A `-1` id and an infinite distance are "none";
+/// the threat is a place (`(0, 0)` when none), the prey and the enemy are piece ids.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Judged {
+    pub threat_distance: f64,
+    pub threat_x: f32,
+    pub threat_y: f32,
+    pub prey: i64,
+    pub prey_distance: f64,
+    pub enemy: i64,
+    pub enemy_distance: f64,
+}
+
+impl Default for Judged {
+    fn default() -> Self {
+        Self {
+            threat_distance: f64::INFINITY,
+            threat_x: 0.0,
+            threat_y: 0.0,
+            prey: -1,
+            prey_distance: f64::INFINITY,
+            enemy: -1,
+            enemy_distance: f64::INFINITY,
+        }
+    }
+}
+
+/// `HungryBot._judge` over [`Forage::rivals`] in their order: `piece` reads a rival's owner and
+/// mass (`None`: gone, skipped). A rival of `owner`'s own is skipped; any other is an enemy, a
+/// threat at `mass >= head_mass * fear_ratio`, else prey at `head_mass >= mass * eat_ratio`, each
+/// the nearest (the first of equals), in the script's `f64` arithmetic.
+pub fn judge(
+    rivals: &[Rival],
+    mut piece: impl FnMut(i64) -> Option<(i64, f64)>,
+    owner: i64,
+    head_mass: f64,
+    fear_ratio: f64,
+    eat_ratio: f64,
+) -> Judged {
+    let mut out = Judged::default();
+    for r in rivals {
+        let Some((their_owner, mass)) = piece(r.id) else {
+            continue;
+        };
+        if their_owner == owner {
+            continue;
+        }
+        if r.distance < out.enemy_distance {
+            out.enemy_distance = r.distance;
+            out.enemy = r.id;
+        }
+        if mass >= head_mass * fear_ratio {
+            if r.distance < out.threat_distance {
+                out.threat_distance = r.distance;
+                out.threat_x = r.x;
+                out.threat_y = r.y;
+            }
+        } else if head_mass >= mass * eat_ratio && r.distance < out.prey_distance {
+            out.prey_distance = r.distance;
+            out.prey = r.id;
+        }
+    }
+    out
 }
 
 #[cfg(test)]

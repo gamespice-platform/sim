@@ -5,9 +5,11 @@
 //! (`adopt`, the cells' lists in order). Then `forage` is `HungryBot.command_for`'s neighbour loop
 //! in one call instead of a rect query, a `position_of` and a `mass_of` per id: the best snack
 //! and the pieces in sight, to the bit (`dot_sim_grid2d`; game-hungario's
-//! `headless_native_forage` and its `forage_verify` hold the two together).
+//! `headless_native_forage` and its `forage_verify` hold the two together). `forage_judged` also
+//! runs `HungryBot._judge` over those pieces in the same call, reading each one's `owner_id` and
+//! `state.mass` from the world's pieces, so no piece crosses back to the script.
 
-use dot_sim_grid2d::{ForageRules, Grid, Rect};
+use dot_sim_grid2d::{ForageRules, Grid, Rect, judge};
 use godot::prelude::*;
 
 /// A script grid's ids, cells and positions, with a worth per id, and the bot forage over them.
@@ -17,6 +19,7 @@ pub struct DotSimGrid2D {
     grid: Grid,
     rules: ForageRules,
     query: Vec<i64>,
+    names: Option<[StringName; 3]>,
 }
 
 #[godot_api]
@@ -187,5 +190,72 @@ impl DotSimGrid2D {
             out.extend_from_slice(&[r.id as f64, f64::from(r.x), f64::from(r.y), r.distance]);
         }
         PackedFloat64Array::from(&out[..])
+    }
+
+    /// `forage` and then `HungryBot._judge` over its pieces, in one call: `[snack_score, snack_x,
+    /// snack_y, threat_distance, threat_x, threat_y, prey_id, prey_distance, enemy_id,
+    /// enemy_distance]`. [param pieces] is the world's id -> piece (`owner_id`, `state.mass`); a
+    /// piece missing there is skipped, as `_judge` skips a null one. An id of `-1` and an infinite
+    /// distance are "none".
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn forage_judged(
+        &mut self,
+        origin: Vector2,
+        sight: f64,
+        exclude: i64,
+        pickups_ok: bool,
+        pieces: VarDictionary,
+        owner: i64,
+        head_mass: f64,
+        fear_ratio: f64,
+        eat_ratio: f64,
+    ) -> PackedFloat64Array {
+        let f = self.grid.forage(
+            &self.rules,
+            (origin.x, origin.y),
+            sight,
+            exclude,
+            pickups_ok,
+        );
+        let [owner_id, state, mass] = self.names.get_or_insert_with(|| {
+            [
+                StringName::from("owner_id"),
+                StringName::from("state"),
+                StringName::from("mass"),
+            ]
+        });
+        let number = |v: Variant| {
+            v.try_to::<f64>()
+                .ok()
+                .or_else(|| v.try_to::<i64>().ok().map(|n| n as f64))
+        };
+        let j = judge(
+            &f.rivals,
+            |id| {
+                let piece = pieces.get(id)?.try_to::<Gd<Object>>().ok()?;
+                let their_owner = piece.get(&*owner_id).try_to::<i64>().ok()?;
+                let state = piece.get(&*state).try_to::<Gd<Object>>().ok()?;
+                Some((their_owner, number(state.get(&*mass))?))
+            },
+            owner,
+            head_mass,
+            fear_ratio,
+            eat_ratio,
+        );
+        PackedFloat64Array::from(
+            &[
+                f.snack_score,
+                f64::from(f.snack_x),
+                f64::from(f.snack_y),
+                j.threat_distance,
+                f64::from(j.threat_x),
+                f64::from(j.threat_y),
+                j.prey as f64,
+                j.prey_distance,
+                j.enemy as f64,
+                j.enemy_distance,
+            ][..],
+        )
     }
 }
