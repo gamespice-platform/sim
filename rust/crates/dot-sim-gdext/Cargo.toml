@@ -25,6 +25,7 @@ dot-sim-weapon = { path = "../dot-sim-weapon", optional = true }
 dot-sim-senses = { path = "../dot-sim-senses", optional = true }
 dot-sim-zombie = { path = "../dot-sim-zombie", optional = true }
 dot-sim-doors = { path = "../dot-sim-doors", optional = true }
+dot-sim-grid2d = { path = "../dot-sim-grid2d", optional = true }
 
 # Native brains, aims and motors run on game worker threads (FC bot_threads): without this the
 # binding panics off the main thread. Not on the web: its builds are single-threaded.
@@ -32,7 +33,7 @@ dot-sim-doors = { path = "../dot-sim-doors", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors"]
+default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d"]
 bots = ["dep:dot-sim-bots"]
 brain = ["dep:dot-sim-brain", "bots"]
 snapshot = ["dep:dot-sim-snapshot"]
@@ -47,6 +48,7 @@ weapon = ["dep:dot-sim-weapon"]
 senses = ["dep:dot-sim-senses", "dep:dot-sim-math"]
 zombie = ["dep:dot-sim-zombie", "dep:dot-sim-math", "crowd"]
 doors = ["dep:dot-sim-doors", "dep:dot-sim-math"]
+grid2d = ["dep:dot-sim-grid2d"]
 # A web side module (wasm32-unknown-emscripten, nightly, -Zbuild-std); see docs/web.md.
 web = ["godot/api-custom", "godot/experimental-wasm", "godot/lazy-function-tables"]
 web-nothreads = ["web", "godot/experimental-wasm-nothreads"]

@@ -21,6 +21,7 @@ const MODULES := {
 	&"senses": &"DotSimSenses",
 	&"zombie": &"DotSimZombieBrains",
 	&"doors": &"DotSimDoorReach",
+	&"grid2d": &"DotSimGrid2D",
 }
 
 

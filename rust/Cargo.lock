@@ -63,6 +63,7 @@ dependencies = [
  "dot-sim-brain",
  "dot-sim-crowd",
  "dot-sim-doors",
+ "dot-sim-grid2d",
  "dot-sim-interp",
  "dot-sim-math",
  "dot-sim-motor",
@@ -72,6 +73,10 @@ dependencies = [
  "dot-sim-zombie",
  "godot",
 ]
+
+[[package]]
+name = "dot-sim-grid2d"
+version = "0.1.0"
 
 [[package]]
 name = "dot-sim-interp"
