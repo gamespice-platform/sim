@@ -27,6 +27,7 @@ const MODULES := {
 	&"hazards": &"DotSimHazards",
 	&"road": &"DotSimRoad",
 	&"sight": &"DotSimSightRay",
+	&"pvs": &"DotSimPvs",
 }
 
 

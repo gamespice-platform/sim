@@ -32,6 +32,7 @@ dot-sim-witches = { path = "../dot-sim-witches", optional = true }
 dot-sim-doubt = { path = "../dot-sim-doubt", optional = true }
 dot-sim-hazards = { path = "../dot-sim-hazards", optional = true }
 dot-sim-road = { path = "../dot-sim-road", optional = true }
+dot-sim-pvs = { path = "../dot-sim-pvs", optional = true }
 
 # Native brains, aims and motors run on game worker threads (FC bot_threads): without this the
 # binding panics off the main thread. Not on the web: its builds are single-threaded.
@@ -39,7 +40,7 @@ dot-sim-road = { path = "../dot-sim-road", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road"]
+default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs"]
 bots = ["dep:dot-sim-bots"]
 brain = ["dep:dot-sim-brain", "bots"]
 snapshot = ["dep:dot-sim-snapshot"]
@@ -59,6 +60,7 @@ witches = ["dep:dot-sim-witches", "dep:dot-sim-math"]
 doubt = ["dep:dot-sim-doubt", "dep:dot-sim-math"]
 hazards = ["dep:dot-sim-hazards", "dep:dot-sim-math"]
 road = ["dep:dot-sim-road", "dep:dot-sim-math"]
+pvs = ["dep:dot-sim-pvs"]
 # A web side module (wasm32-unknown-emscripten, nightly, -Zbuild-std); see docs/web.md.
 web = ["godot/api-custom", "godot/experimental-wasm", "godot/lazy-function-tables"]
 web-nothreads = ["web", "godot/experimental-wasm-nothreads"]

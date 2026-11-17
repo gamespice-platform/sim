@@ -76,6 +76,7 @@ dependencies = [
  "dot-sim-interp",
  "dot-sim-math",
  "dot-sim-motor",
+ "dot-sim-pvs",
  "dot-sim-road",
  "dot-sim-senses",
  "dot-sim-snapshot",
@@ -111,6 +112,10 @@ version = "0.1.0"
 dependencies = [
  "dot-sim-math",
 ]
+
+[[package]]
+name = "dot-sim-pvs"
+version = "0.1.0"
 
 [[package]]
 name = "dot-sim-road"
