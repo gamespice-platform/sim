@@ -168,3 +168,61 @@ fn rows_unpack_in_order() {
     assert!(p.airborne && p.aiming && p.wall_running && !p.crouched);
     assert_eq!((p.tick, p.hurt_tick), (9, -1));
 }
+
+#[test]
+fn a_settled_weapon_rests_and_counts_the_tick() {
+    let t = rifle();
+    let open = Frame::default();
+    let mut s = State {
+        since: Some(3),
+        ..State::default()
+    };
+    assert!(rests(&t, &open, &s));
+    rest(&mut s);
+    assert_eq!(s.since, Some(4));
+    let mut never = State::default();
+    rest(&mut never);
+    assert_eq!(never.since, Some(NEVER));
+    let moving = State {
+        motion: Some(0.5),
+        ..s
+    };
+    assert!(!rests(&t, &open, &moving));
+    let bloomed = State {
+        bloom: Some(0.1),
+        ..s
+    };
+    assert!(!rests(&t, &open, &bloomed));
+    let no_bloom = Tuning { bloom: 0.0, ..t };
+    assert!(rests(&no_bloom, &open, &bloomed));
+}
+
+#[test]
+fn rest_needs_the_settled_factor_and_no_cone() {
+    let t = rifle();
+    let on = Frame {
+        rules: Some(rules(true)),
+        cone: false,
+        rate: 64,
+    };
+    let settled = rules(true).target_factor(&Posture::SETTLED);
+    let at = State {
+        factor: Some(settled),
+        ..State::default()
+    };
+    assert!(rests(&t, &on, &at));
+    assert!(!rests(&t, &on, &State::default()));
+    let high = State {
+        factor: Some(settled + 0.25),
+        ..at
+    };
+    assert!(!rests(&t, &on, &high));
+    let off = Frame {
+        rules: Some(rules(false)),
+        ..on
+    };
+    assert!(rests(&t, &off, &State::default()));
+    let cone = Frame { cone: true, ..off };
+    assert!(!rests(&t, &cone, &State::default()));
+    assert_eq!(Posture::SETTLED, still());
+}

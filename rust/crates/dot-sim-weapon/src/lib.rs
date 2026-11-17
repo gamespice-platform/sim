@@ -214,6 +214,19 @@ pub struct Posture {
 pub const POSTURE_LEN: usize = 9;
 
 impl Posture {
+    /// `DotWeaponHitscan._settled_ctx()`: a carrier standing still on the ground, unhurt and not aiming.
+    pub const SETTLED: Self = Self {
+        speed: 0.0,
+        airborne: false,
+        crouched: false,
+        aiming: false,
+        sliding: false,
+        sprinting: false,
+        wall_running: false,
+        tick: 0,
+        hurt_tick: -1,
+    };
+
     /// `[speed, airborne, crouched, aiming, sliding, sprinting, wall_running, tick, hurt_tick]`; `None` when short.
     pub fn from_row(r: &[f64]) -> Option<Self> {
         if r.len() < POSTURE_LEN {
@@ -386,6 +399,25 @@ pub fn tick(t: &Tuning, posture: Option<&Posture>, frame: &Frame, s: &mut State)
         shown: Some(shown),
         wrote,
     }
+}
+
+/// `DotWeaponHitscan.rest_tick`'s state checks under the frame: nothing to recover (no motion key, no bloom to shed, no
+/// factor short of the settled posture's) and no crosshair cone to keep. When this holds on a settled carrier a tick
+/// would change only the ticks since the last use, which [`rest`] counts.
+pub fn rests(t: &Tuning, frame: &Frame, s: &State) -> bool {
+    if s.motion.is_some() || (t.bloom > 0.0 && s.bloom.unwrap_or(0.0) > 0.0) || frame.tracks_cone()
+    {
+        return false;
+    }
+    match frame.rules.as_ref().filter(|r| r.enabled) {
+        Some(r) => s.factor == Some(r.target_factor(&Posture::SETTLED)),
+        None => true,
+    }
+}
+
+/// The rest tick: the ticks since the last use, counted as [`tick`] counts them.
+pub fn rest(s: &mut State) {
+    s.since = Some((s.since.unwrap_or(NEVER) + 1).min(NEVER));
 }
 
 #[cfg(test)]

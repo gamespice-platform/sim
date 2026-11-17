@@ -465,6 +465,10 @@ func _test_weapon_parity() -> void:
 	if not ResourceLoader.exists(WEAPON_DIR + "behaviour/dot_weapon_hitscan.gd"):
 		print("  skip  %s not linked" % WEAPON_DIR)
 		return
+	# The script side is the GDScript tick: with dot-sim loaded the behaviour would otherwise run the native twin itself.
+	var hitscan: Script = load(WEAPON_DIR + "behaviour/dot_weapon_hitscan.gd")
+	var was_native: bool = hitscan.get(&"native_tick")
+	hitscan.set(&"native_tick", false)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261116
 	var ticks := 0
@@ -530,7 +534,93 @@ func _test_weapon_parity() -> void:
 	_check(same_shown == shown, "%d context ticks: the native cone matches the script's to the bit" % shown, first_miss)
 	_check(same_spread == shown and same_factor == shown, "the cone and target factor asked between ticks match (%d, %d of %d)" % [same_spread, same_factor, shown])
 	_check(moved[0] > 100 and moved[1] > 100 and moved[2] > 100 and moved[3] > shown / 4, "the ticks reach every branch (settle %d, recover %d, shed %d, cone %d)" % moved)
+	_test_weapon_idle_parity(rng)
 	_bench_weapon(rng)
+	hitscan.set(&"native_tick", was_native)
+
+
+## `DotSimWeaponSpread.idle` against the arsenal's idle tick in script: `rest_tick(idle_still)` and, when it declines,
+## `_tick(idle_posture)`. Postures are often settled (the rest path) and never aiming, as an idle posture is.
+func _test_weapon_idle_parity(rng: RandomNumberGenerator) -> void:
+	if not ClassDB.class_has_method(&"DotSimWeaponSpread", &"idle"):
+		_check(false, "DotSimWeaponSpread has idle")
+		return
+	var ticks := 0
+	var same_state := 0
+	var computed := 0
+	var same_shown := 0
+	var rested := [0, 0]  # script rest ticks, native rest ticks agreeing with them
+	var first_miss := ""
+	for i: int in WEAPON_CASES:
+		var w := _weapon_case(rng)
+		var h: Object = w[0]
+		var native: Object = w[1]
+		var arsenal: Object = w[2]
+		var ctx: Object = load(WEAPON_DIR + "core/dot_weapon_context.gd").new()
+		var mirror := {}
+		var hold := 0
+		var cone: bool = arsenal.spread_rules != null and arsenal.crosshair_cone
+		for t: int in WEAPON_TICKS:
+			if hold <= 0:
+				if rng.randf() < 0.5:
+					ctx.speed = 0.0
+					ctx.airborne = false
+					ctx.crouched = false
+					ctx.sliding = false
+					ctx.sprinting = false
+					ctx.wall_running = false
+					ctx.hurt_tick = t - rng.randi_range(0, 80) if rng.randf() < 0.3 else -1
+				else:
+					_weapon_posture(rng, ctx, h)
+				ctx.aiming = false
+				hold = rng.randi_range(1, 30)
+			hold -= 1
+			ctx.tick = t
+			if rng.randf() < 0.04:
+				var bloom := float(h.state.get(&"bloom", 0.0)) + rng.randf_range(0.0, 1.5)
+				for d: Dictionary in [h.state, mirror]:
+					d[&"since_use"] = 0
+					d[&"bloom"] = bloom
+			var still := _weapon_still(ctx, arsenal)
+			var script_rested: bool = h.rest_tick(func() -> bool: return still)
+			if not script_rested:
+				h._tick(ctx)
+			var got: float = native.idle(mirror, _weapon_row(ctx), still and not cone)
+			ticks += 1
+			var miss := _weapon_state_diff(h.state, mirror)
+			if miss == "":
+				same_state += 1
+			elif first_miss == "":
+				first_miss = "case %d tick %d: %s" % [i, t, miss]
+			if script_rested and not cone:
+				rested[0] += 1
+				if got == -2.0:
+					rested[1] += 1
+				elif first_miss == "":
+					first_miss = "case %d tick %d: script rested, native %s" % [i, t, got]
+				continue
+			if got == -2.0:
+				if first_miss == "":
+					first_miss = "case %d tick %d: native rested, script ticked" % [i, t]
+				continue
+			computed += 1
+			if got == h._shown:
+				same_shown += 1
+			elif first_miss == "":
+				first_miss = "case %d tick %d: shown script %s native %s" % [i, t, h._shown, got]
+	_check(same_state == ticks, "%d idle ticks: the native idle leaves the state the script's rest tick or tick does" % ticks, first_miss)
+	_check(rested[0] > ticks / 10 and rested[1] == rested[0], "it rests exactly when the script does (%d of %d rest ticks)" % [rested[1], rested[0]], first_miss)
+	_check(computed > ticks / 4 and same_shown == computed, "%d computed idle ticks: the native cone matches the script's to the bit" % computed, first_miss)
+
+
+## The game's `idle_still` for [param ctx]: settled (no speed, grounded, standing, no slide, sprint or wall run) and no
+## flinch left at the arsenal's rate (at least 64).
+func _weapon_still(ctx: Object, arsenal: Object) -> bool:
+	if ctx.speed != 0.0 or ctx.airborne or ctx.crouched or ctx.sliding or ctx.sprinting or ctx.wall_running:
+		return false
+	if ctx.hurt_tick < 0 or ctx.tick < ctx.hurt_tick:
+		return true
+	return ctx.tick - ctx.hurt_tick > ceili(0.4 * float(maxi(int(arsenal.tick_rate), 64)))
 
 
 ## One random weapon: a hitscan behaviour on a def with random ballistics (fields or class presets), on an arsenal with

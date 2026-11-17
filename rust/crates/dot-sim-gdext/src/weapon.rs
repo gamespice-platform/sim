@@ -5,7 +5,7 @@
 
 use dot_sim_weapon::{
     Frame, Posture, Rules, State, Tuning, WROTE_BLOOM, WROTE_FACTOR, WROTE_MOTION, WROTE_NOW,
-    WROTE_SINCE, spread_with, tick,
+    WROTE_SINCE, rest, rests, spread_with, tick,
 };
 use godot::prelude::*;
 
@@ -82,6 +82,39 @@ impl DotSimWeaponSpread {
     fn posture(row: &PackedFloat64Array) -> Option<Posture> {
         Posture::from_row(row.as_slice())
     }
+
+    /// [method tick]'s body: tick [param s] (read from [param state]) and write back the keys it changed.
+    fn run(
+        &self,
+        t: &Tuning,
+        p: Option<&Posture>,
+        s: &mut State,
+        state: &mut VarDictionary,
+    ) -> f64 {
+        let out = tick(t, p, &self.frame, s);
+        let k = &self.keys;
+        if out.wrote & WROTE_SINCE != 0 {
+            state.set(&k.since, s.since.unwrap_or(0));
+        }
+        if out.wrote & WROTE_BLOOM != 0 {
+            state.set(&k.bloom, s.bloom.unwrap_or(0.0));
+        }
+        if out.wrote & WROTE_MOTION != 0 {
+            match s.motion {
+                Some(m) => state.set(&k.motion, m),
+                None => {
+                    state.remove(&k.motion);
+                }
+            }
+        }
+        if out.wrote & WROTE_FACTOR != 0 {
+            state.set(&k.factor, s.factor.unwrap_or(1.0));
+        }
+        if out.wrote & WROTE_NOW != 0 {
+            state.set(&k.now, s.now.unwrap_or(0.0));
+        }
+        out.shown.unwrap_or(-1.0)
+    }
 }
 
 #[godot_api]
@@ -122,29 +155,25 @@ impl DotSimWeaponSpread {
         };
         let p = Self::posture(&posture);
         let mut s = self.read(&state);
-        let out = tick(t, p.as_ref(), &self.frame, &mut s);
-        let k = &self.keys;
-        if out.wrote & WROTE_SINCE != 0 {
-            state.set(&k.since, s.since.unwrap_or(0));
+        self.run(t, p.as_ref(), &mut s, &mut state)
+    }
+
+    /// An idle player's tick in one call: [method DotWeaponHitscan.rest_tick] when [param rest_ok] (the carrier is
+    /// settled and the arsenal skips rest ticks) and the state has nothing to recover, else the [method tick] the arsenal
+    /// would run with [param posture] (the `idle_posture` context as a row). Returns -2 for a rest tick (only the ticks
+    /// since the last use moved; the cone was not computed), the cone for a tick, -1 with no tuning or a short row.
+    #[func]
+    fn idle(&self, mut state: VarDictionary, posture: PackedFloat64Array, rest_ok: bool) -> f64 {
+        let (Some(t), Some(p)) = (self.tuning.as_ref(), Self::posture(&posture)) else {
+            return -1.0;
+        };
+        let mut s = self.read(&state);
+        if rest_ok && rests(t, &self.frame, &s) {
+            rest(&mut s);
+            state.set(&self.keys.since, s.since.unwrap_or(0));
+            return -2.0;
         }
-        if out.wrote & WROTE_BLOOM != 0 {
-            state.set(&k.bloom, s.bloom.unwrap_or(0.0));
-        }
-        if out.wrote & WROTE_MOTION != 0 {
-            match s.motion {
-                Some(m) => state.set(&k.motion, m),
-                None => {
-                    state.remove(&k.motion);
-                }
-            }
-        }
-        if out.wrote & WROTE_FACTOR != 0 {
-            state.set(&k.factor, s.factor.unwrap_or(1.0));
-        }
-        if out.wrote & WROTE_NOW != 0 {
-            state.set(&k.now, s.now.unwrap_or(0.0));
-        }
-        out.shown.unwrap_or(-1.0)
+        self.run(t, Some(&p), &mut s, &mut state)
     }
 
     /// `_spread_with(b, ctx, _rules())`: the cone for [param posture] over [param state], changing nothing; -1 with
