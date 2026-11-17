@@ -70,6 +70,7 @@ dependencies = [
  "dot-sim-senses",
  "dot-sim-snapshot",
  "dot-sim-weapon",
+ "dot-sim-witches",
  "dot-sim-zombie",
  "godot",
 ]
@@ -106,6 +107,13 @@ version = "0.1.0"
 
 [[package]]
 name = "dot-sim-weapon"
+version = "0.1.0"
+dependencies = [
+ "dot-sim-math",
+]
+
+[[package]]
+name = "dot-sim-witches"
 version = "0.1.0"
 dependencies = [
  "dot-sim-math",

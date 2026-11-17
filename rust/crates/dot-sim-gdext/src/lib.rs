@@ -38,6 +38,8 @@ mod snapshot;
 mod tier;
 #[cfg(feature = "weapon")]
 mod weapon;
+#[cfg(feature = "witches")]
+mod witches;
 #[cfg(feature = "zombie")]
 mod zombie;
 
