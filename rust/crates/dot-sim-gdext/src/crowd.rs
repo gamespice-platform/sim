@@ -127,6 +127,30 @@ impl DotSimCrowdGrid {
         ))
     }
 
+    /// A zombie's heading before avoidance (dot-npc-ai's `_spaced_direction` over this grid): the seek
+    /// from [param here] to [param goal] plus 0.6 of [param id]'s spacing push, the tie-break
+    /// [param forward] turned a quarter turn, flat and unit or zero. INF when [param id] is not in
+    /// the grid, for the script's own pass.
+    #[func]
+    fn spaced_direction(
+        &self,
+        id: i64,
+        here: Vector3,
+        goal: Vector3,
+        spacing: f64,
+        forward: Vector3,
+    ) -> Vector3 {
+        self.grid
+            .spaced_direction(
+                self.grid.index_of(id),
+                v3(here),
+                v3(goal),
+                spacing,
+                v3(forward),
+            )
+            .map_or(Vector3::INF, gv)
+    }
+
     #[func]
     fn describe(&self) -> VarDictionary {
         let mut d = VarDictionary::new();

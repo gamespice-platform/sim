@@ -1,0 +1,10 @@
+[package]
+name = "dot-sim-zombie"
+description = "Zombie Zone's zombie brains: the per-tick survivor table and the common's chase plan (quarry, where, speed, gap, reach), pure Rust in the script's order and precision."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dot-sim-math = { path = "../dot-sim-math" }

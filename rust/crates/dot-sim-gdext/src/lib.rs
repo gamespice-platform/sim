@@ -32,6 +32,8 @@ mod snapshot;
 mod tier;
 #[cfg(feature = "weapon")]
 mod weapon;
+#[cfg(feature = "zombie")]
+mod zombie;
 
 struct DotSimExtension;
 

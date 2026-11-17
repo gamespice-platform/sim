@@ -229,6 +229,45 @@ impl Grid {
             Vec3::default()
         }
     }
+
+    /// dot-npc-ai's `_spaced_direction` with ZZ's grid `separation`: the seek from `here` to `goal`
+    /// plus 0.6 of entry `self_index`'s spacing push (radius `spacing`, query `2 * spacing`, `forward`
+    /// turned a quarter turn about Y as the tie-break), flattened and made unit, zero when they
+    /// cancel. `None` when the entry is not in the grid: the script then separates by `neighbours`.
+    pub fn spaced_direction(
+        &self,
+        self_index: i32,
+        here: Vec3,
+        goal: Vec3,
+        spacing: f64,
+        forward: Vec3,
+    ) -> Option<Vec3> {
+        if self_index < 0 {
+            return None;
+        }
+        let wanted = seek(here, goal);
+        let right = Vec3::new(-forward.z, 0.0, forward.x);
+        let apart = self.separation(self_index, here, spacing, spacing * 2.0, right);
+        let mut direction = wanted.scale(1.0) + apart.scale(0.6);
+        direction.y = 0.0;
+        Some(if f64::from(direction.length()) > 0.001 {
+            direction.normalized()
+        } else {
+            Vec3::default()
+        })
+    }
+}
+
+/// `DotNpcAiSteering.seek`: the flat unit direction from `from` to `goal`, zero within a millimetre.
+#[inline]
+pub fn seek(from: Vec3, goal: Vec3) -> Vec3 {
+    let mut direction = goal - from;
+    direction.y = 0.0;
+    if f64::from(direction.length()) > 0.001 {
+        direction.normalized()
+    } else {
+        Vec3::default()
+    }
 }
 
 /// `floori(x / cell)` for a script float already in f64. The engine's `int64_t(floor(x))` gives
@@ -305,5 +344,45 @@ mod tests {
         assert_eq!(cell_of(-0.5, 4.0), -1);
         assert_eq!(cell_of(f32::INFINITY, 4.0), i64::MIN);
         assert_eq!(cell_of_f64(f64::NAN, 4.0), i64::MIN);
+    }
+
+    #[test]
+    fn spaced_direction_seeks_and_spreads() {
+        let mut g = Grid::new(2.0);
+        let me = g.add(1, v(0.0, 0.0, 0.0));
+        g.add(2, v(0.5, 0.0, 0.0));
+        let d = g
+            .spaced_direction(
+                me,
+                v(0.0, 0.0, 0.0),
+                v(0.0, 3.0, 10.0),
+                1.1,
+                v(0.0, 0.0, -1.0),
+            )
+            .unwrap();
+        assert!((d.length() - 1.0).abs() < 1e-6 && d.y == 0.0);
+        assert!(
+            d.x < 0.0 && d.z > 0.0,
+            "pushed off the neighbour on +x while seeking +z: {d:?}"
+        );
+        let alone = g.spaced_direction(
+            me,
+            v(0.0, 0.0, 0.0),
+            v(0.0, 0.0, 0.0),
+            0.1,
+            v(0.0, 0.0, -1.0),
+        );
+        assert_eq!(alone, Some(Vec3::default()));
+        assert_eq!(
+            g.spaced_direction(
+                -1,
+                v(0.0, 0.0, 0.0),
+                v(1.0, 0.0, 0.0),
+                1.1,
+                v(0.0, 0.0, -1.0)
+            ),
+            None
+        );
+        assert_eq!(seek(v(1.0, 0.0, 1.0), v(1.0, 5.0, 1.0)), Vec3::default());
     }
 }
