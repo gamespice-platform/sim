@@ -43,6 +43,8 @@ func _run() -> void:
 		_test_arms_parity()
 	if DotSim.has(&"weapon"):
 		_test_weapon_parity()
+	if DotSim.has(&"sight"):
+		await _test_sight_ray_parity()
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -55,6 +57,102 @@ func _check(ok: bool, what: String, detail: String = "") -> void:
 	else:
 		_failed += 1
 		print("  FAIL  %s%s" % [what, "" if detail == "" else " (%s)" % detail])
+
+
+## Random sight rays through DotSimSightRay against the script's PhysicsRayQueryParameters3D ray
+## (the world's line_of_sight): same mask, exclusions and end point, on the main thread and on a
+## worker holding the lock, and again after a rebind changes the mask; then with a jail cell bound
+## (dot_map's DotMapGlassSight.blocks in front, written out here: glass on its own layer).
+func _test_sight_ray_parity() -> void:
+	var root := Node3D.new()
+	add_child(root)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	var rids: Array[RID] = []
+	for i in 60:
+		var body := StaticBody3D.new()
+		body.collision_layer = 4 if i % 7 == 3 else (2 if i % 4 == 0 else 1)
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(rng.randf_range(0.3, 4.0), rng.randf_range(0.3, 4.0), rng.randf_range(0.3, 4.0))
+		shape.shape = box
+		body.add_child(shape)
+		var spread := 10.0 if body.collision_layer == 4 else 25.0
+		body.position = Vector3(rng.randf_range(-spread, spread), rng.randf_range(-3.0, 3.0), rng.randf_range(-spread, spread))
+		root.add_child(body)
+		rids.append(body.get_rid())
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var space := root.get_world_3d().direct_space_state
+	var exclude: Array[RID] = [rids[1], rids[2], rids[3]]
+	var ray: Object = ClassDB.instantiate(&"DotSimSightRay")
+	var lock := Mutex.new()
+	var cases: Array = []
+	for i in 4000:
+		var reach := 30.0 if i % 2 == 0 else 9.0
+		var from := Vector3(rng.randf_range(-reach, reach), rng.randf_range(-4.0, 4.0), rng.randf_range(-reach, reach))
+		var to := Vector3(rng.randf_range(-30.0, 30.0), rng.randf_range(-4.0, 4.0), rng.randf_range(-30.0, 30.0))
+		if i % 50 == 0:
+			to = from + Vector3(0.00003, 0.0, 0.00004)
+		cases.append([from, to])
+	var blocked := 0
+	var centre := Vector3(0.5, 0.0, -0.5)
+	var radius := 8.0
+	var margin := 2.0
+	var by_glass := 0
+	for config: Array in [[1, false], [3, false], [1, true]]:
+		var mask: int = config[0]
+		var jail: bool = config[1]
+		var what := "mask %d%s" % [mask, " with a jail cell" if jail else ""]
+		if jail:
+			ray.call(&"bind", space, mask, exclude, lock, space, 4, centre, radius, radius + margin)
+		else:
+			ray.call(&"bind", space, mask, exclude, lock, null, 0, Vector3.ZERO, 0.0, 0.0)
+		var q := PhysicsRayQueryParameters3D.new()
+		q.collision_mask = mask
+		q.exclude = exclude
+		q.collide_with_areas = false
+		q.collide_with_bodies = true
+		q.hit_from_inside = false
+		var want: Array[bool] = []
+		for c: Array in cases:
+			if jail and (c[0] as Vector3).distance_to(centre) < radius:
+				var g := PhysicsRayQueryParameters3D.create(c[0], c[1], 4)
+				var hit := space.intersect_ray(g)
+				if not hit.is_empty() and (hit["position"] as Vector3).distance_to(centre) < radius + margin:
+					by_glass += 1
+					want.append(false)
+					continue
+			var offset: Vector3 = c[1] - c[0]
+			var distance := offset.length()
+			if distance <= 0.0001:
+				want.append(true)
+				continue
+			q.from = c[0]
+			q.to = c[0] + offset / distance * distance
+			want.append(space.intersect_ray(q).is_empty())
+		var main_miss := -1
+		for i in cases.size():
+			var got: bool = ray.call(&"clear", cases[i][0], cases[i][1])
+			if not got:
+				blocked += 1
+			if got != want[i] and main_miss < 0:
+				main_miss = i
+		_check(main_miss < 0, "%s: %d native sight rays match the script ray" % [what, cases.size()], "" if main_miss < 0 else "case %d %s" % [main_miss, cases[main_miss]])
+		var thread := Thread.new()
+		thread.start(func() -> int:
+			var miss := -1
+			for i in cases.size():
+				if bool(ray.call(&"clear", cases[i][0], cases[i][1])) != want[i] and miss < 0:
+					miss = i
+			return miss)
+		var worker_miss: int = thread.wait_to_finish()
+		_check(worker_miss < 0, "%s: the same rays on a worker under the lock match" % what, str(worker_miss))
+	_check(blocked > 600 and blocked < 11400, "the rays mix blocked and clear", str(blocked))
+	_check(by_glass > 20, "the jail glass blocks some rays from inside the cell", str(by_glass))
+	ray.call(&"bind", null, 1, exclude, null, null, 0, Vector3.ZERO, 0.0, 0.0)
+	_check(bool(ray.call(&"clear", Vector3.ZERO, Vector3(100, 0, 0))), "with no space bound every ray is clear")
+	root.queue_free()
 
 
 func _test_fallback() -> void:

@@ -4,6 +4,7 @@
 //! The view comes back as `f64`s, never a `Vector2`, so the script's yaw keeps its precision.
 
 use crate::bots::{DotSimBotSenses, Packed};
+use crate::sight::{DotSimSightRay, SightQuery};
 use dot_sim_bots::{Found, Query, candidates};
 use dot_sim_brain::aim::direction;
 use dot_sim_brain::fight::FirstShot;
@@ -89,6 +90,8 @@ pub struct DotSimBotMind {
     found: Found,
     /// The tick's bodies handed over on the main thread (`hold_senses`) for `perceive_held`.
     held: Option<Arc<Packed>>,
+    /// The query this mind asks a [`DotSimSightRay`] with, when that is its `los`.
+    query: SightQuery,
 }
 
 impl DotSimBotMind {
@@ -128,6 +131,7 @@ impl IRefCounted for DotSimBotMind {
             far_reuse: 0.0,
             found: Found::default(),
             held: None,
+            query: SightQuery::default(),
         }
     }
 }
@@ -437,7 +441,8 @@ impl DotSimBotMind {
 
     /// DotBotBrain._perceive's choice over `senses`' packed bodies: the native scan, the current
     /// target kept while in sight, else the best score seen (`los(from, to) -> bool`, the world's
-    /// line of sight, asked of the chest then the head, through the sight cache). `flags`: 1 the
+    /// line of sight, asked of the chest then the head, through the sight cache; a
+    /// [`DotSimSightRay`]'s `clear` is asked natively, the same answer). `flags`: 1 the
     /// target is visible, 2 the bot sees through walls. Returns
     /// [chosen row or -1, 1 when the visible target was found dead], or nothing when `senses`
     /// has no eyes for its rows (the script then perceives).
@@ -585,6 +590,15 @@ impl DotSimBotMind {
         } else {
             (visible, target_id)
         };
+        // The world's sight as a native ray: asked here, not through a call into script.
+        let direct = match (los.object(), los.method_name()) {
+            (Some(obj), Some(name)) if name == "clear" && los.get_bound_arguments_count() == 0 => {
+                obj.try_cast::<DotSimSightRay>()
+                    .ok()
+                    .map(|ray| ray.bind().conf())
+            }
+            _ => None,
+        };
         let sees = |mind: &mut Self, row: usize| -> bool {
             let id = table.ids[row];
             // Sight LOD: a far body (never the target) keeps a "not seen" longer.
@@ -599,9 +613,12 @@ impl DotSimBotMind {
             if let Some(seen) = mind.sight_held_far(id, now, stamp, reuse) {
                 return seen;
             }
-            let ask = |to: V3| {
-                los.call(&[eye.to_variant(), gv(to).to_variant()])
-                    .booleanize()
+            let query = &mut mind.query;
+            let mut ask = |to: V3| match &direct {
+                Some(conf) => conf.clear(query, eye, gv(to)),
+                None => los
+                    .call(&[eye.to_variant(), gv(to).to_variant()])
+                    .booleanize(),
             };
             let seen = ask(table.points[row]) || ask(held.eyes[row]);
             mind.sight.insert(id, (now, seen, stamp));

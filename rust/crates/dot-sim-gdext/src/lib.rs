@@ -36,6 +36,8 @@ mod pace;
 mod ragdoll;
 #[cfg(feature = "senses")]
 mod senses;
+#[cfg(feature = "brain")]
+mod sight;
 #[cfg(feature = "snapshot")]
 mod snapshot;
 #[cfg(feature = "bots")]
