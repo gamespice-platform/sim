@@ -239,6 +239,41 @@ pub struct SteerOut {
     pub watch: Watch,
 }
 
+/// dot-npc-ai's `face(direction)` on a living 3D body, then dot-npc's `face`: the turn ([`turn_view`] from
+/// `facing_at_tick`, or `facing` when that is unset; no turn when `delta` is not positive) and the point
+/// `look_at` turns the body to, `None` when it is not turned. `t` is updated as the character's turn state would be.
+pub fn face(
+    t: &mut Turn,
+    p: &TurnProfile,
+    here: Vec3,
+    facing: Vec3,
+    facing_at_tick: Vec3,
+    direction: Vec3,
+    delta: f64,
+) -> Option<Vec3> {
+    let faced = if delta <= 0.0 {
+        direction
+    } else {
+        let flat = Vec3::new(direction.x, 0.0, direction.z);
+        if f64::from(flat.length_squared()) < 0.000001 {
+            return None;
+        }
+        let from = if f64::from(facing_at_tick.length_squared()) > 0.0001 {
+            facing_at_tick
+        } else {
+            facing
+        };
+        turn_view(t, p, from, flat.normalized(), delta)
+    };
+
+    let flat = Vec3::new(faced.x, 0.0, faced.z);
+    if f64::from(flat.length()) < 0.001 {
+        return None;
+    }
+    let target = here + flat.normalized();
+    (is_finite(here) && !is_equal_approx(target, here)).then_some(target)
+}
+
 /// dot-npc-ai's `steer_with_spacing` after its spaced heading, on Zombie Zone's `steer_toward` (the wish) with
 /// no avoidance node: the wish, the turn ([`turn_view`] from `facing_at_tick`, or `facing` when that is
 /// unset; no turn when `delta` is not positive), the look and the progress watch. `t` is updated as the
@@ -264,33 +299,7 @@ pub fn steer(t: &mut Turn, p: &TurnProfile, s: &SteerIn) -> SteerOut {
     if f64::from(direction.length()) >= 0.001 {
         direction = direction.normalized();
         out.wish = Some(direction.scale(s.speed));
-
-        // dot-npc-ai's face(direction): turned, then dot-npc's face.
-        let faced = if s.delta <= 0.0 {
-            Some(direction)
-        } else {
-            let flat = Vec3::new(direction.x, 0.0, direction.z);
-            if f64::from(flat.length_squared()) < 0.000001 {
-                None
-            } else {
-                let from = if f64::from(s.facing_at_tick.length_squared()) > 0.0001 {
-                    s.facing_at_tick
-                } else {
-                    s.facing
-                };
-                Some(turn_view(t, p, from, flat.normalized(), s.delta))
-            }
-        };
-
-        if let Some(faced) = faced {
-            let flat = Vec3::new(faced.x, 0.0, faced.z);
-            if f64::from(flat.length()) >= 0.001 {
-                let target = s.here + flat.normalized();
-                if is_finite(s.here) && !is_equal_approx(target, s.here) {
-                    out.look = Some(target);
-                }
-            }
-        }
+        out.look = face(t, p, s.here, s.facing, s.facing_at_tick, direction, s.delta);
     }
 
     // _watch_progress(here, to)
@@ -454,6 +463,69 @@ mod tests {
         s.delta = 0.0;
         let out = steer(&mut t, &TurnProfile::default(), &s);
         assert_eq!(out.look, Some(v(2.0, 0.0, 1.0)));
+        assert_eq!(t, Turn::default());
+    }
+
+    #[test]
+    fn face_turns_flattens_and_skips_what_face_skips() {
+        let p = TurnProfile::default();
+        let here = v(1.0, 0.0, 1.0);
+        let ahead = v(0.0, 0.0, -1.0);
+        // A climb's height is dropped before the turn; a turn from facing_at_tick, else the body's facing.
+        let mut a = Turn::default();
+        let mut b = Turn::default();
+        let up = face(
+            &mut a,
+            &p,
+            here,
+            ahead,
+            Vec3::default(),
+            v(2.0, 5.0, 0.0),
+            1.0 / 60.0,
+        );
+        let flat = face(
+            &mut b,
+            &p,
+            here,
+            ahead,
+            Vec3::default(),
+            v(1.0, 0.0, 0.0),
+            1.0 / 60.0,
+        );
+        assert_eq!(up, flat);
+        assert_eq!(a, b);
+        assert!(a.peak > 0.0);
+        let mut c = Turn::default();
+        let from_tick = face(
+            &mut c,
+            &p,
+            here,
+            v(1.0, 0.0, 0.0),
+            ahead,
+            v(1.0, 0.0, 0.0),
+            1.0 / 60.0,
+        );
+        assert_eq!(from_tick, flat);
+        // Straight up or nothing: no look and no turn.
+        let mut t = Turn::default();
+        assert_eq!(
+            face(&mut t, &p, here, ahead, ahead, v(0.0, 3.0, 0.0), 1.0 / 60.0),
+            None
+        );
+        assert_eq!(
+            face(&mut t, &p, here, ahead, ahead, v(0.0, 3.0, 0.0), 0.0),
+            None
+        );
+        assert_eq!(t, Turn::default());
+        // No delta: faced as asked, untouched; a body off the map is not looked round.
+        assert_eq!(
+            face(&mut t, &p, here, ahead, ahead, v(0.0, 0.0, 2.0), 0.0),
+            Some(v(1.0, 0.0, 2.0))
+        );
+        assert_eq!(
+            face(&mut t, &p, INF, ahead, ahead, v(0.0, 0.0, 2.0), 0.0),
+            None
+        );
         assert_eq!(t, Turn::default());
     }
 
