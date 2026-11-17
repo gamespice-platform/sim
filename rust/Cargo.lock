@@ -54,6 +54,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "dot-sim-doubt"
+version = "0.1.0"
+dependencies = [
+ "dot-sim-math",
+]
+
+[[package]]
 name = "dot-sim-gdext"
 version = "0.1.0"
 dependencies = [
@@ -63,6 +70,7 @@ dependencies = [
  "dot-sim-brain",
  "dot-sim-crowd",
  "dot-sim-doors",
+ "dot-sim-doubt",
  "dot-sim-grid2d",
  "dot-sim-interp",
  "dot-sim-math",

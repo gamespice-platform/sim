@@ -16,6 +16,8 @@ mod brain;
 mod crowd;
 #[cfg(feature = "doors")]
 mod doors;
+#[cfg(feature = "doubt")]
+mod doubt;
 #[cfg(feature = "grid2d")]
 mod grid2d;
 #[cfg(feature = "motor")]

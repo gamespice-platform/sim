@@ -23,6 +23,7 @@ const MODULES := {
 	&"doors": &"DotSimDoorReach",
 	&"grid2d": &"DotSimGrid2D",
 	&"witches": &"DotSimWitches",
+	&"doubt": &"DotSimPropDoubt",
 }
 
 
