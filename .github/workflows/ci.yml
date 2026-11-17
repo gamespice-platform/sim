@@ -87,6 +87,10 @@ jobs:
             - name: Unit tests (the library's own, no engine needed)
               if: steps.crate.outputs.present == 'true' && matrix.platform != 'macos-arm64'
               run: cargo test --manifest-path rust/Cargo.toml --target ${{ matrix.target }} --locked
+            # The patched godot-cell (rust/vendor/godot-cell/README.dot-sim.md): its own tests, the wakeup test among them.
+            - name: Vendored godot-cell tests
+              if: steps.crate.outputs.present == 'true' && matrix.platform == 'linux-x86_64'
+              run: cargo test --manifest-path rust/vendor/godot-cell/Cargo.toml
             - name: Build and lay out the library
               if: steps.crate.outputs.present == 'true'
               run: bash ci/install.sh --platform ${{ matrix.platform }}

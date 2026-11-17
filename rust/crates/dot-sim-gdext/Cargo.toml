@@ -12,6 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 godot = "0.5.5"
+# The binding's cell, patched (rust/vendor/godot-cell): DotSimCell switches its notify mode.
+godot-cell = "0.5.5"
 dot-sim-bots = { path = "../dot-sim-bots", optional = true }
 dot-sim-brain = { path = "../dot-sim-brain", optional = true }
 dot-sim-snapshot = { path = "../dot-sim-snapshot", optional = true }
