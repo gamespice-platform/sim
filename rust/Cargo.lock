@@ -79,6 +79,7 @@ dependencies = [
  "dot-sim-pvs",
  "dot-sim-road",
  "dot-sim-route",
+ "dot-sim-seek",
  "dot-sim-senses",
  "dot-sim-snapshot",
  "dot-sim-weapon",
@@ -129,6 +130,14 @@ dependencies = [
 name = "dot-sim-route"
 version = "0.1.0"
 dependencies = [
+ "dot-sim-math",
+]
+
+[[package]]
+name = "dot-sim-seek"
+version = "0.1.0"
+dependencies = [
+ "dot-sim-doubt",
  "dot-sim-math",
 ]
 

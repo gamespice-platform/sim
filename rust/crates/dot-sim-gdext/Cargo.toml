@@ -34,6 +34,7 @@ dot-sim-hazards = { path = "../dot-sim-hazards", optional = true }
 dot-sim-road = { path = "../dot-sim-road", optional = true }
 dot-sim-pvs = { path = "../dot-sim-pvs", optional = true }
 dot-sim-route = { path = "../dot-sim-route", optional = true }
+dot-sim-seek = { path = "../dot-sim-seek", optional = true }
 
 # Native brains, aims and motors run on game worker threads (FC bot_threads): without this the
 # binding panics off the main thread. Not on the web: its builds are single-threaded.
@@ -41,7 +42,7 @@ dot-sim-route = { path = "../dot-sim-route", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route"]
+default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek"]
 bots = ["dep:dot-sim-bots"]
 brain = ["dep:dot-sim-brain", "bots"]
 snapshot = ["dep:dot-sim-snapshot"]
@@ -59,6 +60,7 @@ doors = ["dep:dot-sim-doors", "dep:dot-sim-math"]
 grid2d = ["dep:dot-sim-grid2d"]
 witches = ["dep:dot-sim-witches", "dep:dot-sim-math"]
 doubt = ["dep:dot-sim-doubt", "dep:dot-sim-math"]
+seek = ["dep:dot-sim-seek", "dep:dot-sim-math", "brain"]
 hazards = ["dep:dot-sim-hazards", "dep:dot-sim-math"]
 road = ["dep:dot-sim-road", "dep:dot-sim-math"]
 pvs = ["dep:dot-sim-pvs"]

@@ -1,0 +1,11 @@
+[package]
+name = "dot-sim-seek"
+description = "Prop Hunt's hunter senses for a tick, every hunter at once: prey in sight, places crossed off, doubt rows, pure Rust in the script's order and precision."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dot-sim-math = { path = "../dot-sim-math" }
+dot-sim-doubt = { path = "../dot-sim-doubt" }
