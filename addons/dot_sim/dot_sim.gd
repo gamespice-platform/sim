@@ -20,6 +20,7 @@ const MODULES := {
 	&"weapon": &"DotSimWeaponSpread",
 	&"senses": &"DotSimSenses",
 	&"zombie": &"DotSimZombieBrains",
+	&"doors": &"DotSimDoorReach",
 }
 
 

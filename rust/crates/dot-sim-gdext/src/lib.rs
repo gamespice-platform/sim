@@ -14,6 +14,8 @@ mod bots;
 mod brain;
 #[cfg(feature = "crowd")]
 mod crowd;
+#[cfg(feature = "doors")]
+mod doors;
 #[cfg(feature = "motor")]
 mod hulls;
 #[cfg(feature = "interp")]
