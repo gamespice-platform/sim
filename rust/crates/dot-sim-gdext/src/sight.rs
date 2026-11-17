@@ -65,6 +65,24 @@ impl SightConf {
         if (distance as f64) <= 0.0001 {
             return true;
         }
+        self.ray(query, from, from + offset / distance * distance)
+    }
+
+    /// Whether nothing blocks `from` to `to` as given: script's
+    /// `intersect_ray(PhysicsRayQueryParameters3D.create(from, to)).is_empty()` with the bound mask
+    /// and exclusions, to the bit (no short-ray answer, no recomputed end point). True with no space.
+    pub fn clear_to(&self, query: &mut SightQuery, from: Vector3, to: Vector3) -> bool {
+        if let Some(cell) = &self.cell
+            && (dist(from, cell.centre) as f64) < cell.radius
+            && self.glass_blocks(cell, query, from, to)
+        {
+            return false;
+        }
+        self.ray(query, from, to)
+    }
+
+    /// The bound ray from `from` to `to`, on the reused query.
+    fn ray(&self, query: &mut SightQuery, from: Vector3, to: Vector3) -> bool {
         let Some(space) = &self.space else {
             return true;
         };
@@ -81,7 +99,7 @@ impl SightConf {
             query.epoch = Some(self.epoch);
         }
         ray.set_from(from);
-        ray.set_to(from + offset / distance * distance);
+        ray.set_to(to);
         let mut space = space.clone();
         self.locked(|| space.intersect_ray(&*ray).is_empty())
     }
@@ -205,6 +223,14 @@ impl DotSimSightRay {
     fn clear(&self, from: Vector3, to: Vector3) -> bool {
         let mut query = self.query.lock().unwrap_or_else(|e| e.into_inner());
         self.conf.clear(&mut query, from, to)
+    }
+
+    /// Whether nothing blocks the line from `from` to `to` exactly as script's ray asks it: the
+    /// end point as given and no short-ray answer (a game's `_clear_between`, to the bit).
+    #[func]
+    fn clear_to(&self, from: Vector3, to: Vector3) -> bool {
+        let mut query = self.query.lock().unwrap_or_else(|e| e.into_inner());
+        self.conf.clear_to(&mut query, from, to)
     }
 }
 

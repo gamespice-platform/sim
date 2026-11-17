@@ -43,6 +43,7 @@ func _run() -> void:
 		_test_arms_parity()
 	if DotSim.has(&"sight"):
 		await _test_sight_ray_parity()
+		await _test_sight_clear_to_parity()
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -130,6 +131,36 @@ func _test_sight_ray_parity() -> void:
 	_check(by_glass > 20, "the jail glass blocks some rays from inside the cell", str(by_glass))
 	ray.call(&"bind", null, 1, exclude, null, null, 0, Vector3.ZERO, 0.0, 0.0)
 	_check(bool(ray.call(&"clear", Vector3.ZERO, Vector3(100, 0, 0))), "with no space bound every ray is clear")
+	root.queue_free()
+
+
+## DotSimSightRay.clear_to against a game's `_clear_between` ray (PhysicsRayQueryParameters3D.create(from, to) with the
+## mask set, no exclusions): the end point as given and no short-ray answer, so every ray agrees to the bit.
+func _test_sight_clear_to_parity() -> void:
+	var root := Node3D.new()
+	add_child(root)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5151
+	var _rids := _sight_boxes(root, rng)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var space := root.get_world_3d().direct_space_state
+	var ray: Object = ClassDB.instantiate(&"DotSimSightRay")
+	var cases := _sight_cases(rng)
+	var blocked := 0
+	for mask: int in [1, 3, 7]:
+		ray.call(&"bind", space, mask, [] as Array[RID], null, null, 0, Vector3.ZERO, 0.0, 0.0)
+		var miss := -1
+		for i in cases.size():
+			var q := PhysicsRayQueryParameters3D.create(cases[i][0], cases[i][1])
+			q.collision_mask = mask
+			var want := space.intersect_ray(q).is_empty()
+			var got: bool = ray.call(&"clear_to", cases[i][0], cases[i][1])
+			blocked += 0 if got else 1
+			if got != want and miss < 0:
+				miss = i
+		_check(miss < 0, "clear_to, mask %d: %d rays match the script's created ray" % [mask, cases.size()], "" if miss < 0 else "case %d %s" % [miss, cases[miss]])
+	_check(blocked > 600, "the clear_to rays mix blocked and clear", str(blocked))
 	root.queue_free()
 
 
