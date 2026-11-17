@@ -223,119 +223,77 @@ impl DotSimZombieBrains {
         apply: bool,
     ) -> PackedFloat64Array {
         let names = self.names.get_or_insert_with(Names::new);
-        let failed = || PackedFloat64Array::from(&[-1.0]);
-
-        let xf = body.get_global_transform();
-        let here = v3(xf.origin);
-        let r = &xf.basis.rows;
-        let facing = -Vec3::new(r[0].z, r[1].z, r[2].z).normalized();
-
-        let direction = {
-            let g = grid.bind();
-            let index = g.grid.index_of(id);
-            if index < 0 {
-                return failed();
-            }
-            match g
-                .grid
-                .spaced_direction(index, here, v3(goal), spacing, facing)
-            {
-                Some(d) => d,
-                None => return failed(),
-            }
-        };
-
         let (Some(facing_at_tick), Some(progress_at), Some(progress_since), Some(stuck_seconds)) = (
             member::<Vector3>(&brain, &names.facing_at_tick),
             member::<Vector3>(&brain, &names.progress_at),
             member::<f64>(&brain, &names.progress_since),
             member::<f64>(&brain, &names.stuck_seconds),
         ) else {
-            return failed();
+            return PackedFloat64Array::from(&[-1.0]);
         };
-        let Some((before, p)) = turn_of(names, &character) else {
-            return failed();
+        let watch = BrainWatch {
+            facing_at_tick,
+            progress_at,
+            progress_since,
+            stuck_seconds,
         };
-        let mut t = before;
-        let out = steer::steer(
-            &mut t,
-            &p,
-            &SteerIn {
-                here,
-                facing,
-                facing_at_tick: v3(facing_at_tick),
-                direction,
-                to: v3(to),
-                speed,
-                delta,
-                now,
-                progress_at: v3(progress_at),
-                progress_since,
-                stuck_seconds,
-            },
+        let (out, steered, reset, here) = self.steer_core(
+            &grid, id, character, body, goal, to, spacing, speed, delta, now, apply, &watch,
         );
-        self.steered += 1;
 
-        if apply && out.steered {
+        if apply && steered {
+            let names = self.names.get_or_insert_with(Names::new);
             let mut brain = brain;
-            if let Some(w) = out.wish {
-                let mut b = body.clone().upcast::<Object>();
-                b.set(&names.wish, &gv(w).to_variant());
-            }
-            if t != before {
-                let mut c = character;
-                if t.peak != before.peak {
-                    c.set(&names.peak, &t.peak.to_variant());
-                }
-                if t.over_amt != before.over_amt {
-                    c.set(&names.over_amt, &t.over_amt.to_variant());
-                }
-                if t.over_axis != before.over_axis {
-                    c.set(&names.over_axis, &gv(t.over_axis).to_variant());
-                }
-                if t.turns != before.turns {
-                    c.set(&names.turns, &t.turns.to_variant());
-                }
-            }
-            if let Some(target) = out.look {
-                let mut b = body.clone();
-                b.look_at(gv(target));
-            }
             brain.set(&names.cruise_to, &goal.to_variant());
             brain.set(&names.cruise_dest, &to.to_variant());
-            if out.watch == Watch::Reset {
-                brain.set(&names.progress_at, &gv(here).to_variant());
+            if reset {
+                brain.set(&names.progress_at, &here.to_variant());
                 brain.set(&names.progress_since, &now.to_variant());
             }
         }
 
-        let (wish, look) = (out.wish.unwrap_or_default(), out.look.unwrap_or_default());
-        let flag = |b: bool| if b { 1.0 } else { 0.0 };
-        PackedFloat64Array::from(&[
-            flag(out.steered),
-            match out.watch {
-                Watch::Keep => 0.0,
-                Watch::Reset => 1.0,
-                Watch::Stuck => 2.0,
-            },
-            flag(out.wish.is_some()),
-            f64::from(wish.x),
-            f64::from(wish.y),
-            f64::from(wish.z),
-            flag(out.look.is_some()),
-            f64::from(look.x),
-            f64::from(look.y),
-            f64::from(look.z),
-            t.peak,
-            t.over_amt,
-            t.turns as f64,
-            f64::from(t.over_axis.x),
-            f64::from(t.over_axis.y),
-            f64::from(t.over_axis.z),
-            f64::from(here.x),
-            f64::from(here.y),
-            f64::from(here.z),
-        ])
+        out
+    }
+
+    /// [method steer_step] with the brain's own state handed in rather than read off it, and nothing
+    /// written to the brain: [param facing_at_tick], [param progress_at] and [param stuck_seconds]
+    /// are its `_facing_at_tick`, `_progress_at` and `stuck_seconds`, and [param waited] is
+    /// `now - _progress_since` (the only way the steer reads either clock). With [param apply] the
+    /// character's turn state, the body's wish and its look are written as [method steer_step] writes
+    /// them; the caller sets the brain's `_cruise_to` to [param goal] and `_cruise_dest` to [param to]
+    /// when code is 1, and its `_progress_at` to `here` and `_progress_since` to now when watch is 1.
+    /// Six fewer script-member reads and writes a steer than [method steer_step]; the same answer, to
+    /// the bit.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn steer_walk(
+        &mut self,
+        grid: Gd<DotSimCrowdGrid>,
+        id: i64,
+        character: Gd<Object>,
+        body: Gd<Node3D>,
+        goal: Vector3,
+        to: Vector3,
+        spacing: f64,
+        speed: f64,
+        delta: f64,
+        apply: bool,
+        facing_at_tick: Vector3,
+        progress_at: Vector3,
+        waited: f64,
+        stuck_seconds: f64,
+    ) -> PackedFloat64Array {
+        // `now - progress_since` with `now` = waited and `progress_since` = 0 is `waited`, exactly.
+        let watch = BrainWatch {
+            facing_at_tick,
+            progress_at,
+            progress_since: 0.0,
+            stuck_seconds,
+        };
+        self.steer_core(
+            &grid, id, character, body, goal, to, spacing, speed, delta, waited, apply, &watch,
+        )
+        .0
     }
 
     /// `DotNpcAiCharacter.turn_view` for [param character], answered without touching it (what
@@ -384,6 +342,144 @@ impl DotSimZombieBrains {
     #[func]
     fn planned(&self) -> i64 {
         self.planned
+    }
+}
+
+/// What the steer reads off the brain.
+struct BrainWatch {
+    facing_at_tick: Vector3,
+    progress_at: Vector3,
+    progress_since: f64,
+    stuck_seconds: f64,
+}
+
+impl DotSimZombieBrains {
+    /// The steer of [method steer_step] and [method steer_walk] past the brain's members: returns the
+    /// answer array, whether it steered, whether the watch reset and where the body stood. Writes the
+    /// character and body under [param apply]; the brain is the caller's.
+    #[allow(clippy::too_many_arguments)]
+    fn steer_core(
+        &mut self,
+        grid: &Gd<DotSimCrowdGrid>,
+        id: i64,
+        character: Gd<Object>,
+        body: Gd<Node3D>,
+        goal: Vector3,
+        to: Vector3,
+        spacing: f64,
+        speed: f64,
+        delta: f64,
+        now: f64,
+        apply: bool,
+        w: &BrainWatch,
+    ) -> (PackedFloat64Array, bool, bool, Vector3) {
+        let names = self.names.get_or_insert_with(Names::new);
+        let failed = || {
+            (
+                PackedFloat64Array::from(&[-1.0]),
+                false,
+                false,
+                Vector3::ZERO,
+            )
+        };
+
+        let xf = body.get_global_transform();
+        let here = v3(xf.origin);
+        let r = &xf.basis.rows;
+        let facing = -Vec3::new(r[0].z, r[1].z, r[2].z).normalized();
+
+        let direction = {
+            let g = grid.bind();
+            let index = g.grid.index_of(id);
+            if index < 0 {
+                return failed();
+            }
+            match g
+                .grid
+                .spaced_direction(index, here, v3(goal), spacing, facing)
+            {
+                Some(d) => d,
+                None => return failed(),
+            }
+        };
+
+        let Some((before, p)) = turn_of(names, &character) else {
+            return failed();
+        };
+        let mut t = before;
+        let out = steer::steer(
+            &mut t,
+            &p,
+            &SteerIn {
+                here,
+                facing,
+                facing_at_tick: v3(w.facing_at_tick),
+                direction,
+                to: v3(to),
+                speed,
+                delta,
+                now,
+                progress_at: v3(w.progress_at),
+                progress_since: w.progress_since,
+                stuck_seconds: w.stuck_seconds,
+            },
+        );
+        self.steered += 1;
+
+        if apply && out.steered {
+            if let Some(w) = out.wish {
+                let mut b = body.clone().upcast::<Object>();
+                b.set(&names.wish, &gv(w).to_variant());
+            }
+            if t != before {
+                let mut c = character;
+                if t.peak != before.peak {
+                    c.set(&names.peak, &t.peak.to_variant());
+                }
+                if t.over_amt != before.over_amt {
+                    c.set(&names.over_amt, &t.over_amt.to_variant());
+                }
+                if t.over_axis != before.over_axis {
+                    c.set(&names.over_axis, &gv(t.over_axis).to_variant());
+                }
+                if t.turns != before.turns {
+                    c.set(&names.turns, &t.turns.to_variant());
+                }
+            }
+            if let Some(target) = out.look {
+                let mut b = body.clone();
+                b.look_at(gv(target));
+            }
+        }
+
+        let (wish, look) = (out.wish.unwrap_or_default(), out.look.unwrap_or_default());
+        let flag = |b: bool| if b { 1.0 } else { 0.0 };
+        let answer = PackedFloat64Array::from(&[
+            flag(out.steered),
+            match out.watch {
+                Watch::Keep => 0.0,
+                Watch::Reset => 1.0,
+                Watch::Stuck => 2.0,
+            },
+            flag(out.wish.is_some()),
+            f64::from(wish.x),
+            f64::from(wish.y),
+            f64::from(wish.z),
+            flag(out.look.is_some()),
+            f64::from(look.x),
+            f64::from(look.y),
+            f64::from(look.z),
+            t.peak,
+            t.over_amt,
+            t.turns as f64,
+            f64::from(t.over_axis.x),
+            f64::from(t.over_axis.y),
+            f64::from(t.over_axis.z),
+            f64::from(here.x),
+            f64::from(here.y),
+            f64::from(here.z),
+        ]);
+        (answer, out.steered, out.watch == Watch::Reset, gv(here))
     }
 }
 
