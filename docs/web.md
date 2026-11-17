@@ -53,17 +53,35 @@ The dlink export with dot-sim is about 1.2 MB larger after gzip than the plain e
 3. **The FC web export has to change.** It needs the dlink nothreads template with Extensions Support, and the CDN must serve `index.side.wasm` and `dot_sim.wasm`. A plain template with any `.gdextension` in the pack refuses to start. That includes godot-sqlite's, which has web entries.
 4. **Release asset and CI: done.** `ci/targets.tsv` has a `web-wasm32` row, and the `web` jobs in `ci.yml` and `release.yml` build it with `ci/web.sh` (the pinned nightly with `rust-src` and the emscripten target, emsdk 3.1.74). Every tag attaches `dot_sim-X.Y.Z-web-wasm32.zip` beside the desktop zips, and dot-server-deploy's `tools/fetch-natives.sh --platform web-wasm32` installs it like the others.
 
+## Threads (`ci/web.sh --threads`, 2026-11-16)
+
+The threaded dlink template (`web_dlink_*`, Thread Support on) needs its own side module: its memory is shared, and a module built single-threaded imports unshared memory, so it cannot link. `ci/web.sh --threads` builds one with the same flags plus `-C target-feature=+atomics,+bulk-memory,+mutable-globals` and `-pthread`, without `experimental-wasm-nothreads`, into its own target dir (`rust/target/web-threads`). It is installed as `bin/web-wasm32-threads/dot_sim.threads.wasm` with a `web.threads.wasm32` line (`ci/targets.tsv` row `web-wasm32-threads`; CI and release build both web rows, so every tag attaches `dot_sim-X.Y.Z-web-wasm32-threads.zip` too).
+
+One `.gdextension` with both lines serves both engines: Godot picks the library whose tags match most, so the threaded engine (feature `threads`) takes `web.threads.wasm32` and the single-threaded one keeps `web.wasm32`. An export copies only the file it picked beside the page (checked: `gdextensionLibs: ["dot_sim.threads.wasm"]` on the threaded export, `["dot_sim.wasm"]` on the other, the same pck). The file name differs because the engine loads a side module by its base name.
+
+Measured on PH, headless Chromium with SwiftShader, served with COOP/COEP (`crossOriginIsolated` true), both builds from the same tree:
+
+| | Threaded dlink, `dot_sim.threads.wasm` | Single-threaded dlink, `dot_sim.wasm` |
+| --- | --- | --- |
+| side module, raw bytes | 1,047,316 | 1,053,690 |
+| memory import | `env.memory`, shared | `env.memory`, not shared |
+| `sim_selftest` | 14 passed, 3 failed | 13 passed, 3 failed (the same 3) |
+| sight scan, script / native, us | 65.20 / 9.84 (6.6x) | 63.32 / 8.23 (7.7x) |
+
+The 3 failures come from the older test project used for this run (LOD ray-count and think-tier probes the current suite changed), and fail the same on both engines; nothing failed on threads alone. dot-sim spawns no threads of its own, so the threaded build buys nothing inside dot-sim: it exists so a game that needs the threaded engine (FC's `bot_threads`) keeps native dot-sim instead of dropping to the script path.
+
 ## Rules
 
 - **A plain-template web export never carries `addons/dot_sim/dot_sim.gdextension`.** With the plain template, that file alone stops the game's scripts (`GDExtension libraries are not supported by this engine version`). Only a dlink export may carry it, and the `web.wasm32` line appears only when `bin/web-wasm32/dot_sim.wasm` is installed (by `ci/web.sh` or the release zip).
 - Every native class is reached through `ClassDB.class_exists` (see `DotSim.has`), never by name in a typed script, so the scripts compile where it is absent.
 - The newest nightly breaks the build. It rejects `-Z emscripten-wasm-eh=false`, and without that flag the page fails with `LinkError: ... "__cpp_exception": tag import requires a WebAssembly.Tag`. Move `NIGHTLY` in `ci/web.sh` only after a browser try.
-- `ci/targets.tsv` has exactly one web row, `web-wasm32` (`ci/check.sh` enforces that). `ci/install.sh` refuses to build it and only lays it out; `ci/web.sh` is the build.
+- `ci/targets.tsv` has exactly two web rows, `web-wasm32` and `web-wasm32-threads` (`ci/check.sh` enforces that). `ci/install.sh` refuses to build them and only lays them out; `ci/web.sh` (`--threads` for the second) is the build.
+- A threaded engine never gets the single-threaded module, nor the other way round: a `.gdextension` with only a `web.wasm32` line on a threaded export loads nothing that works. Ship the threads build or ship no threaded engine (dot-server-deploy's export-web checks this).
 
 ## Not tested
 
 - Firefox and Safari
-- the threaded templates
+- the threaded build under a real FC 64-player client (only the selftests and the sight bench ran)
 - a GPU browser (SwiftShader only)
 - the motor (dot-player-controller) on the web
 - a full FC client

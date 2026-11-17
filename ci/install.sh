@@ -61,7 +61,7 @@ if [ "$INSTALL" = 1 ]; then
     IFS=$'\t' read -r _ TARGET _ PATTERN _ <<<"$R"
     # The web side module needs the pinned nightly, -Zbuild-std and emsdk: ci/web.sh builds it, then installs
     # it through here with --no-build.
-    [ "$PLATFORM" != web-wasm32 ] || [ "$BUILD" = 0 ] || { echo "install.sh: build web-wasm32 with ci/web.sh" >&2; exit 2; }
+    case $PLATFORM in web-*) [ "$BUILD" = 0 ] || { echo "install.sh: build $PLATFORM with ci/web.sh" >&2; exit 2; } ;; esac
     FILE="${PATTERN//\{crate\}/$CRATE}"
 
     if [ "$BUILD" = 1 ]; then
@@ -70,6 +70,8 @@ if [ "$INSTALL" = 1 ]; then
         cargo build "${flags[@]}"
     fi
     SRC="rust/target/$TARGET/$PROFILE/$FILE"
+    # The threaded side module is built in its own target dir and comes out under the crate's plain name.
+    [ "$PLATFORM" != web-wasm32-threads ] || SRC="rust/target/web-threads/$TARGET/$PROFILE/$CRATE.wasm"
     [ -f "$SRC" ] || { echo "install.sh: $SRC not found (build it, or drop --no-build)" >&2; exit 1; }
     DEST="addons/dot_sim/bin/$PLATFORM"
     mkdir -p "$DEST"

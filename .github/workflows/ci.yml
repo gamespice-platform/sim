@@ -106,9 +106,13 @@ jobs:
         runs-on: ubuntu-22.04
         timeout-minutes: 40
         strategy:
+            fail-fast: false
             matrix:
                 include:
                     - platform: web-wasm32
+                      flags: ""
+                    - platform: web-wasm32-threads
+                      flags: --threads
         defaults:
             run:
                 shell: bash
@@ -147,15 +151,15 @@ jobs:
               if: env.SKIP != '1'
               with:
                   workspaces: project/rust
-                  key: web-wasm32
+                  key: ${{ matrix.platform }}
             - name: Build and lay out the side module
               if: env.SKIP != '1'
-              run: bash project/ci/web.sh
+              run: bash project/ci/web.sh ${{ matrix.flags }}
             - uses: actions/upload-artifact@v4
               if: env.SKIP != '1'
               with:
-                  name: dot_sim-web-wasm32
-                  path: project/addons/dot_sim/bin/web-wasm32
+                  name: dot_sim-${{ matrix.platform }}
+                  path: project/addons/dot_sim/bin/${{ matrix.platform }}
                   retention-days: 7
 
     # The suites again, with the library loaded: validate above runs them with no library, so

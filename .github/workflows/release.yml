@@ -92,9 +92,13 @@ jobs:
         runs-on: ubuntu-22.04
         timeout-minutes: 40
         strategy:
+            fail-fast: false
             matrix:
                 include:
                     - platform: web-wasm32
+                      flags: ""
+                    - platform: web-wasm32-threads
+                      flags: --threads
         defaults:
             run:
                 shell: bash
@@ -133,17 +137,17 @@ jobs:
               if: env.SKIP != '1'
               with:
                   workspaces: project/rust
-                  key: web-wasm32
+                  key: ${{ matrix.platform }}
             - name: Build and lay out the side module
               if: env.SKIP != '1'
-              run: bash project/ci/web.sh
+              run: bash project/ci/web.sh ${{ matrix.flags }}
             - name: Package
               if: env.SKIP != '1'
-              run: cd project && bash ci/package.sh --version "${GITHUB_REF_NAME}" --platform web-wasm32
+              run: cd project && bash ci/package.sh --version "${GITHUB_REF_NAME}" --platform ${{ matrix.platform }}
             - uses: actions/upload-artifact@v4
               if: env.SKIP != '1'
               with:
-                  name: natives-web-wasm32
+                  name: natives-${{ matrix.platform }}
                   path: project/dist/
                   retention-days: 3
 
