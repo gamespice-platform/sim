@@ -34,6 +34,8 @@ mod motor;
 mod pace;
 #[cfg(feature = "ragdoll")]
 mod ragdoll;
+#[cfg(feature = "road")]
+mod road;
 #[cfg(feature = "senses")]
 mod senses;
 #[cfg(feature = "brain")]
