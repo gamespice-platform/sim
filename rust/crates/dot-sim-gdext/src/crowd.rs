@@ -19,7 +19,7 @@ fn gv(v: Vec3) -> Vector3 {
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
 pub struct DotSimCrowdGrid {
-    grid: Grid,
+    pub(crate) grid: Grid,
     scratch: Vec<i32>,
 }
 
