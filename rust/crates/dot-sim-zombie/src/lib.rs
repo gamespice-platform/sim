@@ -8,6 +8,7 @@
 
 use dot_sim_math::{Vec3, minf};
 
+pub mod decide;
 pub mod pace;
 pub mod steer;
 pub mod walk;

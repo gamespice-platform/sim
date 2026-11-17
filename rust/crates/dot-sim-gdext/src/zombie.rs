@@ -4,9 +4,12 @@
 //! script calls, to the bit. The spacing half of a zombie's steer is [code]DotSimCrowdGrid.spaced_direction[/code];
 //! [method steer_step] is the whole steer after the path (spacing, wish, turn, look, progress watch) in one call,
 //! and [method walk] the whole move: the path's next corner, then that steer, with every member handed in.
+//! [method chase] is the plan and the chase's choice in one; [method nearest] and [method barricade_in_way] answer
+//! the think's two other questions of the horde off the same tick's tables.
 
 use crate::crowd::DotSimCrowdGrid;
 use dot_sim_math::Vec3;
+use dot_sim_zombie::decide::{self, Barricade, Barricades};
 use dot_sim_zombie::steer::{self, SteerIn, SteerOut, Turn, TurnProfile, Watch};
 use dot_sim_zombie::walk::{self, PathGoal, PathState, Repath};
 use dot_sim_zombie::{self as zombie, Chaser, Rules, Survivor, Who};
@@ -16,6 +19,11 @@ use godot::prelude::*;
 /// `set_survivors` flag bits.
 const ALIVE: i32 = 1;
 const DOWN: i32 = 2;
+
+/// [method DotSimZombieBrains.chase] flag bits.
+const BURNING: i32 = 1;
+const CRAWLER: i32 = 2;
+const SWINGING: i32 = 4;
 
 /// The tick's survivor table and chase rules, and the plans asked of them.
 #[derive(GodotClass)]
@@ -30,6 +38,9 @@ pub struct DotSimZombieBrains {
     steered: i64,
     /// [method walk]'s path points, reused.
     points: Vec<Vec3>,
+    /// The intact barricades ([method set_barricades]) and their ids.
+    barricades: Barricades,
+    barricade_ids: Vec<GString>,
 }
 
 /// The script members [method DotSimZombieBrains.steer_step] reads and writes, named once.
@@ -194,6 +205,119 @@ impl DotSimZombieBrains {
             p.gap,
             p.reach,
         ])
+    }
+
+    /// One common's whole chase choice (`ZzCommonBrain._chase`): [method plan_chase]'s eight values, then what it does
+    /// as if it attacks (0 nothing, 1 halt and swing, 2 run at it, 3 drift at a third of the speed) and 1 when it must
+    /// first be granted an attack slot (refused, it holds [param ring] instead). [param flags]: 1 burning, 2 crawler,
+    /// 4 mid-swing.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn chase(
+        &mut self,
+        forced: StringName,
+        target: StringName,
+        pace: f64,
+        roll: f64,
+        reach: f64,
+        ring: f64,
+        flags: i32,
+        here: Vector3,
+    ) -> PackedFloat64Array {
+        self.planned += 1;
+        let z = Chaser {
+            forced: self.who(&forced),
+            target: self.who(&target),
+            pace,
+            roll,
+            reach,
+            burning: flags & BURNING != 0,
+            crawler: flags & CRAWLER != 0,
+            here: v3(here),
+        };
+        let d = decide::decide_chase(
+            &self.survivors,
+            &self.rules,
+            &z,
+            ring,
+            flags & SWINGING != 0,
+        );
+        let p = d.plan;
+        PackedFloat64Array::from(&[
+            f64::from(p.code),
+            if p.dropped { 1.0 } else { 0.0 },
+            f64::from(p.at.x),
+            f64::from(p.at.y),
+            f64::from(p.at.z),
+            p.speed,
+            p.gap,
+            p.reach,
+            f64::from(d.act),
+            if d.ask { 1.0 } else { 0.0 },
+        ])
+    }
+
+    /// The flat metres from [param at] to the nearest living survivor of the tick, INF with none
+    /// (`ZzHorde.nearest_survivor_distance`).
+    #[func]
+    fn nearest(&self, at: Vector3) -> f64 {
+        decide::nearest(&self.survivors, v3(at))
+    }
+
+    /// The intact barricades: [param ids] in the horde's order, each box's position and size, the grid's
+    /// [param cell] in metres and the bash [param reach]. Arrays of different sizes or a cell not above zero
+    /// are an error and empty the table.
+    #[func]
+    fn set_barricades(
+        &mut self,
+        ids: PackedStringArray,
+        position: PackedVector3Array,
+        size: PackedVector3Array,
+        cell: f64,
+        reach: f64,
+    ) -> bool {
+        self.barricades = Barricades::default();
+        self.barricade_ids.clear();
+        let (ids, position, size) = (ids.as_slice(), position.as_slice(), size.as_slice());
+        if ids.len() != position.len() || ids.len() != size.len() {
+            godot_error!(
+                "DotSimZombieBrains.set_barricades: {} ids, {} positions, {} sizes",
+                ids.len(),
+                position.len(),
+                size.len()
+            );
+            return false;
+        }
+        let boxes = position
+            .iter()
+            .zip(size)
+            .map(|(p, s)| Barricade {
+                position: v3(*p),
+                size: v3(*s),
+            })
+            .collect();
+        let Some(table) = Barricades::new(boxes, cell, reach) else {
+            godot_error!("DotSimZombieBrains.set_barricades: cell {cell} is not above zero");
+            return false;
+        };
+        self.barricades = table;
+        self.barricade_ids = ids.to_vec();
+        true
+    }
+
+    /// The id of the barricade a zombie at [param at] wishing [param wish] is pressed against, or "" (`ZzHorde.barricade_in_way`).
+    #[func]
+    fn barricade_in_way(&self, at: Vector3, wish: Vector3) -> GString {
+        self.barricades
+            .in_way(v3(at), v3(wish))
+            .and_then(|i| self.barricade_ids.get(i).cloned())
+            .unwrap_or_default()
+    }
+
+    /// How many barricades [method set_barricades] holds.
+    #[func]
+    fn barricades(&self) -> i32 {
+        i32::try_from(self.barricades.len()).unwrap_or(i32::MAX)
     }
 
     /// The rest of a zombie's steer once its path gave [param goal] (dot-npc-ai's `steer_with_spacing` after
