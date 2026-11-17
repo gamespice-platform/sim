@@ -39,6 +39,8 @@ mod pvs;
 mod ragdoll;
 #[cfg(feature = "road")]
 mod road;
+#[cfg(feature = "route")]
+mod route;
 #[cfg(feature = "senses")]
 mod senses;
 #[cfg(feature = "brain")]
