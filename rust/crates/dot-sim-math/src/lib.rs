@@ -163,6 +163,79 @@ impl Xform {
             origin: self.xform(o.origin),
         }
     }
+
+    /// `basis * v` (`Basis::xform`): each row dotted with `v`, no origin.
+    #[inline]
+    pub fn basis_xform(&self, v: Vec3) -> Vec3 {
+        Vec3::new(
+            self.rows[0].dot(v),
+            self.rows[1].dot(v),
+            self.rows[2].dot(v),
+        )
+    }
+
+    /// A rotation of `angle` radians about the unit `axis` (`Basis(axis, angle)`, the engine's
+    /// `set_axis_angle` in `f32`), at the origin.
+    pub fn from_axis_angle(axis: Vec3, angle: f32) -> Self {
+        let sq = Vec3::new(axis.x * axis.x, axis.y * axis.y, axis.z * axis.z);
+        let cosine = angle.cos();
+        let r00 = sq.x + cosine * (1.0 - sq.x);
+        let r11 = sq.y + cosine * (1.0 - sq.y);
+        let r22 = sq.z + cosine * (1.0 - sq.z);
+        let sine = angle.sin();
+        let t = 1.0 - cosine;
+        let (xyzt, zyxs) = (axis.x * axis.y * t, axis.z * sine);
+        let (r01, r10) = (xyzt - zyxs, xyzt + zyxs);
+        let (xyzt, zyxs) = (axis.x * axis.z * t, axis.y * sine);
+        let (r02, r20) = (xyzt + zyxs, xyzt - zyxs);
+        let (xyzt, zyxs) = (axis.y * axis.z * t, axis.x * sine);
+        let (r12, r21) = (xyzt - zyxs, xyzt + zyxs);
+        Self {
+            rows: [
+                Vec3::new(r00, r01, r02),
+                Vec3::new(r10, r11, r12),
+                Vec3::new(r20, r21, r22),
+            ],
+            origin: Vec3::default(),
+        }
+    }
+
+    /// `affine_inverse()`: the engine's `Basis::invert` (cofactors over the determinant, in its
+    /// order), then the origin as `basis.xform(-origin)`. A singular basis stays as it was, as the
+    /// engine's (which logs an error and returns before writing it).
+    pub fn affine_inverse(&self) -> Self {
+        let m = |r: usize, c: usize| {
+            let row = self.rows[r];
+            match c {
+                0 => row.x,
+                1 => row.y,
+                _ => row.z,
+            }
+        };
+        let cofac = |r1: usize, c1: usize, r2: usize, c2: usize| {
+            m(r1, c1) * m(r2, c2) - m(r1, c2) * m(r2, c1)
+        };
+        let co = [cofac(1, 1, 2, 2), cofac(1, 2, 2, 0), cofac(1, 0, 2, 1)];
+        let det = m(0, 0) * co[0] + m(0, 1) * co[1] + m(0, 2) * co[2];
+        let basis = if det == 0.0 {
+            self.rows
+        } else {
+            let s = 1.0f32 / det;
+            [
+                Vec3::new(co[0] * s, cofac(0, 2, 2, 1) * s, cofac(0, 1, 1, 2) * s),
+                Vec3::new(co[1] * s, cofac(0, 0, 2, 2) * s, cofac(0, 2, 1, 0) * s),
+                Vec3::new(co[2] * s, cofac(0, 1, 2, 0) * s, cofac(0, 0, 1, 1) * s),
+            ]
+        };
+        let inverse = Self {
+            rows: basis,
+            origin: Vec3::default(),
+        };
+        Self {
+            rows: basis,
+            origin: inverse.basis_xform(-self.origin),
+        }
+    }
 }
 
 /// The script's `maxf`: `a < b ? b : a`, so a NaN in `a` survives as it does there.
@@ -299,6 +372,42 @@ pub fn rotation_quaternion(rows: &[Vec3; 3]) -> Quat {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn axis_angle_quarter_turn_about_up_sends_x_to_minus_z() {
+        let b = Xform::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), std::f32::consts::FRAC_PI_2);
+        let v = b.basis_xform(Vec3::new(1.0, 0.0, 0.0));
+        assert!(
+            v.x.abs() < 1e-6 && v.y == 0.0 && (v.z + 1.0).abs() < 1e-6,
+            "{v:?}"
+        );
+        // The engine's rounding: the diagonal is axis_sq + cos * (1 - axis_sq), in f32.
+        let a = 0.3f32;
+        let r = Xform::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), a);
+        assert_eq!(r.rows[0].x, a.cos());
+        assert_eq!(r.rows[2].z, 1.0);
+        assert_eq!(r.rows[0].y, -a.sin());
+    }
+
+    #[test]
+    fn affine_inverse_undoes_the_transform() {
+        let f = Xform {
+            rows: Xform::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), 0.7).rows,
+            origin: Vec3::new(3.0, -1.5, 8.25),
+        };
+        let back = f.affine_inverse().xform(f.xform(Vec3::new(0.4, 2.0, -1.0)));
+        assert!(
+            (back.x - 0.4).abs() < 1e-5
+                && (back.y - 2.0).abs() < 1e-5
+                && (back.z + 1.0).abs() < 1e-5
+        );
+        assert_eq!(Xform::IDENTITY.affine_inverse(), Xform::IDENTITY);
+        let flat = Xform {
+            rows: [Vec3::default(); 3],
+            origin: Vec3::new(1.0, 2.0, 3.0),
+        };
+        assert_eq!(flat.affine_inverse().rows, [Vec3::default(); 3]);
+    }
 
     #[test]
     fn angle_of_perpendicular_axes_is_ninety_degrees() {

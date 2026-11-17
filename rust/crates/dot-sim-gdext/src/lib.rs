@@ -20,6 +20,8 @@ mod doors;
 mod doubt;
 #[cfg(feature = "grid2d")]
 mod grid2d;
+#[cfg(feature = "hazards")]
+mod hazards;
 #[cfg(feature = "motor")]
 mod hulls;
 #[cfg(feature = "interp")]
