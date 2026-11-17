@@ -54,6 +54,32 @@ pub trait Space {
     fn overlap(&mut self, at: Vec3) -> bool;
     /// `intersect_ray` from `from` to `to` under `mask`, areas excluded.
     fn ray(&mut self, from: Vec3, to: Vec3, mask: i64) -> Option<Contact>;
+    /// Whether nothing under `mask` overlaps a capsule of `radius` and total `height` at `at`
+    /// (the query's own shape left as it is). `false` means "maybe", the answer a space that cannot
+    /// tell gives: the caller then asks its real queries.
+    fn clear_around(&mut self, _at: Vec3, _radius: f32, _height: f32, _mask: i64) -> bool {
+        false
+    }
+}
+
+/// The wall-contact cull ([`slide::Mover::world_clear`]): 0 off, 1 on, 2 verify (cull decided,
+/// real sweeps still asked and their answer used; a hit where the cull said clear is counted).
+pub static WALL_CULL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(1);
+/// Wall-contact probes the cull found clear, found busy, and (verify) culls a real sweep disproved.
+pub static WALL_CULL_STATS: [std::sync::atomic::AtomicU64; 3] = [
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+];
+
+#[inline]
+pub fn wall_cull() -> u8 {
+    WALL_CULL.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[inline]
+pub fn wall_cull_count(slot: usize) {
+    WALL_CULL_STATS[slot].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// `DotFpsBody.Hit`.

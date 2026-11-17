@@ -174,6 +174,10 @@ impl<S: Space> Space for MemoSpace<S> {
     fn ray(&mut self, from: Vec3, to: Vec3, mask: i64) -> Option<Contact> {
         self.inner.ray(from, to, mask)
     }
+
+    fn clear_around(&mut self, at: Vec3, radius: f32, height: f32, mask: i64) -> bool {
+        self.inner.clear_around(at, radius, height, mask)
+    }
 }
 
 #[cfg(test)]
@@ -400,6 +404,17 @@ mod tests {
         space: &mut S,
         half: f32,
         runs: usize,
+        bracket: impl FnMut(&mut S, bool),
+    ) -> Vec<(State, Moves, TickCounters, MoveCounters)> {
+        wall_runs_from(space, half, 0.55, runs, bracket)
+    }
+
+    /// [`wall_runs`] starting `off` metres in from the wall.
+    fn wall_runs_from<S: Space>(
+        space: &mut S,
+        half: f32,
+        off: f32,
+        runs: usize,
         mut bracket: impl FnMut(&mut S, bool),
     ) -> Vec<(State, Moves, TickCounters, MoveCounters)> {
         let tt = TickTun {
@@ -459,7 +474,7 @@ mod tests {
                 mode: AIR,
                 ground_normal: UP,
                 height: 1.8,
-                position: Vec3::new(half - 0.55, 1.2, -half + 2.0 + run as f32),
+                position: Vec3::new(half - off, 1.2, -half + 2.0 + run as f32),
                 velocity: Vec3::new(1.5, 2.0, 7.0),
                 ..State::default()
             };
@@ -514,6 +529,86 @@ mod tests {
         assert_eq!(a[2..], b[2..], "overlaps and rays pass through");
         let hits = memo.hits.iter().sum::<u64>() as u32;
         assert_eq!(b[0] + b[1] + hits, a[0] + a[1]);
+    }
+
+    /// [`Room`] that also answers [`Space::clear_around`], exactly: nothing near the floor or walls.
+    struct Culled {
+        room: Room,
+        clear: u32,
+        busy: u32,
+    }
+
+    impl Space for Culled {
+        fn set_radius(&mut self, radius: f32) {
+            self.room.set_radius(radius)
+        }
+        fn set_height(&mut self, height: f32) {
+            self.room.set_height(height)
+        }
+        fn set_mask(&mut self, mask: i64) {
+            self.room.set_mask(mask)
+        }
+        fn cast(&mut self, from: Vec3, motion: Vec3) -> Option<(f32, f32)> {
+            self.room.cast(from, motion)
+        }
+        fn rest(&mut self, at: Vec3) -> Option<Contact> {
+            self.room.rest(at)
+        }
+        fn overlap(&mut self, at: Vec3) -> bool {
+            self.room.overlap(at)
+        }
+        fn ray(&mut self, from: Vec3, to: Vec3, mask: i64) -> Option<Contact> {
+            self.room.ray(from, to, mask)
+        }
+        fn clear_around(&mut self, at: Vec3, radius: f32, height: f32, _mask: i64) -> bool {
+            let room = self.room.half() - radius;
+            let clear = at.y - height * 0.5 > 0.0 && at.x.abs() < room && at.z.abs() < room;
+            if clear {
+                self.clear += 1;
+            } else {
+                self.busy += 1;
+            }
+            clear
+        }
+    }
+
+    #[test]
+    fn a_culled_wall_run_matches_the_plain_one_with_fewer_casts() {
+        let half = 12.0;
+        let culled_run = |mode: u8| {
+            crate::WALL_CULL.store(mode, std::sync::atomic::Ordering::Relaxed);
+            let mut space = Culled {
+                room: Room::sized(half),
+                clear: 0,
+                busy: 0,
+            };
+            let mut ticks = wall_runs(&mut space, half, 6, |_, _| {});
+            ticks.extend(wall_runs_from(&mut space, half, 6.0, 6, |_, _| {}));
+            (ticks, space.room.asked, space.clear, space.busy)
+        };
+        let (want, plain, plain_clear, _) = culled_run(0);
+        let (got, culled, clear, busy) = culled_run(1);
+        let (checked, _, _, _) = culled_run(2);
+        crate::WALL_CULL.store(1, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(plain_clear, 0, "off asks no cull");
+        assert!(
+            clear > 0 && busy > 0,
+            "both answers seen: clear {clear} busy {busy}"
+        );
+        assert!(
+            culled[0] < plain[0],
+            "fewer casts: {} vs {}",
+            culled[0],
+            plain[0]
+        );
+        assert_eq!(want.len(), got.len());
+        for (i, ((w, g), c)) in want.iter().zip(&got).zip(&checked).enumerate() {
+            assert_eq!(w.0, g.0, "state at tick {i}");
+            assert_eq!(w.1, g.1, "moves at tick {i}");
+            assert_eq!(w.3, g.3, "move counters at tick {i}");
+            assert_eq!(w.0, c.0, "verify state at tick {i}");
+            assert_eq!(w.1, c.1, "verify moves at tick {i}");
+        }
     }
 
     #[test]

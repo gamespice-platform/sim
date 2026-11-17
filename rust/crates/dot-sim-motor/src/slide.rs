@@ -7,6 +7,8 @@ use dot_sim_math::{clampf, maxf, minf};
 
 /// `DotFpsMotorBase.SWEEP_TOLERANCE`.
 const SWEEP_TOLERANCE: f64 = 0.02;
+/// How much wider than the swept volume [`Mover::world_is_clear`] looks, past any engine margin (metres).
+pub const WORLD_CLEAR_PAD: f64 = 0.1;
 /// `DotFpsHullBody.HULL_ID_BASE`.
 pub const HULL_ID_BASE: i64 = 1 << 24;
 /// `DotFpsFlatBody.SWEEP_REJECT_MARGIN`.
@@ -254,6 +256,9 @@ pub struct Mover<'a, S: Space> {
     pub hulls: Option<&'a [Aabb]>,
     pub t: Tun,
     pub counters: Counters,
+    /// Set while every world sweep asked is known to hit nothing (`full::wall_contact`'s cull):
+    /// [`Mover::body_sweep`] then skips the engine and tests only the hulls.
+    pub world_clear: bool,
     near: Vec<Aabb>,
     near_index: Vec<usize>,
 }
@@ -273,6 +278,7 @@ impl<'a, S: Space> Mover<'a, S> {
             hulls,
             t,
             counters: Counters::default(),
+            world_clear: false,
             near: Vec::new(),
             near_index: Vec::new(),
         }
@@ -280,9 +286,20 @@ impl<'a, S: Space> Mover<'a, S> {
 
     /// The motor body's `sweep`: the world, then (`DotFpsHullBody.sweep`) the hulls the swept bounds touch.
     pub fn body_sweep(&mut self, from: Vec3, motion: Vec3, height: f64, radius: f64) -> Hit {
-        let world = self
-            .body
-            .sweep(self.space, from, motion, height, radius, self.masks);
+        let world = if !self.world_clear {
+            self.body
+                .sweep(self.space, from, motion, height, radius, self.masks)
+        } else if crate::wall_cull() == 2 {
+            let w = self
+                .body
+                .sweep(self.space, from, motion, height, radius, self.masks);
+            if w.hit {
+                crate::wall_cull_count(2);
+            }
+            w
+        } else {
+            Hit::MISS
+        };
         let Some(boxes) = self.hulls else {
             return world;
         };
@@ -323,6 +340,23 @@ impl<'a, S: Space> Mover<'a, S> {
         self.counters.hull_blocks += 1;
         other.collider_id = HULL_ID_BASE + self.near_index[k] as i64;
         other
+    }
+
+    /// Whether every world sweep of this body's capsule from `centre` up to `reach` metres in any
+    /// direction (the sweep's own margin included) is sure to find nothing: one overlap of the
+    /// capsule grown by `reach` and [`WORLD_CLEAR_PAD`] (the Minkowski sum holds every swept
+    /// position) under the full collision mask, which holds every mask a sweep uses.
+    pub(crate) fn world_is_clear(&mut self, centre: Vec3, height: f64, reach: f64) -> bool {
+        let radius = self.t.radius;
+        let margin = maxf(self.t.skin_width, reach * SWEEP_TOLERANCE);
+        let pad = reach + margin + WORLD_CLEAR_PAD;
+        let total = maxf(height, radius * 2.0);
+        self.space.clear_around(
+            centre,
+            (radius + pad) as f32,
+            (total + pad * 2.0) as f32,
+            self.masks.collision,
+        )
     }
 
     pub(crate) fn rest_contact(&mut self, at: Vec3, height: f64, radius: f64) -> Hit {

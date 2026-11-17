@@ -479,6 +479,12 @@ fn wall_contact<S: Space>(m: &mut Mover<'_, S>, s: &State, x: &Ctx, mv: &mut Mov
     };
     let mut best: Option<Hit> = None;
     let mut beside: Option<Hit> = None;
+    // Up to six sweeps out of one spot: one overlap first, and when nothing is near enough for any
+    // of them to touch, the world part of each is a miss without asking (the hulls are still tested).
+    if crate::wall_cull() != 0 && ft.wall_reach > 0.0 {
+        m.world_clear = m.world_is_clear(centre, height, ft.wall_reach);
+        crate::wall_cull_count(if m.world_clear { 0 } else { 1 });
+    }
     for (index, &direction) in directions[..count].iter().enumerate() {
         let hit = m.sweep(centre, direction.scale(ft.wall_reach), height);
         if !hit.hit || (hit.normal.y.abs() as f64) > steepest {
@@ -494,6 +500,7 @@ fn wall_contact<S: Space>(m: &mut Mover<'_, S>, s: &State, x: &Ctx, mv: &mut Mov
             best = Some(hit);
         }
     }
+    m.world_clear = false;
     if beside.is_some() {
         best = beside;
     }

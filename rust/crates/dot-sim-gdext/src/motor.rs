@@ -97,6 +97,11 @@ struct GdSpace {
     params: Gd<PhysicsShapeQueryParameters3D>,
     ray: Gd<PhysicsRayQueryParameters3D>,
     ray_mask: i64,
+    /// [`Space::clear_around`]'s own capsule and parameters, so the sweeps' shape is never resized.
+    wide_shape: Gd<CapsuleShape3D>,
+    wide: Gd<PhysicsShapeQueryParameters3D>,
+    /// What was last written to `wide`: radius and height bits, mask, place.
+    wide_last: (u32, u32, i64, Option<V3>),
     at: Option<V3>,
     /// The motion last written to `params` (zero for rests and overlaps).
     motion: V3,
@@ -167,12 +172,20 @@ impl GdSpace {
         params.set_collide_with_areas(false);
         let mut ray = PhysicsRayQueryParameters3D::new_gd();
         ray.set_collide_with_areas(false);
+        let wide_shape = CapsuleShape3D::new_gd();
+        let mut wide = PhysicsShapeQueryParameters3D::new_gd();
+        wide.set_shape(&wide_shape);
+        wide.set_collide_with_bodies(true);
+        wide.set_collide_with_areas(false);
         Self {
             space: None,
             shape,
             params,
             ray,
             ray_mask: -1,
+            wide_shape,
+            wide,
+            wide_last: (u32::MAX, u32::MAX, i64::MIN, None),
             at: None,
             motion: ZERO3,
             ray_ends: None,
@@ -253,6 +266,35 @@ impl Space for GdSpace {
             .done()
             .is_empty();
         prof_end(2, at);
+        r
+    }
+
+    fn clear_around(&mut self, at: V3, radius: f32, height: f32, mask: i64) -> bool {
+        let Some(space) = self.space.as_mut() else {
+            return false;
+        };
+        let (r, h, m, a) = self.wide_last;
+        if r != radius.to_bits() {
+            self.wide_shape.set_radius(radius);
+        }
+        if h != height.to_bits() {
+            self.wide_shape.set_height(height);
+        }
+        if m != mask {
+            self.wide.set_collision_mask(mask as u32);
+        }
+        if a != Some(at) {
+            self.wide
+                .set_transform(Transform3D::new(Basis::IDENTITY, gv(at)));
+        }
+        self.wide_last = (radius.to_bits(), height.to_bits(), mask, Some(at));
+        let t = prof_start();
+        let r = space
+            .intersect_shape_ex(&self.wide)
+            .max_results(1)
+            .done()
+            .is_empty();
+        prof_end(2, t);
         r
     }
 
@@ -588,6 +630,7 @@ impl DotSimFpsBody {
     fn set_exclude(&mut self, exclude: Array<Rid>) {
         self.space.inner.params.set_exclude(&exclude);
         self.space.inner.ray.set_exclude(&exclude);
+        self.space.inner.wide.set_exclude(&exclude);
         self.space.forget();
         self.body.invalidate();
     }
@@ -975,6 +1018,35 @@ impl DotSimFpsBody {
             .map(|i| {
                 let v = PROF[i].load(Ordering::Relaxed) as i64;
                 if i % 2 == 1 { v / 1000 } else { v }
+            })
+            .collect()
+    }
+
+    /// The wall-contact cull for every body: 0 off, 1 on (the default), 2 verify (the real sweeps
+    /// are still asked and used; [method wall_cull_stats] counts any the cull got wrong). Any other
+    /// mode is refused loudly and changes nothing.
+    #[func]
+    fn set_wall_cull(mode: i64) -> bool {
+        if !(0..=2).contains(&mode) {
+            godot_error!("DotSimFpsBody.set_wall_cull: mode {mode} is not 0, 1 or 2");
+            return false;
+        }
+        dot_sim_motor::WALL_CULL.store(mode as u8, Ordering::Relaxed);
+        true
+    }
+
+    /// Wall-contact probes found clear, found busy, and (verify) culls a real sweep disproved;
+    /// [param reset] zeroes them after reading.
+    #[func]
+    fn wall_cull_stats(reset: bool) -> PackedInt64Array {
+        dot_sim_motor::WALL_CULL_STATS
+            .iter()
+            .map(|c| {
+                if reset {
+                    c.swap(0, Ordering::Relaxed) as i64
+                } else {
+                    c.load(Ordering::Relaxed) as i64
+                }
             })
             .collect()
     }
