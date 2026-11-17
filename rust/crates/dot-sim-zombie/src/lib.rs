@@ -10,6 +10,7 @@ use dot_sim_math::{Vec3, minf};
 
 pub mod pace;
 pub mod steer;
+pub mod walk;
 
 #[cfg(test)]
 mod tests;

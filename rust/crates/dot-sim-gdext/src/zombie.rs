@@ -2,11 +2,13 @@
 //! survivor facts and chase rules once a tick ([method set_survivors], [method set_rules]); each common's
 //! think then asks [method plan_chase] once for what `ZzCommonBrain._chase_plan_script` reads in five
 //! script calls, to the bit. The spacing half of a zombie's steer is [code]DotSimCrowdGrid.spaced_direction[/code];
-//! [method steer_step] is the whole steer after the path (spacing, wish, turn, look, progress watch) in one call.
+//! [method steer_step] is the whole steer after the path (spacing, wish, turn, look, progress watch) in one call,
+//! and [method walk] the whole move: the path's next corner, then that steer, with every member handed in.
 
 use crate::crowd::DotSimCrowdGrid;
 use dot_sim_math::Vec3;
-use dot_sim_zombie::steer::{self, SteerIn, Turn, TurnProfile, Watch};
+use dot_sim_zombie::steer::{self, SteerIn, SteerOut, Turn, TurnProfile, Watch};
+use dot_sim_zombie::walk::{self, PathGoal, PathState, Repath};
 use dot_sim_zombie::{self as zombie, Chaser, Rules, Survivor, Who};
 use godot::classes::Node3D;
 use godot::prelude::*;
@@ -26,6 +28,8 @@ pub struct DotSimZombieBrains {
     planned: i64,
     names: Option<Names>,
     steered: i64,
+    /// [method walk]'s path points, reused.
+    points: Vec<Vec3>,
 }
 
 /// The script members [method DotSimZombieBrains.steer_step] reads and writes, named once.
@@ -296,6 +300,129 @@ impl DotSimZombieBrains {
         .0
     }
 
+    /// A zombie's whole move in one call, every member handed in by value and none read or written
+    /// here: dot-npc's `path_toward` on a path not due a repath (its repath test and advance, the
+    /// script's `_as_goal`), then [method steer_walk]'s steer for that goal. Under [param apply] only
+    /// the body's look is written; the caller writes the rest from the answer.
+    ///
+    /// [param points] is the path's `points`. [param s]: [code][to.x, to.y, to.z, spacing, speed,
+    /// delta, now, facing_at_tick.x, .y, .z, progress_at.x, .y, .z, progress_since, stuck_seconds,
+    /// peak, over_amt, over_axis.x, .y, .z, view_factor, view_turn_deg, overshoot, arrive_radius,
+    /// computed_at, goal_at_compute.x, .y, .z, repath_drift, repath_interval, repath_drift_ratio,
+    /// repath_interval_per_m][/code] (the brain's watch, its character's turn state and tuning, its
+    /// path and the spawner's repath tuning; [code]now[/code] the spawner's clock). [param n]:
+    /// [code][turns, seed_value, index, partial][/code].
+    ///
+    /// Returns [code][-2][/code] when the path is due a repath (nothing done: the script moves),
+    /// [code][-1][/code] when [param id] is not in the grid or an array is short, else
+    /// [method steer_step]'s answer followed by [code][index, goal.x, goal.y, goal.z][/code]: the
+    /// path's index and the brain's `_waypoint` (the goal steered for) whatever the steer did.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn walk(
+        &mut self,
+        grid: Gd<DotSimCrowdGrid>,
+        id: i64,
+        body: Gd<Node3D>,
+        points: PackedVector3Array,
+        s: PackedFloat64Array,
+        n: PackedInt64Array,
+        apply: bool,
+    ) -> PackedFloat64Array {
+        let (s, n) = (s.as_slice(), n.as_slice());
+        if s.len() < WALK_FLOATS || n.len() < WALK_INTS {
+            return PackedFloat64Array::from(&[-1.0]);
+        }
+        let at = |i: usize| Vec3::new(s[i] as f32, s[i + 1] as f32, s[i + 2] as f32);
+        let xf = body.get_global_transform();
+        let here = v3(xf.origin);
+        let to = at(0);
+
+        self.points.clear();
+        self.points.extend(points.as_slice().iter().map(|&p| v3(p)));
+        let state = PathState {
+            index: n[2],
+            arrive_radius: s[23],
+            computed_at: s[24],
+            goal_at_compute: at(25),
+            partial: n[3] != 0,
+        };
+        let repath = Repath {
+            drift: s[28],
+            interval: s[29],
+            drift_ratio: s[30],
+            interval_per_m: s[31],
+        };
+        let (goal, index) = match walk::path_goal(&self.points, &state, &repath, here, to, s[6]) {
+            PathGoal::Due => return PackedFloat64Array::from(&[-2.0]),
+            PathGoal::Goal { goal, index } => (goal, index),
+        };
+
+        let r = &xf.basis.rows;
+        let facing = -Vec3::new(r[0].z, r[1].z, r[2].z).normalized();
+        let direction = {
+            let g = grid.bind();
+            let own = g.grid.index_of(id);
+            if own < 0 {
+                return PackedFloat64Array::from(&[-1.0]);
+            }
+            match g.grid.spaced_direction(own, here, goal, s[3], facing) {
+                Some(d) => d,
+                None => return PackedFloat64Array::from(&[-1.0]),
+            }
+        };
+
+        let mut t = Turn {
+            peak: s[15],
+            over_amt: s[16],
+            over_axis: at(17),
+            turns: n[0],
+        };
+        let p = TurnProfile {
+            view_factor: s[20],
+            view_turn_deg: s[21],
+            overshoot: s[22],
+            seed: n[1],
+        };
+        let out = steer::steer(
+            &mut t,
+            &p,
+            &SteerIn {
+                here,
+                facing,
+                facing_at_tick: at(7),
+                direction,
+                to,
+                speed: s[4],
+                delta: s[5],
+                now: s[6],
+                progress_at: at(10),
+                progress_since: s[13],
+                stuck_seconds: s[14],
+            },
+        );
+        self.steered += 1;
+
+        if apply
+            && out.steered
+            && let Some(target) = out.look
+        {
+            let mut b = body;
+            b.look_at(gv(target));
+        }
+
+        let a = answer_of(&out, &t, here);
+        let mut answer = [0.0; ANSWER + 4];
+        answer[..ANSWER].copy_from_slice(&a);
+        answer[ANSWER..].copy_from_slice(&[
+            index as f64,
+            f64::from(goal.x),
+            f64::from(goal.y),
+            f64::from(goal.z),
+        ]);
+        PackedFloat64Array::from(&answer)
+    }
+
     /// `DotNpcAiCharacter.turn_view` for [param character], answered without touching it (what
     /// [method steer_step] turns by; for the parity suites). Returns [code][facing.x, facing.y, facing.z,
     /// peak, over_amt, turns, over_axis.x, over_axis.y, over_axis.z][/code], or [code][-1][/code] when
@@ -452,35 +579,47 @@ impl DotSimZombieBrains {
             }
         }
 
-        let (wish, look) = (out.wish.unwrap_or_default(), out.look.unwrap_or_default());
-        let flag = |b: bool| if b { 1.0 } else { 0.0 };
-        let answer = PackedFloat64Array::from(&[
-            flag(out.steered),
-            match out.watch {
-                Watch::Keep => 0.0,
-                Watch::Reset => 1.0,
-                Watch::Stuck => 2.0,
-            },
-            flag(out.wish.is_some()),
-            f64::from(wish.x),
-            f64::from(wish.y),
-            f64::from(wish.z),
-            flag(out.look.is_some()),
-            f64::from(look.x),
-            f64::from(look.y),
-            f64::from(look.z),
-            t.peak,
-            t.over_amt,
-            t.turns as f64,
-            f64::from(t.over_axis.x),
-            f64::from(t.over_axis.y),
-            f64::from(t.over_axis.z),
-            f64::from(here.x),
-            f64::from(here.y),
-            f64::from(here.z),
-        ]);
+        let answer = PackedFloat64Array::from(&answer_of(&out, &t, here));
         (answer, out.steered, out.watch == Watch::Reset, gv(here))
     }
+}
+
+/// [method DotSimZombieBrains.walk]'s [param s] and [param n] lengths.
+const WALK_FLOATS: usize = 32;
+const WALK_INTS: usize = 4;
+/// The length of a steer's answer.
+const ANSWER: usize = 19;
+
+/// [method DotSimZombieBrains.steer_step]'s answer for a steer: [code][code, watch, wished, wish xyz,
+/// looked, look xyz, peak, over_amt, turns, over_axis xyz, here xyz][/code].
+fn answer_of(out: &SteerOut, t: &Turn, here: Vec3) -> [f64; ANSWER] {
+    let (wish, look) = (out.wish.unwrap_or_default(), out.look.unwrap_or_default());
+    let flag = |b: bool| if b { 1.0 } else { 0.0 };
+    [
+        flag(out.steered),
+        match out.watch {
+            Watch::Keep => 0.0,
+            Watch::Reset => 1.0,
+            Watch::Stuck => 2.0,
+        },
+        flag(out.wish.is_some()),
+        f64::from(wish.x),
+        f64::from(wish.y),
+        f64::from(wish.z),
+        flag(out.look.is_some()),
+        f64::from(look.x),
+        f64::from(look.y),
+        f64::from(look.z),
+        t.peak,
+        t.over_amt,
+        t.turns as f64,
+        f64::from(t.over_axis.x),
+        f64::from(t.over_axis.y),
+        f64::from(t.over_axis.z),
+        f64::from(here.x),
+        f64::from(here.y),
+        f64::from(here.z),
+    ]
 }
 
 /// A character's turn state and tuning, as `DotNpcAiCharacter` keeps them; `None` when one is missing.
