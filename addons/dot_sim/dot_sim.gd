@@ -31,6 +31,7 @@ const MODULES := {
 	&"sight": &"DotSimSightRay",
 	&"pvs": &"DotSimPvs",
 	&"route": &"DotSimRouteBots",
+	&"crc": &"DotSimCrc",
 }
 
 

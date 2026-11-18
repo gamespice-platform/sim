@@ -40,6 +40,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dot-sim-crc"
+version = "0.1.0"
+
+[[package]]
 name = "dot-sim-crowd"
 version = "0.1.0"
 dependencies = [
@@ -68,6 +72,7 @@ dependencies = [
  "dot-sim-audio",
  "dot-sim-bots",
  "dot-sim-brain",
+ "dot-sim-crc",
  "dot-sim-crowd",
  "dot-sim-doors",
  "dot-sim-doubt",
