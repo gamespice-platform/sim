@@ -406,11 +406,16 @@ fn update_slide(s: &mut State, x: &Ctx, mv: &mut Moves, left_ground: bool, mc: &
     if !ft.can_crouch || inp.deny_crouch || inp.deny_move {
         return;
     }
-    if (inp.buttons & !inp.previous_buttons) & BUTTON_CROUCH == 0 {
-        return;
-    }
-    if ft.slide_requires_sprint && inp.buttons & BUTTON_SPRINT == 0 {
-        return;
+    // Landing from a wall run or wall jump with crouch held slides without a fresh press or sprint.
+    let wall_landing = inp.buttons & BUTTON_CROUCH != 0
+        && (mv.wall_run_spent || mv.wall_jumps_in_air > 0 || mv.wall_running());
+    if !wall_landing {
+        if (inp.buttons & !inp.previous_buttons) & BUTTON_CROUCH == 0 {
+            return;
+        }
+        if ft.slide_requires_sprint && inp.buttons & BUTTON_SPRINT == 0 {
+            return;
+        }
     }
     let speed = horizontal_speed(s);
     if speed < ft.slide_min_speed || speed <= 0.0 {
@@ -839,7 +844,12 @@ fn try_wall_jump(
     };
     let f = flat(s.velocity);
     let kept = f - normal.scale(minf(f.dot(normal) as f64, 0.0));
-    let jumped = kept + push.scale(ft.wall_jump_push_speed).scale(inp.effect_jump);
+    let mut jumped = kept + push.scale(ft.wall_jump_push_speed).scale(inp.effect_jump);
+    // A wall jump redirects speed; it never adds its push on top of speed already carried.
+    let limit = maxf(f.length() as f64, ft.wall_jump_push_speed * inp.effect_jump);
+    if (jumped.length() as f64) > limit {
+        jumped = jumped.normalized().scale(limit);
+    }
     s.velocity.x = jumped.x;
     s.velocity.z = jumped.z;
     s.velocity.y = maxf(s.velocity.y as f64, ft.wall_jump_up_speed * inp.effect_jump) as f32;
@@ -1190,5 +1200,88 @@ mod tests {
         mv.dash_cooldown_left = 0.0;
         tick(&mut m, &mut s, &tt, &ft, &inp, &mut mv, &mut c, &mut mc);
         assert_eq!(mc.dashes, 1, "a held button does not dash again");
+    }
+
+    #[test]
+    fn a_wall_jump_never_adds_its_push_to_speed_already_carried() {
+        let tt = TickTun::default();
+        let ft = FullTun {
+            wall_jump_enabled: true,
+            can_jump: true,
+            wall_jump_push_speed: 8.0,
+            wall_jump_up_speed: 6.0,
+            wall_jump_look_blend: 0.0,
+            ..FullTun::default()
+        };
+        let inp = FullIn {
+            delta: 1.0 / 66.0,
+            effect_jump: 1.0,
+            ..FullIn::default()
+        };
+        let x = Ctx {
+            tt: &tt,
+            ft: &ft,
+            inp: &inp,
+        };
+        let wall = Hit {
+            hit: true,
+            fraction: 0.0,
+            normal: Vec3::new(1.0, 0.0, 0.0),
+            point: Vec3::default(),
+            collider_id: 0,
+            depth: 0.0,
+        };
+        let mut s = State {
+            mode: AIR,
+            velocity: Vec3::new(12.0, 0.0, 0.0),
+            ..State::default()
+        };
+        let mut mv = Moves::default();
+        mv.time_since_jump = 1000.0;
+        let mut mc = MoveCounters::default();
+        assert!(try_wall_jump(&mut s, &x, &mut mv, Some(&wall), &mut mc));
+        let speed = horizontal_speed(&s);
+        assert!(speed <= 12.0 + 1e-4, "carried speed stays the ceiling: {speed}");
+    }
+
+    #[test]
+    fn landing_from_a_wall_run_with_crouch_held_slides() {
+        let tt = TickTun::default();
+        let ft = FullTun {
+            slide_enabled: true,
+            can_crouch: true,
+            slide_requires_sprint: true,
+            slide_min_speed: 4.0,
+            slide_duration: 1.0,
+            ..FullTun::default()
+        };
+        let inp = FullIn {
+            delta: 1.0 / 66.0,
+            buttons: BUTTON_CROUCH,
+            previous_buttons: BUTTON_CROUCH,
+            ..FullIn::default()
+        };
+        let x = Ctx {
+            tt: &tt,
+            ft: &ft,
+            inp: &inp,
+        };
+        let mut mc = MoveCounters::default();
+        let ground = || State {
+            mode: GROUND,
+            velocity: Vec3::new(0.0, 0.0, 7.0),
+            ..State::default()
+        };
+        let mut mv = Moves {
+            slide_time: -1.0,
+            wall_run_time: -1.0,
+            ..Moves::default()
+        };
+        update_slide(&mut ground(), &x, &mut mv, false, &mut mc);
+        assert!(!mv.sliding(), "crouch held from before, no wall: no slide");
+        mv.wall_jumps_in_air = 1;
+        update_slide(&mut ground(), &x, &mut mv, false, &mut mc);
+        assert!(mv.sliding(), "after a wall jump, crouch held: slide");
+        assert_eq!(mc.slides, 1);
     }
 }
