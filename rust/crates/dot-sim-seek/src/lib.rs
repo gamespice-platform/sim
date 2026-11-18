@@ -19,6 +19,8 @@ use std::collections::HashMap;
 #[cfg(test)]
 mod tests;
 
+pub mod body;
+
 /// The doubt reach (metres): the script's `DOUBT_REACH`.
 pub const DOUBT_REACH: f64 = 12.0;
 /// A taunt this near a doubted thing (metres) makes it odder: `TAUNT_NEAR`.

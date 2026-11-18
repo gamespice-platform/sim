@@ -8,6 +8,8 @@ mod arms;
 mod audio;
 #[cfg(feature = "motor")]
 mod batch;
+#[cfg(feature = "seek")]
+mod body_sight;
 #[cfg(feature = "bots")]
 mod bots;
 #[cfg(feature = "brain")]

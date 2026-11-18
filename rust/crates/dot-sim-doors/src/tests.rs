@@ -84,3 +84,75 @@ fn a_zero_aim_is_never_in_front() {
     let eyes = Vec3::new(0.0, 1.6, 0.0);
     assert_eq!(door_for(&[p], eyes, Vec3::default(), 2.3), -1);
 }
+
+fn spot(x: f64, y: f64, z: f64, swing: bool) -> Spot {
+    Spot {
+        x,
+        y,
+        z,
+        half: 2.1 * 0.5,
+        swing,
+    }
+}
+
+/// The bots' storey bounds (`MmPlayer.BODY_STEP + 0.1`, `MmPlayer.BODY_CROUCH`).
+const BELOW: f64 = 0.4 + 0.1;
+const ABOVE: f64 = 0.95;
+
+fn near(spots: &[Spot], at: Vec3, radius: f64) -> Vec<i32> {
+    let mut out = vec![99];
+    near_swing(spots, at, radius, BELOW, ABOVE, &mut out);
+    out
+}
+
+#[test]
+fn near_swing_keeps_swinging_doors_on_the_storey_within_reach_in_order() {
+    let spots = [
+        spot(1.0, 1.05, 0.0, true),
+        spot(0.0, 1.05, 2.0, false), // slides
+        spot(0.0, 4.05, 1.0, true),  // the storey above
+        spot(3.0, 1.05, 2.0, true),  // 3.6 m flat
+        spot(-2.0, 1.05, -2.0, true),
+    ];
+    let at = Vec3::new(0.0, 0.0, 0.0);
+    assert_eq!(near(&spots, at, 3.5), vec![0, 4]);
+    assert_eq!(near(&spots, at, 4.0), vec![0, 3, 4]);
+    assert!(near(&[], at, 3.5).is_empty());
+}
+
+#[test]
+fn on_level_is_the_scripts_f64_bounds() {
+    // Foot exactly a step and a tenth below: not on the storey (`<`).
+    let s = Spot {
+        x: 0.0,
+        y: 0.5 + 1.0,
+        z: 0.0,
+        half: 1.0,
+        swing: true,
+    };
+    assert!(!on_level(&s, Vec3::new(0.0, 0.0, 0.0), BELOW, ABOVE));
+    assert!(on_level(&s, Vec3::new(0.0, 0.001, 0.0), BELOW, ABOVE));
+    // Head exactly a crouch above: not on the storey (`>`).
+    let h = Spot {
+        x: 0.0,
+        y: 0.95 - 1.0,
+        z: 0.0,
+        half: 1.0,
+        swing: true,
+    };
+    assert!(!on_level(&h, Vec3::new(0.0, 0.0, 0.0), BELOW, ABOVE));
+}
+
+#[test]
+fn near_swing_rounds_the_flat_offset_to_f32() {
+    // An offset whose f64 length is a hair over the reach and whose f32 rounding is on it.
+    let x = 3.5000000001_f64;
+    let s = Spot {
+        x,
+        y: 1.05,
+        z: 0.0,
+        half: 1.05,
+        swing: true,
+    };
+    assert_eq!(near(&[s], Vec3::new(0.0, 0.0, 0.0), 3.5), vec![0]);
+}

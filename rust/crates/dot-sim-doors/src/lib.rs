@@ -68,5 +68,52 @@ pub fn door_for(panels: &[Panel], eyes: Vec3, aim: Vec3, reach: f64) -> i64 {
     best
 }
 
+/// One door as the map document places it: its centre (`spec["at"]`, `f64` as the document
+/// reads), half its height (`float(size[1]) * 0.5`) and whether it swings.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Spot {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub half: f64,
+    pub swing: bool,
+}
+
+/// `MmDoors.on_level`: the door's foot less than `below` under the feet at `at` and its head more
+/// than `above` over them (the bots pass a step and a tenth, and a crouched body), in the
+/// script's `f64` and order.
+#[inline]
+pub fn on_level(spot: &Spot, at: Vec3, below: f64, above: f64) -> bool {
+    let y = f64::from(at.y);
+    spot.y - spot.half - y < below && spot.y + spot.half - y > above
+}
+
+/// `MmDoors.near_swing`: the swinging doors on the storey of `at` ([`on_level`] with `below` and
+/// `above`) whose centre is within `radius` flat, in document order, into `out` (cleared first). The flat offset is taken in
+/// `f64` and rounded to `f32` by the script's `Vector2`, its length in `f32`; a NaN length is
+/// kept, as the script's `>` keeps it.
+pub fn near_swing(
+    spots: &[Spot],
+    at: Vec3,
+    radius: f64,
+    below: f64,
+    above: f64,
+    out: &mut Vec<i32>,
+) {
+    out.clear();
+    for (index, spot) in spots.iter().enumerate() {
+        if !spot.swing || !on_level(spot, at, below, above) {
+            continue;
+        }
+        let dx = (spot.x - f64::from(at.x)) as f32;
+        let dz = (spot.z - f64::from(at.z)) as f32;
+        let flat = (dx * dx + dz * dz).sqrt();
+        if f64::from(flat) > radius {
+            continue;
+        }
+        out.push(index as i32);
+    }
+}
+
 #[cfg(test)]
 mod tests;
