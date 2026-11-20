@@ -1,4 +1,4 @@
-Optional native (Rust GDExtension) versions of hot simulation code from the Gamespice addons. Each module gives the same answers as the script it replaces. A game without the library, and every web export, simply runs the script.
+Optional native (Rust GDExtension) versions of hot simulation code from the GameSpice addons. Each module gives the same answers as the script it replaces. A game without the library, and every web export, simply runs the script.
 
 | Module | Replaces |
 | --- | --- |
@@ -23,6 +23,6 @@ Design and numbers: [docs/design.md](docs/design.md).
 
 ## Status and licence
 
-Part of the [Gamespice](https://gamespice.net) platform: a family of Godot addons. Written with Claude Code and maintained by `gamemann`. Every addon has headless tests, but little of this has been played by real users yet, so expect rough edges and please [open an issue](https://github.com/gamespice-platform/sim/issues) when you hit one.
+Part of the [**GameSpice**](https://gamespice.net) platform: a family of Godot addons. Written with Claude Code and maintained by `gamemann`. Every addon has headless tests, but little of this has been played by real users yet, so expect rough edges and please [open an issue](https://github.com/gamespice-platform/sim/issues) when you hit one.
 
-MIT licence, see [LICENSE](LICENSE). The only closed part of the [Gamespice](https://gamespice.net) platform is the web back end; you can use your own instead of Gamespice's.
+MIT licence, see [LICENSE](LICENSE). The only closed part of the [**GameSpice**](https://gamespice.net) platform is the web back end; you can use your own instead of GameSpice's.
