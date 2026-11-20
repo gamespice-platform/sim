@@ -1241,7 +1241,10 @@ mod tests {
         let mut mc = MoveCounters::default();
         assert!(try_wall_jump(&mut s, &x, &mut mv, Some(&wall), &mut mc));
         let speed = horizontal_speed(&s);
-        assert!(speed <= 12.0 + 1e-4, "carried speed stays the ceiling: {speed}");
+        assert!(
+            speed <= 12.0 + 1e-4,
+            "carried speed stays the ceiling: {speed}"
+        );
     }
 
     #[test]
