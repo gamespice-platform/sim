@@ -384,7 +384,7 @@ func _bench_sight_lod() -> void:
 	_check(on_rays < off_rays, "the LOD saves rays for a crowd thinking every third tick", "%d vs %d" % [on_rays, off_rays])
 
 
-## dot-bot's think tiers (DotSimThinkTier): random settings, people and bots; every schedule, period and body period equal, and the same counts.
+## GameSpice Bot's think tiers (DotSimThinkTier): random settings, people and bots; every schedule, period and body period equal, and the same counts.
 func _test_tier_parity() -> void:
 	print("think tiers: native against script")
 	var rng := RandomNumberGenerator.new()
@@ -516,7 +516,7 @@ func _ids(list: Array) -> String:
 	return ",".join(ids)
 
 
-## dot-player-char's clearance scan, linked for the arms parity test (see README); absent, the test is skipped.
+## GameSpice Player Char's clearance scan, linked for the arms parity test (see README); absent, the test is skipped.
 const ARMS_SCRIPT := "res://examples/linked/dot_view_arms_clear.gd"
 
 ## Random arm poses compared one by one.

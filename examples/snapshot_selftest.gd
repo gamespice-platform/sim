@@ -1,6 +1,6 @@
 extends Node
 
-## The snapshot module's suite: dot-net's state codec in GDScript and in [code]DotSimSnapshotCodec[/code] on the same inputs (bytes, values, errors, reader positions), then servers and clients, codec off and on, over lossy 22-33 Hz links with interest rings.
+## The snapshot module's suite: GameSpice Net's state codec in GDScript and in [code]DotSimSnapshotCodec[/code] on the same inputs (bytes, values, errors, reader positions), then servers and clients, codec off and on, over lossy 22-33 Hz links with interest rings.
 ## Every payload and value received must be equal. With no library it checks the fallback and says the native half was skipped.
 ## With [code]GS_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
 
@@ -484,7 +484,7 @@ func _wire_manager(label: String, server: bool, peer: int, tick_rate: int, snaps
 	m.config.tick_rate = tick_rate
 	m.config.snapshot_rate = snapshot_rate
 	m.config.per_client_budget = 0
-	# dot-net's own native core encodes in C++; off, so the script encode (and the codec) runs.
+	# GameSpice Net's own native core encodes in C++; off, so the script encode (and the codec) runs.
 	m.config.native = false
 	add_child(m)
 	return m

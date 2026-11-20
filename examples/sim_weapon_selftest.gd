@@ -1,7 +1,7 @@
 extends Node
 
 ## dot-sim's weapon parity suite (`godot --headless --path . res://examples/sim_weapon_selftest.tscn`): DotSimWeaponSpread against dot-weapon's script tick, same inputs, same answers.
-## Needs dot-weapon linked and the library installed; without either it says so and passes.
+## Needs GameSpice Weapon linked and the library installed; without either it says so and passes.
 
 var _passed := 0
 var _failed := 0
@@ -33,7 +33,7 @@ func _check(ok: bool, what: String, detail: String = "") -> void:
 		print("  FAIL  %s%s" % [what, "" if detail == "" else " (%s)" % detail])
 
 
-## dot-weapon's addon, linked for the weapon parity test (see README); absent, the test is skipped. Loaded by path, so
+## GameSpice Weapon's addon, linked for the weapon parity test (see README); absent, the test is skipped. Loaded by path, so
 ## this file parses without it.
 const WEAPON_DIR := "res://addons/dot_weapon/"
 
@@ -55,7 +55,7 @@ func _test_weapon_parity() -> void:
 	if not ResourceLoader.exists(WEAPON_DIR + "behaviour/dot_weapon_hitscan.gd"):
 		print("  skip  %s not linked" % WEAPON_DIR)
 		return
-	# The script side is the GDScript tick: with dot-sim loaded the behaviour would otherwise run the native twin itself.
+	# The script side is the GDScript tick: with GameSpice Sim loaded the behaviour would otherwise run the native twin itself.
 	var hitscan: Script = load(WEAPON_DIR + "behaviour/dot_weapon_hitscan.gd")
 	var was_native: bool = hitscan.get(&"native_tick")
 	hitscan.set(&"native_tick", false)

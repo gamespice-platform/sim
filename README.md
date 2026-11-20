@@ -2,7 +2,7 @@ Optional native (Rust GDExtension) versions of hot simulation code from the Game
 
 | Module | Replaces |
 | --- | --- |
-| bots | The sight scan of dot-bot's brain |
+| bots | The sight scan of GameSpice Bot's brain |
 
 ## Install
 
@@ -11,7 +11,7 @@ Optional native (Rust GDExtension) versions of hot simulation code from the Game
 
 ## Use
 
-Nothing to call. `DotSim.has(&"bots")` tells whether a module is loaded, and dot-bot uses it on its own when present.
+Nothing to call. `DotSim.has(&"bots")` tells whether a module is loaded, and GameSpice Bot uses it on its own when present.
 
 Keep `addons/dot_sim/bin/` and `dot_sim.gdextension` out of plain-template web exports. The opt-in web build is `ci/web.sh`; see [docs/web.md](docs/web.md).
 

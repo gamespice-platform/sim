@@ -1,7 +1,7 @@
 class_name DotSim
 extends RefCounted
 
-## Which dot-sim modules are loaded. Nothing here needs the native library: on the web, or with
+## Which GameSpice Sim modules are loaded. Nothing here needs the native library: on the web, or with
 ## no library installed, every answer is "absent" and callers keep their script path.
 
 # No log channel: it only answers questions.

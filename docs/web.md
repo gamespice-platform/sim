@@ -1,4 +1,4 @@
-# dot-sim on the web
+# GameSpice Sim on the web
 
 **Status: works, being shipped (decided 2026-11-13).** The real dot-sim extension, with all its modules, loads and runs in a Godot 4.7.2 web export built from the single-threaded dlink template. Its native paths are 3 to 7 times faster than the script twins in the browser, and their bytes equal the script's on wasm too. The script path stays as the complete fallback: every module has a script twin that produces the same bytes, and a web export without the side module runs it.
 
@@ -44,7 +44,7 @@ The dlink engine is built position-independent. On the sight scan this made the 
 | dlink `index.side.wasm` (engine) | 44,078,870 | 10,486,172 |
 | `dot_sim.wasm` (all modules) | 699,755 | 225,807 |
 
-The dlink export with dot-sim is about 1.2 MB larger after gzip than the plain export (about +12%).
+The dlink export with GameSpice Sim is about 1.2 MB larger after gzip than the plain export (about +12%).
 
 ## Blockers before shipping
 
@@ -68,7 +68,7 @@ Measured on PH, headless Chromium with SwiftShader, served with COOP/COEP (`cros
 | `sim_selftest` | 14 passed, 3 failed | 13 passed, 3 failed (the same 3) |
 | sight scan, script / native, us | 65.20 / 9.84 (6.6x) | 63.32 / 8.23 (7.7x) |
 
-The 3 failures come from the older test project used for this run (LOD ray-count and think-tier probes the current suite changed), and fail the same on both engines; nothing failed on threads alone. dot-sim spawns no threads of its own, so the threaded build buys nothing inside dot-sim: it exists so a game that needs the threaded engine (FC's `bot_threads`) keeps native dot-sim instead of dropping to the script path.
+The 3 failures come from the older test project used for this run (LOD ray-count and think-tier probes the current suite changed), and fail the same on both engines; nothing failed on threads alone. GameSpice Sim spawns no threads of its own, so the threaded build buys nothing inside GameSpice Sim: it exists so a game that needs the threaded engine (FC's `bot_threads`) keeps native GameSpice Sim instead of dropping to the script path.
 
 ## Rules
 
@@ -76,12 +76,12 @@ The 3 failures come from the older test project used for this run (LOD ray-count
 - Every native class is reached through `ClassDB.class_exists` (see `DotSim.has`), never by name in a typed script, so the scripts compile where it is absent.
 - The newest nightly breaks the build. It rejects `-Z emscripten-wasm-eh=false`, and without that flag the page fails with `LinkError: ... "__cpp_exception": tag import requires a WebAssembly.Tag`. Move `NIGHTLY` in `ci/web.sh` only after a browser try.
 - `ci/targets.tsv` has exactly two web rows, `web-wasm32` and `web-wasm32-threads` (`ci/check.sh` enforces that). `ci/install.sh` refuses to build them and only lays them out; `ci/web.sh` (`--threads` for the second) is the build.
-- A threaded engine never gets the single-threaded module, nor the other way round: a `.gdextension` with only a `web.wasm32` line on a threaded export loads nothing that works. Ship the threads build or ship no threaded engine (dot-server-deploy's export-web checks this).
+- A threaded engine never gets the single-threaded module, nor the other way round: a `.gdextension` with only a `web.wasm32` line on a threaded export loads nothing that works. Ship the threads build or ship no threaded engine (GameSpice Server Deploy's export-web checks this).
 
 ## Not tested
 
 - Firefox and Safari
 - the threaded build under a real FC 64-player client (only the selftests and the sight bench ran)
 - a GPU browser (SwiftShader only)
-- the motor (dot-player-controller) on the web
+- the motor (GameSpice Player Controller) on the web
 - a full FC client

@@ -1,4 +1,4 @@
-# godot-cell 0.5.5, patched for dot-sim
+# godot-cell 0.5.5, patched for GameSpice Sim
 
 Upstream: https://github.com/godot-rust/gdext (crate `godot-cell` 0.5.5, MPL-2.0; the license headers stay on every file).
 

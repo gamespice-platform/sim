@@ -1,6 +1,6 @@
 # Native build, CI and release
 
-**For**: whoever changes the Rust crate or cuts a dot-sim release. The library is optional: every native function has a GDScript twin, and a web client runs them unless it was exported with the dlink template ([web](web.md)).
+**For**: whoever changes the Rust crate or cuts a GameSpice Sim release. The library is optional: every native function has a GDScript twin, and a web client runs them unless it was exported with the dlink template ([web](web.md)).
 
 ## Layout
 
