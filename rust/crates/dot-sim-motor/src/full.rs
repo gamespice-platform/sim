@@ -1236,8 +1236,10 @@ mod tests {
             velocity: Vec3::new(12.0, 0.0, 0.0),
             ..State::default()
         };
-        let mut mv = Moves::default();
-        mv.time_since_jump = 1000.0;
+        let mut mv = Moves {
+            time_since_jump: 1000.0,
+            ..Moves::default()
+        };
         let mut mc = MoveCounters::default();
         assert!(try_wall_jump(&mut s, &x, &mut mv, Some(&wall), &mut mc));
         let speed = horizontal_speed(&s);
