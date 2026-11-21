@@ -19,7 +19,7 @@ Keep `addons/dot_sim/bin/` and `dot_sim.gdextension` out of plain-template web e
 
 Link the sibling addons (`addons/dot_core`, `addons/dot_bot`), install a library, then run `examples/sim_selftest.tscn` headless with Godot. Its arms section also needs dot-player-char's scan linked (`examples/linked/dot_view_arms_clear.gd`, skipped when absent), and its weapon suite (`examples/sim_weapon_selftest.tscn`) dot-weapon's addon (`addons/dot_weapon`, skipped when absent). Without a library the suite checks the fallback and says the native half was skipped. `cargo test` in `rust/` tests the kernels alone.
 
-Design and numbers: [docs/design.md](docs/design.md).
+Design and numbers: [docs/design.md](docs/design.md). Writing a native twin and its parity suite for any addon: [GameSpice Core native-twins](../dot-core/docs/native-twins.md).
 
 ## Status and licence
 
