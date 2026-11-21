@@ -14,7 +14,7 @@
 
 ## Workflows
 
-- `ci.yml`: dot-ci `validate` (GDScript), `ci/check.sh`, then a native job per platform: fmt and clippy (linux-x86_64 only), `cargo test`, `ci/install.sh`, the library uploaded as an artifact. Linux x86_64 and arm64, Windows x86_64, macOS arm64 and x86_64. Job `web` builds the side module with `ci/web.sh` (nightly-2026-01-10 with `rust-src`, emsdk 3.1.74, Godot for the API dump) and uploads it.
+- `ci.yml`: dot-ci `validate` (GDScript), `ci/check.sh`, then a native job per platform: fmt and clippy (linux-x86_64 only), `cargo test`, `ci/install.sh`, the library uploaded as an artifact. Linux x86_64 and arm64, Windows x86_64, macOS arm64 and x86_64, and macos-universal (both Apple targets joined with lipo by ci/install.sh into one dylib; the workflow rows exist but the lipo step has only been exercised with a stand-in lipo on Linux, not yet on a macOS runner). Job `web` builds the side module with `ci/web.sh` (nightly-2026-01-10 with `rust-src`, emsdk 3.1.74, Godot for the API dump) and uploads it.
 - `release.yml` (tag `v*`): validate, dot-ci's addon release (the GDScript zip), the native matrix, job `web` packs `web-wasm32` the same way, then `attach` uploads `dot_sim-<version>-<platform>.zip`, `natives.json` and `SHA256SUMS.natives` to the same GitHub release, verifying the sums first.
 
 ## How it reaches the CDN

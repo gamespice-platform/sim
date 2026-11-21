@@ -57,6 +57,10 @@ jobs:
                     - platform: macos-x86_64
                       target: x86_64-apple-darwin
                       runner: macos-15-intel
+                    # One fat dylib (lipo of both Apple targets) for a universal macOS export; ci/install.sh joins them.
+                    - platform: macos-universal
+                      target: aarch64-apple-darwin,x86_64-apple-darwin
+                      runner: macos-15-intel
         defaults:
             run:
                 shell: bash
@@ -85,7 +89,7 @@ jobs:
                   cargo clippy --manifest-path rust/Cargo.toml --target ${{ matrix.target }} --locked -- -D warnings
             # Not on macos-arm64: an Intel runner cannot execute arm64 tests (macos-x86_64 runs them).
             - name: Unit tests (the library's own, no engine needed)
-              if: steps.crate.outputs.present == 'true' && matrix.platform != 'macos-arm64'
+              if: steps.crate.outputs.present == 'true' && matrix.platform != 'macos-arm64' && matrix.platform != 'macos-universal'
               run: cargo test --manifest-path rust/Cargo.toml --target ${{ matrix.target }} --locked
             # The patched godot-cell (rust/vendor/godot-cell/README.dot-sim.md): its own tests, the wakeup test among them.
             - name: Vendored godot-cell tests

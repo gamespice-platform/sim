@@ -8,6 +8,9 @@
 # addon runs its GDScript twins, so a missing or failed build is never fatal to a game.
 # --no-build installs a library already built under rust/target. Cross builds need the rust
 # target installed (rustup target add); the workflows do that. Exit 3: no rust/ crate yet.
+# macos-universal is one fat dylib: it builds both Apple targets and joins them with lipo (macOS only; the
+# row's rust target column lists both, comma separated). The .gdextension then points macos.universal and,
+# where no per-arch library is installed, macos.arm64 and macos.x86_64 at it.
 # --gdextension-only rewrites the .gdextension from what is installed and builds nothing (ci/web.sh).
 # The cargo step is the only heavy one: run this under `heavy` (or on a box with cargo).
 set -euo pipefail
@@ -65,11 +68,26 @@ if [ "$INSTALL" = 1 ]; then
     FILE="${PATTERN//\{crate\}/$CRATE}"
 
     if [ "$BUILD" = 1 ]; then
-        flags=(--manifest-path rust/Cargo.toml --target "$TARGET" --locked)
-        [ "$PROFILE" = release ] && flags+=(--release)
-        cargo build "${flags[@]}"
+        for t in ${TARGET//,/ }; do
+            flags=(--manifest-path rust/Cargo.toml --target "$t" --locked)
+            [ "$PROFILE" = release ] && flags+=(--release)
+            cargo build "${flags[@]}"
+        done
     fi
     SRC="rust/target/$TARGET/$PROFILE/$FILE"
+    if [ "$PLATFORM" = macos-universal ]; then
+        # lipo is a macOS tool (llvm-lipo also works); fail loudly rather than install one architecture as "universal".
+        LIPO="$(command -v lipo || command -v llvm-lipo || true)"
+        [ -n "$LIPO" ] || { echo "install.sh: macos-universal needs lipo (macOS) or llvm-lipo" >&2; exit 1; }
+        SRC="rust/target/universal-apple-darwin/$PROFILE/$FILE"
+        PARTS=()
+        for t in ${TARGET//,/ }; do
+            [ -f "rust/target/$t/$PROFILE/$FILE" ] || { echo "install.sh: rust/target/$t/$PROFILE/$FILE not found (build it, or drop --no-build)" >&2; exit 1; }
+            PARTS+=("rust/target/$t/$PROFILE/$FILE")
+        done
+        mkdir -p "$(dirname "$SRC")"
+        "$LIPO" -create "${PARTS[@]}" -output "$SRC"
+    fi
     # The threaded side module is built in its own target dir and comes out under the crate's plain name.
     [ "$PLATFORM" != web-wasm32-threads ] || SRC="rust/target/web-threads/$TARGET/$PROFILE/$CRATE.wasm"
     [ -f "$SRC" ] || { echo "install.sh: $SRC not found (build it, or drop --no-build)" >&2; exit 1; }
@@ -91,5 +109,12 @@ OUT=addons/dot_sim/dot_sim.gdextension
         f="${pat//\{crate\}/$CRATE}"
         if [ -f "addons/dot_sim/bin/$plat/$f" ]; then echo "$key = \"res://addons/dot_sim/bin/$plat/$f\""; fi
     done
+    # A universal library also serves each Apple architecture that has no library of its own.
+    uf="lib$CRATE.dylib"
+    if [ -f "addons/dot_sim/bin/macos-universal/$uf" ]; then
+        for a in arm64 x86_64; do
+            [ -f "addons/dot_sim/bin/macos-$a/$uf" ] || echo "macos.$a = \"res://addons/dot_sim/bin/macos-universal/$uf\""
+        done
+    fi
 } > "$OUT"
 [ "$INSTALL" = 1 ] && echo "installed $DEST/$FILE" || echo "wrote $OUT"
