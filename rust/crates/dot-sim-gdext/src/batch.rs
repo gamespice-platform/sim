@@ -1,40 +1,40 @@
-//! `DotSimMotorBatch`: a run of players' whole motor ticks in one call, so a server's players'
+//! `GSSimMotorBatch`: a run of players' whole motor ticks in one call, so a server's players'
 //! loop crosses into native code once per run instead of once per player.
 //!
-//! Each row is `DotSimFpsBody.motor_tick` to the bit, in roster order: a body in hulls mode 3
+//! Each row is `GSSimFpsBody.motor_tick` to the bit, in roster order: a body in hulls mode 3
 //! gathers from the hull world as the single call does, and once it has ticked the world holds
 //! its new feet, as the game's `moved` after that player's tick would. The old feet are kept so
 //! the caller can take rows back when a player ends its tick somewhere else.
 
-use crate::hulls::DotSimHullWorld;
-use crate::motor::{DotSimFpsBody, TICK_IN_LEN, TICK_OUT_LEN};
+use crate::hulls::GSSimHullWorld;
+use crate::motor::{GSSimFpsBody, TICK_IN_LEN, TICK_OUT_LEN};
 use dot_sim_motor::Vec3 as V3;
 use godot::prelude::*;
 
-/// Per row in [`DotSimMotorBatch::run`]'s `meta`: hulls mode (0 or 3), collision mask, pass-out
-/// mask; [`DotSimMotorBatch::run_rows`] adds the row's timers flags (`tick_into`'s `timers`).
+/// Per row in [`GSSimMotorBatch::run`]'s `meta`: hulls mode (0 or 3), collision mask, pass-out
+/// mask; [`GSSimMotorBatch::run_rows`] adds the row's timers flags (`tick_into`'s `timers`).
 const META_LEN: usize = 3;
 const ROWS_META_LEN: usize = 4;
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimMotorBatch {
+pub struct GSSimMotorBatch {
     /// Row, world, slot and the feet the world held before the row ran.
-    moved: Vec<(usize, Gd<DotSimHullWorld>, i64, V3)>,
+    moved: Vec<(usize, Gd<GSSimHullWorld>, i64, V3)>,
     out: Vec<f64>,
     rows: i64,
     runs: i64,
 }
 
 #[godot_api]
-impl DotSimMotorBatch {
+impl GSSimMotorBatch {
     /// Starts a players' loop: forgets the feet kept for [`Self::rollback`].
     #[func]
     fn begin(&mut self) {
         self.moved.clear();
     }
 
-    /// Ticks rows `from` to `to` (exclusive) in order: `bodies` the `DotSimFpsBody` per row,
+    /// Ticks rows `from` to `to` (exclusive) in order: `bodies` the `GSSimFpsBody` per row,
     /// `tuns` its tunables, `meta` three values per row, `input` `motor_tick`'s state per row.
     /// Answers `motor_tick`'s values per row ticked; shorter than asked when a row has no native
     /// answer (the rows before it stand, that row and the ones after are the caller's).
@@ -109,7 +109,7 @@ impl DotSimMotorBatch {
     }
 }
 
-impl DotSimMotorBatch {
+impl GSSimMotorBatch {
     #[allow(clippy::too_many_arguments)]
     fn ticks(
         &mut self,
@@ -136,7 +136,7 @@ impl DotSimMotorBatch {
                 break;
             };
             let (Ok(mut body), Ok(tun)) = (
-                bv.try_to::<Gd<DotSimFpsBody>>(),
+                bv.try_to::<Gd<GSSimFpsBody>>(),
                 tv.try_to::<PackedFloat64Array>(),
             ) else {
                 break;

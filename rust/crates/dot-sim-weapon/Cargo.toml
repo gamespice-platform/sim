@@ -1,6 +1,6 @@
 [package]
 name = "dot-sim-weapon"
-description = "A hitscan weapon's spread state tick (dot-weapon DotWeaponHitscan, DotWeaponSpreadRules, DotWeaponBallistics): pure Rust, no engine types."
+description = "A hitscan weapon's spread state tick (dot-weapon GSWeaponHitscan, GSWeaponSpreadRules, GSWeaponBallistics): pure Rust, no engine types."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,4 +1,4 @@
-//! The rest of `DotFpsMotor._simulate` around the slide, for a plain walker (GROUND or AIR, no
+//! The rest of `GSFpsMotor._simulate` around the slide, for a plain walker (GROUND or AIR, no
 //! surfaces, no edge friction): the ground check at the start of the tick
 //! ([`pre`]), then friction, the wish move, gravity, the clamp, the slide and the ground check at
 //! the end ([`post`]). The script keeps the jump, the wall moves, launches, slides and crouch, which
@@ -11,17 +11,17 @@ use crate::slide::{Mover, capsule_centre};
 use crate::{DOWN, Hit, Space, UP, Vec3};
 use dot_sim_math::{maxf, minf};
 
-/// `DotFpsState.Mode.GROUND`.
+/// `GSFpsState.Mode.GROUND`.
 pub const GROUND: i64 = 0;
-/// `DotFpsState.Mode.AIR`.
+/// `GSFpsState.Mode.AIR`.
 pub const AIR: i64 = 1;
-/// `DotFpsState.Mode.NOCLIP`.
+/// `GSFpsState.Mode.NOCLIP`.
 pub const NOCLIP: i64 = 2;
 
-/// `DotFpsMotor.LEAVING_SPEED`.
+/// `GSFpsMotor.LEAVING_SPEED`.
 pub(crate) const LEAVING_SPEED: f64 = 0.1;
 
-/// `DotFpsMotor.QUADRANTS`.
+/// `GSFpsMotor.QUADRANTS`.
 const QUADRANTS: [(f32, f32); 4] = [(-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)];
 
 /// The player state the tick reads and writes.
@@ -154,7 +154,7 @@ fn add_y(v: Vec3, by: f64) -> Vec3 {
     Vec3::new(v.x, ((v.y as f64) + by) as f32, v.z)
 }
 
-/// `DotFpsMotor._depenetrate`.
+/// `GSFpsMotor._depenetrate`.
 fn depenetrate<S: Space>(m: &mut Mover<'_, S>, s: &mut State, c: &mut TickCounters) -> bool {
     let centre = capsule_centre(s.position, s.height);
     let radius = m.t.radius;
@@ -170,7 +170,7 @@ fn depenetrate<S: Space>(m: &mut Mover<'_, S>, s: &mut State, c: &mut TickCounte
     true
 }
 
-/// `DotFpsMotor._quadrant_floor_probe`.
+/// `GSFpsMotor._quadrant_floor_probe`.
 fn quadrant_floor<S: Space>(m: &mut Mover<'_, S>, centre: Vec3, probe: Vec3, height: f64) -> Hit {
     let half = m.t.radius * 0.5;
     let _site = crate::site::stage(crate::site::QUADRANT);
@@ -184,7 +184,7 @@ fn quadrant_floor<S: Space>(m: &mut Mover<'_, S>, centre: Vec3, probe: Vec3, hei
     Hit::MISS
 }
 
-/// `DotFpsMotor._standable_normal`.
+/// `GSFpsMotor._standable_normal`.
 fn standable_normal<S: Space>(m: &mut Mover<'_, S>, s: &State, hit: &Hit) -> Vec3 {
     if !hit.hit {
         return Vec3::default();
@@ -205,7 +205,7 @@ fn standable_normal<S: Space>(m: &mut Mover<'_, S>, s: &State, hit: &Hit) -> Vec
     m.edge_floor_normal(hit, s.position, s.position.y as f64)
 }
 
-/// `DotFpsMotor._keep_skin`.
+/// `GSFpsMotor._keep_skin`.
 fn keep_skin<S: Space>(m: &Mover<'_, S>, s: &mut State, hit: &Hit, probe: Vec3) {
     let gap = (probe.length() as f64) * hit.fraction;
     if gap < m.t.skin_width * 0.5 && (hit.normal.y as f64) > 0.0 {
@@ -213,7 +213,7 @@ fn keep_skin<S: Space>(m: &Mover<'_, S>, s: &mut State, hit: &Hit, probe: Vec3) 
     }
 }
 
-/// `DotFpsMotor._lift_clear`.
+/// `GSFpsMotor._lift_clear`.
 fn lift_clear<S: Space>(m: &mut Mover<'_, S>, s: &mut State) -> bool {
     let mut lift = maxf(m.t.skin_width * 2.0, 0.0005);
     let limit = maxf(m.t.step_height, lift);
@@ -243,7 +243,7 @@ fn set_air(s: &mut State) {
     s.ground_id = 0;
 }
 
-/// `DotFpsMotor._categorise_ground_settled` with no surfaces.
+/// `GSFpsMotor._categorise_ground_settled` with no surfaces.
 pub fn categorise<S: Space>(
     m: &mut Mover<'_, S>,
     s: &mut State,
@@ -345,7 +345,7 @@ pub fn pre<S: Space>(
     }
 }
 
-/// `DotFpsMotor._apply_friction` with no edge friction.
+/// `GSFpsMotor._apply_friction` with no edge friction.
 fn apply_friction(s: &mut State, tt: &TickTun, p: &Post) {
     let speed = s.velocity.length() as f64;
     if speed <= 0.0 {
@@ -358,7 +358,7 @@ fn apply_friction(s: &mut State, tt: &TickTun, p: &Post) {
     s.velocity = s.velocity.scale(scale);
 }
 
-/// `DotFpsMotor._apply_air_friction`.
+/// `GSFpsMotor._apply_air_friction`.
 fn apply_air_friction(s: &mut State, tt: &TickTun, p: &Post) {
     let horizontal = Vec3::new(s.velocity.x, 0.0, s.velocity.z);
     let speed = horizontal.length() as f64;
@@ -370,7 +370,7 @@ fn apply_air_friction(s: &mut State, tt: &TickTun, p: &Post) {
     s.velocity.z = ((s.velocity.z as f64) * scale) as f32;
 }
 
-/// `DotFpsMotor._project_on_slope`.
+/// `GSFpsMotor._project_on_slope`.
 fn project_on_slope<S: Space>(m: &Mover<'_, S>, direction: Vec3, normal: Vec3) -> Vec3 {
     if approx(normal.x, UP.x) && approx(normal.y, UP.y) && approx(normal.z, UP.z) {
         return direction;
@@ -382,7 +382,7 @@ fn project_on_slope<S: Space>(m: &Mover<'_, S>, direction: Vec3, normal: Vec3) -
     projected.normalized()
 }
 
-/// `DotFpsMotor.accelerate`.
+/// `GSFpsMotor.accelerate`.
 fn accelerate(s: &mut State, direction: Vec3, wish_speed: f64, accel: f64, delta: f64, cap: f64) {
     let target = if cap < 0.0 {
         wish_speed
@@ -398,7 +398,7 @@ fn accelerate(s: &mut State, direction: Vec3, wish_speed: f64, accel: f64, delta
     s.velocity = s.velocity + direction.scale(minf(step, add));
 }
 
-/// `DotFpsMotor._apply_wish_move`; returns the ground cap it set (0 when none).
+/// `GSFpsMotor._apply_wish_move`; returns the ground cap it set (0 when none).
 fn apply_wish_move<S: Space>(m: &Mover<'_, S>, s: &mut State, tt: &TickTun, p: &Post) -> f64 {
     if p.deny_move {
         return 0.0;
@@ -436,7 +436,7 @@ fn apply_wish_move<S: Space>(m: &Mover<'_, S>, s: &mut State, tt: &TickTun, p: &
     }
 }
 
-/// `DotFpsMotor._clamp_velocity`; true when it zeroed a non-finite velocity.
+/// `GSFpsMotor._clamp_velocity`; true when it zeroed a non-finite velocity.
 fn clamp_velocity(s: &mut State, tt: &TickTun) -> bool {
     let v = s.velocity;
     if !(v.x.is_finite() && v.y.is_finite() && v.z.is_finite()) {
@@ -451,7 +451,7 @@ fn clamp_velocity(s: &mut State, tt: &TickTun) -> bool {
     false
 }
 
-/// `DotFpsMotor._snap_to_ground`.
+/// `GSFpsMotor._snap_to_ground`.
 fn snap_to_ground<S: Space>(m: &mut Mover<'_, S>, s: &mut State, tt: &TickTun, stood_on: Vec3) {
     if (s.velocity.dot(stood_on) as f64) > LEAVING_SPEED {
         return;
@@ -484,7 +484,7 @@ fn snap_to_ground<S: Space>(m: &mut Mover<'_, S>, s: &mut State, tt: &TickTun, s
     }
 }
 
-/// `DotFpsMotor._move`, with the native slide.
+/// `GSFpsMotor._move`, with the native slide.
 fn move_tick<S: Space>(
     m: &mut Mover<'_, S>,
     s: &mut State,

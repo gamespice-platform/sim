@@ -1,5 +1,5 @@
-//! The hot half of a dot-bot brain's think: [`aim`] (DotBotAim: view, aim error, reaction,
-//! trigger) and [`fight`] (DotBotBrain's fight step: range, strafing, crouch, jump, the legs).
+//! The hot half of a dot-bot brain's think: [`aim`] (GSBotAim: view, aim error, reaction,
+//! trigger) and [`fight`] (GSBotBrain's fight step: range, strafing, crouch, jump, the legs).
 //!
 //! Each is the script's arithmetic in the script's order and precision (engine vectors `f32`,
 //! script floats `f64`, the script's random stream), so a brain thinking natively makes the same

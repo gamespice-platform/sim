@@ -1,5 +1,5 @@
 //! Prop Hunt's hunter sensing for one tick, every hunter at once: game-prop-hunt's `PhBots._prey`,
-//! `DotBotSearch.observe` and the rows of `PhBots._doubt`, to the bit and in the script's order.
+//! `GSBotSearch.observe` and the rows of `PhBots._doubt`, to the bit and in the script's order.
 //!
 //! The script asks each hunter's senses on its own (a players list, a dictionary per place, a
 //! dictionary per doubt row and a ray built in script for every line of sight); this answers
@@ -87,7 +87,7 @@ pub struct Taunt {
     pub t: f64,
 }
 
-/// A hunter's search places as the script holds them (`DotBotSearch`): what observe reads.
+/// A hunter's search places as the script holds them (`GSBotSearch`): what observe reads.
 #[derive(Clone, Debug, Default)]
 pub struct Search {
     pub at: Vec<Vec3>,
@@ -430,7 +430,7 @@ fn add(rules: &Rules, key: i32, d: f64, odd: f64, careful: bool) -> DoubtAdd {
     }
 }
 
-/// `DotBotSearch.observe(eye, forward, fov, sight, los, now, HEAD)`: the places crossed off, each
+/// `GSBotSearch.observe(eye, forward, fov, sight, los, now, HEAD)`: the places crossed off, each
 /// marked seen now in the mirror as the script marks it.
 fn observe(
     search: &mut Search,
@@ -450,7 +450,7 @@ fn observe(
         {
             continue;
         }
-        // DotBotHiding.sees(eye, forward, fov, reach, at + (0, head, 0), los).
+        // GSBotHiding.sees(eye, forward, fov, reach, at + (0, head, 0), los).
         let target = *at + up(HEAD);
         let to = target - eye;
         let d = to.length();

@@ -1,4 +1,4 @@
-//! DotBotAim's private half: the aim error, the flick overshoot, the tracked velocity, the turn,
+//! GSBotAim's private half: the aim error, the flick overshoot, the tracked velocity, the turn,
 //! the bursts. The view (yaw, pitch) and the engagement's public times stay with the caller and
 //! are passed in, so the script keeps owning what games read.
 
@@ -13,7 +13,7 @@ pub const TRACK_LAG: f64 = 0.08;
 /// Seconds a flinch takes to halve.
 pub const FLINCH_HALF_LIFE: f64 = 0.3;
 
-/// The profile fields the aim reads (DotBotProfile's names).
+/// The profile fields the aim reads (GSBotProfile's names).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct AimProfile {
     pub prediction: f64,
@@ -37,7 +37,7 @@ pub struct View {
     pub pitch: f64,
 }
 
-/// The aim's private state, as DotBotAim's underscored fields, and its random stream.
+/// The aim's private state, as GSBotAim's underscored fields, and its random stream.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Aim {
     pub err_mag0: f64,
@@ -345,7 +345,7 @@ impl Aim {
         down
     }
 
-    /// The state as a flat list, DotBotAim's order (see the binding's `state`).
+    /// The state as a flat list, GSBotAim's order (see the binding's `state`).
     pub fn to_array(&self) -> [f64; 18] {
         [
             self.err_mag0,

@@ -1,6 +1,6 @@
 //! The spawner's think pacing, held natively: which NPCs think this tick and with how much time.
 //!
-//! A paced brain (dot-npc `DotNpcBrain.paces`) thinks once every `every` ticks and is handed the time it
+//! A paced brain (dot-npc `GSNpcBrain.paces`) thinks once every `every` ticks and is handed the time it
 //! owes (the ticks' deltas summed in order). Script side that is three fields on each brain and a call into
 //! every brain every tick, most of which only count; here the counting is one batch per tick and the
 //! spawner calls only the brains that are due.

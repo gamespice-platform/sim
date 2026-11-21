@@ -1,4 +1,4 @@
-//! `DotSimInterpolator`: the tracks and the per-frame draw of dot-net's `DotNetInterpolator`,
+//! `GSSimInterpolator`: the tracks and the per-frame draw of dot-net's `GSNetInterpolator`,
 //! writing what the script's `apply` writes, value for value.
 
 use std::collections::HashMap;
@@ -56,7 +56,7 @@ struct Plan {
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimInterpolator {
+pub struct GSSimInterpolator {
     interp: Interp<Var, Plan>,
     keys: HashMap<StringName, u32>,
     names: Vec<StringName>,
@@ -97,7 +97,7 @@ fn net_vars(behaviour: &Gd<Object>) -> Option<AnyArray> {
     behaviour.get("net_vars").try_to::<AnyArray>().ok()
 }
 
-impl DotSimInterpolator {
+impl GSSimInterpolator {
     fn key(&mut self, name: StringName) -> u32 {
         if let Some(k) = self.keys.get(&name) {
             return *k;
@@ -162,7 +162,7 @@ impl DotSimInterpolator {
     }
 }
 
-impl DotSimInterpolator {
+impl GSSimInterpolator {
     /// `apply` for one entity, its config worked out by the caller. With `frame`, a draw equal to
     /// the one written the frame before (no push since) writes nothing and calls no hook.
     #[allow(clippy::too_many_arguments)]
@@ -246,8 +246,8 @@ fn plan_fits(plan: &Plan, behaviours: &[Gd<Object>]) -> bool {
 }
 
 #[godot_api]
-impl DotSimInterpolator {
-    /// `DotNetInterpolator.push`'s track half: a snapshot's values for an entity.
+impl GSSimInterpolator {
+    /// `GSNetInterpolator.push`'s track half: a snapshot's values for an entity.
     #[func]
     fn push(&mut self, net_id: i64, tick: i64, values: VarDictionary) {
         let mut out: Values<Var> = Vec::with_capacity(values.len());
@@ -266,7 +266,7 @@ impl DotSimInterpolator {
         }
     }
 
-    /// `DotNetInterpolator.apply` past its predicted check: samples at `render` (the script's
+    /// `GSNetInterpolator.apply` past its predicted check: samples at `render` (the script's
     /// `server_tick - delay_ticks()`), eases a resume, and writes each behaviour's interpolated
     /// properties, then calls its `_net_interpolated(int(server_tick))`. Config is passed per
     /// call, read as the script reads it. Returns whether anything was sampled.
@@ -300,7 +300,7 @@ impl DotSimInterpolator {
         )
     }
 
-    /// `DotNetInterpolator.apply_frame` in one call: `apply` for each identity in `identities`,
+    /// `GSNetInterpolator.apply_frame` in one call: `apply` for each identity in `identities`,
     /// in order, skipping a null one and one whose `is_predicted()` is true, as the script's loop
     /// does. Returns how many were sampled.
     #[allow(clippy::too_many_arguments)]
@@ -356,7 +356,7 @@ impl DotSimInterpolator {
         sampled
     }
 
-    /// `DotNetInterpolator`'s settled skip, off by default: in `apply_all`, an entity whose draw
+    /// `GSNetInterpolator`'s settled skip, off by default: in `apply_all`, an entity whose draw
     /// equals what was written the frame before, with no push since, is left alone (no writes,
     /// no `_net_interpolated`). For games whose hook only copies the interpolated values.
     #[func]
@@ -370,7 +370,7 @@ impl DotSimInterpolator {
         self.settled
     }
 
-    /// `DotNetInterpolator.sample` at `render`, counted as it counts: for a suite.
+    /// `GSNetInterpolator.sample` at `render`, counted as it counts: for a suite.
     #[func]
     fn sample(&mut self, net_id: i64, render: f64, max_ticks: f64) -> VarDictionary {
         let cfg = Config {

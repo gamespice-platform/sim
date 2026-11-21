@@ -1,4 +1,4 @@
-//! The cell index of `DotNetInterestGrid`: entities binned by horizontal (optionally 3D) cell, queried by the
+//! The cell index of `GSNetInterestGrid`: entities binned by horizontal (optionally 3D) cell, queried by the
 //! cells an observer's radius touches. Plain arrays in and out; the script keeps the identities and maps the
 //! returned slots back. The answer order is the script's: dx outermost, then dy, then dz, each cell's slots in
 //! insertion order.

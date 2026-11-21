@@ -1,4 +1,4 @@
-//! Think-rate tiers for a crowd of bots: dot-bot's `DotBotThinkTier`, the same arithmetic in the
+//! Think-rate tiers for a crowd of bots: dot-bot's `GSBotThinkTier`, the same arithmetic in the
 //! same precision (engine vectors in `f32`, script floats in `f64`), so a game that schedules its
 //! bots here gets the periods the script gives.
 //!
@@ -8,7 +8,7 @@
 use crate::Vec3;
 use dot_sim_math::{maxf, minf};
 
-/// The default longest period a tier may take (DotBotThinkTier.DEFAULT_MAX_PERIOD); a setting, 0 is unlimited.
+/// The default longest period a tier may take (GSBotThinkTier.DEFAULT_MAX_PERIOD); a setting, 0 is unlimited.
 pub const DEFAULT_MAX_PERIOD: i64 = 8;
 
 /// Why a bot got its period; the order of [`Tier::counts`] and of the script's reasons.

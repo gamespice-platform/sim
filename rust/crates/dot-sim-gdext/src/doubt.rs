@@ -1,4 +1,4 @@
-//! `DotSimPropDoubt`: mg-prop-hunt's `PhBots._doubt` walk over the map's own pieces.
+//! `GSSimPropDoubt`: mg-prop-hunt's `PhBots._doubt` walk over the map's own pieces.
 //!
 //! The game writes the map's pieces once a map (`set_pieces`: each piece's middle as the script
 //! lifts it) and their broken flags as they change (`set_broken`), then asks `scan` each time a
@@ -13,13 +13,13 @@ use godot::prelude::*;
 /// A map's pieces (middle and broken flag) and the doubt scan over them.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimPropDoubt {
+pub struct GSSimPropDoubt {
     pieces: Vec<Piece>,
     kept: Vec<i32>,
 }
 
 #[godot_api]
-impl DotSimPropDoubt {
+impl GSSimPropDoubt {
     /// Holds the map's pieces, one per middle in [param middles], all whole.
     #[func]
     fn set_pieces(&mut self, middles: PackedVector3Array) {
@@ -48,7 +48,7 @@ impl DotSimPropDoubt {
             .and_then(|i| self.pieces.get_mut(i))
         else {
             godot_error!(
-                "DotSimPropDoubt.set_broken: index {index} outside {} pieces",
+                "GSSimPropDoubt.set_broken: index {index} outside {} pieces",
                 self.pieces.len()
             );
             return;

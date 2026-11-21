@@ -1,4 +1,4 @@
-//! Where an engine query comes from, for a per-call-site profile (`DotSimFpsBody.set_profile`).
+//! Where an engine query comes from, for a per-call-site profile (`GSSimFpsBody.set_profile`).
 //!
 //! The motor marks the stage it is in ([`stage`], restored when the guard drops) and the body the
 //! step of a sweep or rest it is at ([`step`]); the engine side reads [`current`] when it times a

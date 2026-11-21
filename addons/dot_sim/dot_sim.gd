@@ -1,4 +1,4 @@
-class_name DotSim
+class_name GSSim
 extends RefCounted
 
 ## Which GameSpice Sim modules are loaded. Nothing here needs the native library: on the web, or with
@@ -8,33 +8,33 @@ extends RefCounted
 
 ## Module name to the native class it registers.
 const MODULES := {
-	&"bots": &"DotSimBotSenses",
-	&"snapshot": &"DotSimSnapshotCodec",
-	&"interp": &"DotSimInterpolator",
-	&"motor": &"DotSimFpsBody",
-	&"arms": &"DotSimViewArms",
-	&"audio": &"DotSimAudioSteps",
-	&"ragdoll": &"DotSimRagdollPose",
-	&"killview": &"DotSimKillViewTrack",
-	&"crowd": &"DotSimCrowdGrid",
-	&"weapon": &"DotSimWeaponSpread",
-	&"senses": &"DotSimSenses",
-	&"zombie": &"DotSimZombieBrains",
-	&"doors": &"DotSimDoorReach",
-	&"grid2d": &"DotSimGrid2D",
-	&"witches": &"DotSimWitches",
-	&"doubt": &"DotSimPropDoubt",
-	&"seek": &"DotSimHunterSeek",
-	&"body_sight": &"DotSimBodySight",
-	&"hazards": &"DotSimHazards",
-	&"road": &"DotSimRoad",
-	&"sight": &"DotSimSightRay",
-	&"pvs": &"DotSimPvs",
-	&"route": &"DotSimRouteBots",
-	&"crc": &"DotSimCrc",
-	&"interest": &"DotSimInterestGrid",
-	&"trace": &"DotSimFlatTrace",
-	&"players": &"DotSimPlayerPost",
+	&"bots": &"GSSimBotSenses",
+	&"snapshot": &"GSSimSnapshotCodec",
+	&"interp": &"GSSimInterpolator",
+	&"motor": &"GSSimFpsBody",
+	&"arms": &"GSSimViewArms",
+	&"audio": &"GSSimAudioSteps",
+	&"ragdoll": &"GSSimRagdollPose",
+	&"killview": &"GSSimKillViewTrack",
+	&"crowd": &"GSSimCrowdGrid",
+	&"weapon": &"GSSimWeaponSpread",
+	&"senses": &"GSSimSenses",
+	&"zombie": &"GSSimZombieBrains",
+	&"doors": &"GSSimDoorReach",
+	&"grid2d": &"GSSimGrid2D",
+	&"witches": &"GSSimWitches",
+	&"doubt": &"GSSimPropDoubt",
+	&"seek": &"GSSimHunterSeek",
+	&"body_sight": &"GSSimBodySight",
+	&"hazards": &"GSSimHazards",
+	&"road": &"GSSimRoad",
+	&"sight": &"GSSimSightRay",
+	&"pvs": &"GSSimPvs",
+	&"route": &"GSSimRouteBots",
+	&"crc": &"GSSimCrc",
+	&"interest": &"GSSimInterestGrid",
+	&"trace": &"GSSimFlatTrace",
+	&"players": &"GSSimPlayerPost",
 }
 
 

@@ -1,8 +1,8 @@
-//! `DotSimPvs`: dot-net's `DotNetVisibility` asks (`cluster_of`, `cluster_sees`, `visible`) over
+//! `GSSimPvs`: dot-net's `GSNetVisibility` asks (`cluster_of`, `cluster_sees`, `visible`) over
 //! a copy of its arrays, so a sight check can drop a ray the map's PVS rules out (the Source
 //! engine's `IsVisible` does the same before it traces) for about a tenth of a microsecond.
 //!
-//! `load` takes `DotNetVisibility.native_dict()` and copies only when its `serial` changes. The
+//! `load` takes `GSNetVisibility.native_dict()` and copies only when its `serial` changes. The
 //! same answers as the script to the bit (`dot_sim_pvs`; FC's `headless_bot_pvs` asks both over
 //! seeded points on the converted maps, and its `fc_bot_pvs_verify` checks every live ask).
 //! Read-only between loads, so worker threads may ask at once.
@@ -10,10 +10,10 @@
 use dot_sim_pvs::{Pvs, bounds_of};
 use godot::prelude::*;
 
-/// A map's PVS, loaded from `DotNetVisibility.native_dict()`.
+/// A map's PVS, loaded from `GSNetVisibility.native_dict()`.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimPvs {
+pub struct GSSimPvs {
     pvs: Pvs,
     ready: bool,
     #[init(val = -1)]
@@ -29,14 +29,14 @@ fn p3(v: Vector3) -> [f32; 3] {
 }
 
 #[godot_api]
-impl DotSimPvs {
-    /// Copies the set in [param vis] (`DotNetVisibility.native_dict()`) unless its `serial` is the
+impl GSSimPvs {
+    /// Copies the set in [param vis] (`GSNetVisibility.native_dict()`) unless its `serial` is the
     /// one held. False, with an error and the old set kept, when a field is missing or mistyped;
     /// a set that is not ready loads and answers everything visible, as the script.
     #[func]
     fn load(&mut self, vis: VarDictionary) -> bool {
         let Some(serial) = field::<i64>(&vis, "serial") else {
-            godot_error!("DotSimPvs.load: no serial");
+            godot_error!("GSSimPvs.load: no serial");
             return false;
         };
         if serial == self.serial {
@@ -62,13 +62,11 @@ impl DotSimPvs {
             field::<Aabb>(&vis, "bounds"),
         )
         else {
-            godot_error!(
-                "DotSimPvs.load: a field of native_dict() is missing or of the wrong type"
-            );
+            godot_error!("GSSimPvs.load: a field of native_dict() is missing or of the wrong type");
             return false;
         };
         let Ok(head) = i32::try_from(head) else {
-            godot_error!("DotSimPvs.load: head {head} out of range");
+            godot_error!("GSSimPvs.load: head {head} out of range");
             return false;
         };
         self.pvs = Pvs {
@@ -92,25 +90,25 @@ impl DotSimPvs {
         self.serial
     }
 
-    /// `DotNetVisibility.is_ready` of the set held.
+    /// `GSNetVisibility.is_ready` of the set held.
     #[func]
     fn is_ready(&self) -> bool {
         self.ready
     }
 
-    /// `DotNetVisibility.cluster_of`: the cluster at [param p], -1 for none.
+    /// `GSNetVisibility.cluster_of`: the cluster at [param p], -1 for none.
     #[func]
     fn cluster_of(&self, p: Vector3) -> i32 {
         self.pvs.cluster_of(p3(p))
     }
 
-    /// `DotNetVisibility.cluster_sees`.
+    /// `GSNetVisibility.cluster_sees`.
     #[func]
     fn cluster_sees(&self, from: i32, to: i32) -> bool {
         self.pvs.cluster_sees(from, to)
     }
 
-    /// `DotNetVisibility.visible`: whether anything at [param from] could see anything at [param to].
+    /// `GSNetVisibility.visible`: whether anything at [param from] could see anything at [param to].
     #[func]
     fn visible(&self, from: Vector3, to: Vector3) -> bool {
         !self.ready

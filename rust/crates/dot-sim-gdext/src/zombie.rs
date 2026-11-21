@@ -1,13 +1,13 @@
-//! `DotSimZombieBrains`: Zombie Zone's zombie brains in Rust (`dot_sim_zombie`). The horde pushes its
+//! `GSSimZombieBrains`: Zombie Zone's zombie brains in Rust (`dot_sim_zombie`). The horde pushes its
 //! survivor facts and chase rules once a tick ([method set_survivors], [method set_rules]); each common's
 //! think then asks [method plan_chase] once for what `ZzCommonBrain._chase_plan_script` reads in five
-//! script calls, to the bit. The spacing half of a zombie's steer is [code]DotSimCrowdGrid.spaced_direction[/code];
+//! script calls, to the bit. The spacing half of a zombie's steer is [code]GSSimCrowdGrid.spaced_direction[/code];
 //! [method steer_step] is the whole steer after the path (spacing, wish, turn, look, progress watch) in one call,
 //! and [method walk] the whole move: the path's next corner, then that steer, with every member handed in.
 //! [method chase] is the plan and the chase's choice in one; [method nearest] and [method barricade_in_way] answer
 //! the think's two other questions of the horde off the same tick's tables.
 
-use crate::crowd::DotSimCrowdGrid;
+use crate::crowd::GSSimCrowdGrid;
 use dot_sim_math::Vec3;
 use dot_sim_zombie::decide::{self, Barricade, Barricades};
 use dot_sim_zombie::steer::{self, SteerIn, SteerOut, Turn, TurnProfile, Watch};
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 const ALIVE: i32 = 1;
 const DOWN: i32 = 2;
 
-/// [method DotSimZombieBrains.chase] flag bits.
+/// [method GSSimZombieBrains.chase] flag bits.
 const BURNING: i32 = 1;
 const CRAWLER: i32 = 2;
 const SWINGING: i32 = 4;
@@ -29,7 +29,7 @@ const SWINGING: i32 = 4;
 /// The tick's survivor table and chase rules, and the plans asked of them.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimZombieBrains {
+pub struct GSSimZombieBrains {
     ids: Vec<StringName>,
     survivors: Vec<Survivor>,
     rules: Rules,
@@ -52,7 +52,7 @@ pub struct DotSimZombieBrains {
     repath: Option<Repath>,
 }
 
-/// One zombie's state held in [member DotSimZombieBrains.store]: its character's turn state and
+/// One zombie's state held in [member GSSimZombieBrains.store]: its character's turn state and
 /// tuning, and its brain's progress watch.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Stored {
@@ -63,14 +63,14 @@ struct Stored {
     stuck_seconds: f64,
 }
 
-/// [method DotSimZombieBrains.store_put]'s [param s] and [method DotSimZombieBrains.walk_stored]'s lengths.
+/// [method GSSimZombieBrains.store_put]'s [param s] and [method GSSimZombieBrains.walk_stored]'s lengths.
 const STORE_FLOATS: usize = 13;
 const WALK_STORED_FLOATS: usize = 15;
 const WALK_STORED_INTS: usize = 2;
 /// The store's first sweep size.
 const SWEEP_FIRST: usize = 64;
 
-/// The script members [method DotSimZombieBrains.steer_step] reads and writes, named once.
+/// The script members [method GSSimZombieBrains.steer_step] reads and writes, named once.
 struct Names {
     facing_at_tick: StringName,
     progress_at: StringName,
@@ -128,7 +128,7 @@ fn member<T: FromGodot>(o: &Gd<Object>, name: &StringName) -> Option<T> {
     o.get(name).try_to::<T>().ok()
 }
 
-impl DotSimZombieBrains {
+impl GSSimZombieBrains {
     fn who(&self, name: &StringName) -> Who {
         if *name == self.empty {
             return Who::Nobody;
@@ -141,7 +141,7 @@ impl DotSimZombieBrains {
 }
 
 #[godot_api]
-impl DotSimZombieBrains {
+impl GSSimZombieBrains {
     /// The tick's survivors: [param ids], where each stands, and its flags (1 alive, 2 down), as
     /// the horde's facts. Arrays of different sizes are an error and empty the table.
     #[func]
@@ -156,7 +156,7 @@ impl DotSimZombieBrains {
         let (at, flags) = (at.as_slice(), flags.as_slice());
         if ids.len() != at.len() || ids.len() != flags.len() {
             godot_error!(
-                "DotSimZombieBrains.set_survivors: {} ids, {} positions, {} flags",
+                "GSSimZombieBrains.set_survivors: {} ids, {} positions, {} flags",
                 ids.len(),
                 at.len(),
                 flags.len()
@@ -308,7 +308,7 @@ impl DotSimZombieBrains {
         let (ids, position, size) = (ids.as_slice(), position.as_slice(), size.as_slice());
         if ids.len() != position.len() || ids.len() != size.len() {
             godot_error!(
-                "DotSimZombieBrains.set_barricades: {} ids, {} positions, {} sizes",
+                "GSSimZombieBrains.set_barricades: {} ids, {} positions, {} sizes",
                 ids.len(),
                 position.len(),
                 size.len()
@@ -324,7 +324,7 @@ impl DotSimZombieBrains {
             })
             .collect();
         let Some(table) = Barricades::new(boxes, cell, reach) else {
-            godot_error!("DotSimZombieBrains.set_barricades: cell {cell} is not above zero");
+            godot_error!("GSSimZombieBrains.set_barricades: cell {cell} is not above zero");
             return false;
         };
         self.barricades = table;
@@ -364,7 +364,7 @@ impl DotSimZombieBrains {
     #[allow(clippy::too_many_arguments)]
     fn steer_step(
         &mut self,
-        grid: Gd<DotSimCrowdGrid>,
+        grid: Gd<GSSimCrowdGrid>,
         id: i64,
         brain: Gd<Object>,
         character: Gd<Object>,
@@ -423,7 +423,7 @@ impl DotSimZombieBrains {
     #[allow(clippy::too_many_arguments)]
     fn steer_walk(
         &mut self,
-        grid: Gd<DotSimCrowdGrid>,
+        grid: Gd<GSSimCrowdGrid>,
         id: i64,
         character: Gd<Object>,
         body: Gd<Node3D>,
@@ -472,7 +472,7 @@ impl DotSimZombieBrains {
     #[allow(clippy::too_many_arguments)]
     fn walk(
         &mut self,
-        grid: Gd<DotSimCrowdGrid>,
+        grid: Gd<GSSimCrowdGrid>,
         id: i64,
         body: Gd<Node3D>,
         points: PackedVector3Array,
@@ -574,7 +574,7 @@ impl DotSimZombieBrains {
         PackedFloat64Array::from(&answer)
     }
 
-    /// `DotNpcAiCharacter.turn_view` for [param character], answered without touching it (what
+    /// `GSNpcAiCharacter.turn_view` for [param character], answered without touching it (what
     /// [method steer_step] turns by; for the parity suites). Returns [code][facing.x, facing.y, facing.z,
     /// peak, over_amt, turns, over_axis.x, over_axis.y, over_axis.z][/code], or [code][-1][/code] when
     /// a member could not be read.
@@ -616,7 +616,7 @@ impl DotSimZombieBrains {
         let s = s.as_slice();
         if s.len() < STORE_FLOATS {
             godot_error!(
-                "DotSimZombieBrains.store_put: {} floats, {} wanted",
+                "GSSimZombieBrains.store_put: {} floats, {} wanted",
                 s.len(),
                 STORE_FLOATS
             );
@@ -708,7 +708,7 @@ impl DotSimZombieBrains {
     #[allow(clippy::too_many_arguments)]
     fn walk_stored(
         &mut self,
-        grid: Gd<DotSimCrowdGrid>,
+        grid: Gd<GSSimCrowdGrid>,
         id: i64,
         key: i64,
         body: Gd<Node3D>,
@@ -795,7 +795,7 @@ impl DotSimZombieBrains {
     #[allow(clippy::too_many_arguments)]
     fn steer_stored(
         &mut self,
-        grid: Gd<DotSimCrowdGrid>,
+        grid: Gd<GSSimCrowdGrid>,
         id: i64,
         key: i64,
         body: Gd<Node3D>,
@@ -922,7 +922,7 @@ impl DotSimZombieBrains {
     }
 }
 
-impl DotSimZombieBrains {
+impl GSSimZombieBrains {
     /// A steer's writes to the stored entry under [param key] (read as [param e]): the turn, and the
     /// watch restarted from [param here] at [param now] when [param restart].
     fn keep(&mut self, key: i64, e: &Stored, t: Turn, restart: bool, here: Vec3, now: f64) {
@@ -948,7 +948,7 @@ fn pose(body: &Gd<Node3D>) -> (Vec3, Vec3) {
 
 /// The crowd grid's spaced heading for zombie [param id], or `None` when it is not in the grid.
 fn spaced(
-    grid: &Gd<DotSimCrowdGrid>,
+    grid: &Gd<GSSimCrowdGrid>,
     id: i64,
     here: Vec3,
     goal: Vec3,
@@ -971,14 +971,14 @@ struct BrainWatch {
     stuck_seconds: f64,
 }
 
-impl DotSimZombieBrains {
+impl GSSimZombieBrains {
     /// The steer of [method steer_step] and [method steer_walk] past the brain's members: returns the
     /// answer array, whether it steered, whether the watch reset and where the body stood. Writes the
     /// character and body under [param apply]; the brain is the caller's.
     #[allow(clippy::too_many_arguments)]
     fn steer_core(
         &mut self,
-        grid: &Gd<DotSimCrowdGrid>,
+        grid: &Gd<GSSimCrowdGrid>,
         id: i64,
         character: Gd<Object>,
         body: Gd<Node3D>,
@@ -1075,13 +1075,13 @@ impl DotSimZombieBrains {
     }
 }
 
-/// [method DotSimZombieBrains.walk]'s [param s] and [param n] lengths.
+/// [method GSSimZombieBrains.walk]'s [param s] and [param n] lengths.
 const WALK_FLOATS: usize = 32;
 const WALK_INTS: usize = 4;
 /// The length of a steer's answer.
 const ANSWER: usize = 19;
 
-/// [method DotSimZombieBrains.steer_step]'s answer for a steer: [code][code, watch, wished, wish xyz,
+/// [method GSSimZombieBrains.steer_step]'s answer for a steer: [code][code, watch, wished, wish xyz,
 /// looked, look xyz, peak, over_amt, turns, over_axis xyz, here xyz][/code].
 fn answer_of(out: &SteerOut, t: &Turn, here: Vec3) -> [f64; ANSWER] {
     let (wish, look) = (out.wish.unwrap_or_default(), out.look.unwrap_or_default());
@@ -1113,7 +1113,7 @@ fn answer_of(out: &SteerOut, t: &Turn, here: Vec3) -> [f64; ANSWER] {
     ]
 }
 
-/// A character's turn state and tuning, as `DotNpcAiCharacter` keeps them; `None` when one is missing.
+/// A character's turn state and tuning, as `GSNpcAiCharacter` keeps them; `None` when one is missing.
 fn turn_of(names: &Names, character: &Gd<Object>) -> Option<(Turn, TurnProfile)> {
     Some((
         Turn {

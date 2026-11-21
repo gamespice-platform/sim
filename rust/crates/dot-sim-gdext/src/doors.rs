@@ -1,4 +1,4 @@
-//! `DotSimDoorReach`: game-murder-mystery's `MmDoors.door_for` over a table of posed panels.
+//! `GSSimDoorReach`: game-murder-mystery's `MmDoors.door_for` over a table of posed panels.
 //!
 //! The game writes a door's panel each time it poses it (`set_door`: the transform, its
 //! `affine_inverse()` from the engine, the box size), then asks `door_for` as often as it likes:
@@ -13,21 +13,21 @@ use godot::prelude::*;
 /// A map's door panels where they were last posed, and the reach ask over them.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimDoorReach {
+pub struct GSSimDoorReach {
     panels: Vec<Panel>,
     spots: Vec<Spot>,
     found: Vec<i32>,
 }
 
 #[godot_api]
-impl DotSimDoorReach {
+impl GSSimDoorReach {
     /// Holds [param count] doors, the new ones unposed (identity, zero size); fails loudly below zero.
     #[func]
     fn resize(&mut self, count: i32) {
         match usize::try_from(count) {
             Ok(n) => self.panels.resize(n, Panel::default()),
             Err(_) => {
-                godot_error!("DotSimDoorReach.resize: count {count} is negative");
+                godot_error!("GSSimDoorReach.resize: count {count} is negative");
             }
         }
     }
@@ -47,7 +47,7 @@ impl DotSimDoorReach {
             .and_then(|i| self.panels.get_mut(i))
         else {
             godot_error!(
-                "DotSimDoorReach.set_door: index {index} outside {} doors",
+                "GSSimDoorReach.set_door: index {index} outside {} doors",
                 self.panels.len()
             );
             return;
@@ -75,7 +75,7 @@ impl DotSimDoorReach {
         let w = swing.as_slice();
         if p.len() != w.len() * 4 {
             godot_error!(
-                "DotSimDoorReach.set_spots: {} places for {} doors (four each)",
+                "GSSimDoorReach.set_spots: {} places for {} doors (four each)",
                 p.len(),
                 w.len()
             );

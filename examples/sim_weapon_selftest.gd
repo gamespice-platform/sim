@@ -1,6 +1,6 @@
 extends Node
 
-## dot-sim's weapon parity suite (`godot --headless --path . res://examples/sim_weapon_selftest.tscn`): DotSimWeaponSpread against dot-weapon's script tick, same inputs, same answers.
+## dot-sim's weapon parity suite (`godot --headless --path . res://examples/sim_weapon_selftest.tscn`): GSSimWeaponSpread against dot-weapon's script tick, same inputs, same answers.
 ## Needs GameSpice Weapon linked and the library installed; without either it says so and passes.
 
 var _passed := 0
@@ -8,13 +8,13 @@ var _failed := 0
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	_run.call_deferred()
 
 
 func _run() -> void:
 	print("dot-sim weapon self-test")
-	var native := DotSim.has(&"weapon")
+	var native := GSSim.has(&"weapon")
 	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
 		_check(native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	if native:
@@ -129,11 +129,11 @@ func _test_weapon_parity() -> void:
 	hitscan.set(&"native_tick", was_native)
 
 
-## `DotSimWeaponSpread.idle` against the arsenal's idle tick in script: `rest_tick(idle_still)` and, when it declines,
+## `GSSimWeaponSpread.idle` against the arsenal's idle tick in script: `rest_tick(idle_still)` and, when it declines,
 ## `_tick(idle_posture)`. Postures are often settled (the rest path) and never aiming, as an idle posture is.
 func _test_weapon_idle_parity(rng: RandomNumberGenerator) -> void:
-	if not ClassDB.class_has_method(&"DotSimWeaponSpread", &"idle"):
-		_check(false, "DotSimWeaponSpread has idle")
+	if not ClassDB.class_has_method(&"GSSimWeaponSpread", &"idle"):
+		_check(false, "GSSimWeaponSpread has idle")
 		return
 	var ticks := 0
 	var same_state := 0
@@ -252,7 +252,7 @@ func _weapon_case(rng: RandomNumberGenerator) -> Array:
 		arsenal.spread_rules = r
 	var h: Object = load(WEAPON_DIR + "behaviour/dot_weapon_hitscan.gd").new()
 	h.setup(def, arsenal)
-	var native: Object = ClassDB.instantiate(&"DotSimWeaponSpread")
+	var native: Object = ClassDB.instantiate(&"GSSimWeaponSpread")
 	var ok: bool = native.set_tuning(_weapon_tuning(h, b))
 	var rules_row := PackedFloat64Array()
 	var on: Object = arsenal.spread_rules
@@ -268,7 +268,7 @@ func _weapon_case(rng: RandomNumberGenerator) -> Array:
 	return [h, native, arsenal]
 
 
-## The tuning row [method DotSimWeaponSpread.set_tuning] takes, from the behaviour's own resolution of its class.
+## The tuning row [method GSSimWeaponSpread.set_tuning] takes, from the behaviour's own resolution of its class.
 func _weapon_tuning(h: Object, b: Object) -> PackedFloat64Array:
 	h._class_of(b)
 	return PackedFloat64Array([
@@ -299,7 +299,7 @@ func _weapon_posture(rng: RandomNumberGenerator, ctx: Object, h: Object) -> void
 	ctx.hurt_tick = ctx.tick - rng.randi_range(-2, 40) if rng.randf() < 0.3 else -1
 
 
-## The posture row [method DotSimWeaponSpread.tick] takes.
+## The posture row [method GSSimWeaponSpread.tick] takes.
 func _weapon_row(ctx: Object) -> PackedFloat64Array:
 	return PackedFloat64Array([
 		ctx.speed, 1.0 if ctx.airborne else 0.0, 1.0 if ctx.crouched else 0.0, 1.0 if ctx.aiming else 0.0,

@@ -1,5 +1,5 @@
-//! A hitscan weapon's spread state tick: dot-weapon's `DotWeaponHitscan._tick` (bloom shedding, motion settling,
-//! the `DotWeaponSpreadRules` factor and the cone of `_spread_at`), spelled in the script's order and in `f64`, so
+//! A hitscan weapon's spread state tick: dot-weapon's `GSWeaponHitscan._tick` (bloom shedding, motion settling,
+//! the `GSWeaponSpreadRules` factor and the cone of `_spread_at`), spelled in the script's order and in `f64`, so
 //! it agrees with the script to the bit. The server runs it for every idle player every tick, in that player's turn
 //! (a later player's hit changes an earlier one's flinch within the tick, so it is never batched across players).
 //!
@@ -8,9 +8,9 @@
 
 use dot_sim_math::{clampf, maxf, minf};
 
-/// `DotWeaponHitscan._NEVER`: the ticks-since-use count before any use, and its ceiling.
+/// `GSWeaponHitscan._NEVER`: the ticks-since-use count before any use, and its ceiling.
 pub const NEVER: i64 = 1 << 20;
-/// `DotWeaponAccuracyClass.FLINCH_SEC`.
+/// `GSWeaponAccuracyClass.FLINCH_SEC`.
 pub const FLINCH_SEC: f64 = 0.4;
 
 /// The script's `lerpf` (`Math::lerp`): `from + (to - from) * weight`.
@@ -75,7 +75,7 @@ impl Tuning {
         })
     }
 
-    /// `DotWeaponBallistics.spread_for`: the cone half-angle for a carrier in this posture, before bloom.
+    /// `GSWeaponBallistics.spread_for`: the cone half-angle for a carrier in this posture, before bloom.
     pub fn spread_for(&self, speed_now: f64, airborne: bool, crouched: bool) -> f64 {
         if airborne {
             return maxf(self.spread_airborne, maxf(self.spread, self.spread_moving));
@@ -89,7 +89,7 @@ impl Tuning {
         }
     }
 
-    /// `DotWeaponBallistics.spread_for_motion`.
+    /// `GSWeaponBallistics.spread_for_motion`.
     pub fn spread_for_motion(&self, motion: f64, airborne: bool, crouched: bool) -> f64 {
         self.spread_for(
             clampf(motion, 0.0, 1.0) * self.spread_speed_ref,
@@ -98,13 +98,13 @@ impl Tuning {
         )
     }
 
-    /// `DotWeaponHitscan._motion_of`.
+    /// `GSWeaponHitscan._motion_of`.
     pub fn motion_of(&self, speed: f64) -> f64 {
         clampf(speed / maxf(0.001, self.spread_speed_ref), 0.0, 1.0)
     }
 }
 
-/// The server's `DotWeaponSpreadRules` (the `sv_spread_*` cvars), with the recovery already per running tick.
+/// The server's `GSWeaponSpreadRules` (the `sv_spread_*` cvars), with the recovery already per running tick.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rules {
     pub enabled: bool,
@@ -154,7 +154,7 @@ impl Rules {
         })
     }
 
-    /// `DotWeaponSpreadRules.target_factor`.
+    /// `GSWeaponSpreadRules.target_factor`.
     pub fn target_factor(&self, p: &Posture) -> f64 {
         if !self.enabled {
             return 1.0;
@@ -185,7 +185,7 @@ impl Rules {
         })
     }
 
-    /// `DotWeaponSpreadRules.apply`.
+    /// `GSWeaponSpreadRules.apply`.
     pub fn apply(&self, base: f64, factor: f64) -> f64 {
         let out = base * factor;
         if self.max_spread > 0.0 {
@@ -196,7 +196,7 @@ impl Rules {
     }
 }
 
-/// The `DotWeaponContext` fields the tick reads.
+/// The `GSWeaponContext` fields the tick reads.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Posture {
     pub speed: f64,
@@ -214,7 +214,7 @@ pub struct Posture {
 pub const POSTURE_LEN: usize = 9;
 
 impl Posture {
-    /// `DotWeaponHitscan._settled_ctx()`: a carrier standing still on the ground, unhurt and not aiming.
+    /// `GSWeaponHitscan._settled_ctx()`: a carrier standing still on the ground, unhurt and not aiming.
     pub const SETTLED: Self = Self {
         speed: 0.0,
         airborne: false,
@@ -296,7 +296,7 @@ pub struct Ticked {
     pub wrote: u8,
 }
 
-/// `DotWeaponHitscan._spread_at`: the cone for this posture at the given motion, factor and bloom.
+/// `GSWeaponHitscan._spread_at`: the cone for this posture at the given motion, factor and bloom.
 pub fn spread_at(
     t: &Tuning,
     p: &Posture,
@@ -338,7 +338,7 @@ pub fn spread_at(
     out
 }
 
-/// `DotWeaponHitscan._spread_with` (and `_spread_for` under the frame's rules): the state's motion, factor and bloom.
+/// `GSWeaponHitscan._spread_with` (and `_spread_for` under the frame's rules): the state's motion, factor and bloom.
 pub fn spread_with(t: &Tuning, p: &Posture, frame: &Frame, s: &State) -> f64 {
     let motion = maxf(s.motion.unwrap_or(0.0), t.motion_of(p.speed));
     spread_at(
@@ -351,7 +351,7 @@ pub fn spread_with(t: &Tuning, p: &Posture, frame: &Frame, s: &State) -> f64 {
     )
 }
 
-/// `DotWeaponHitscan._tick` with a context ([`None`] for the posture is a tick without one), on a behaviour with a
+/// `GSWeaponHitscan._tick` with a context ([`None`] for the posture is a tick without one), on a behaviour with a
 /// ballistics tuning. Writes the state as the script does and returns the cone it computed.
 pub fn tick(t: &Tuning, posture: Option<&Posture>, frame: &Frame, s: &mut State) -> Ticked {
     let since = (s.since.unwrap_or(NEVER) + 1).min(NEVER);
@@ -401,7 +401,7 @@ pub fn tick(t: &Tuning, posture: Option<&Posture>, frame: &Frame, s: &mut State)
     }
 }
 
-/// `DotWeaponHitscan.rest_tick`'s state checks under the frame: nothing to recover (no motion key, no bloom to shed, no
+/// `GSWeaponHitscan.rest_tick`'s state checks under the frame: nothing to recover (no motion key, no bloom to shed, no
 /// factor short of the settled posture's) and no crosshair cone to keep. When this holds on a settled carrier a tick
 /// would change only the ticks since the last use, which [`rest`] counts.
 pub fn rests(t: &Tuning, frame: &Frame, s: &State) -> bool {

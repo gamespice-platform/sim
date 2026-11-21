@@ -1,13 +1,13 @@
-//! `DotSimBodySight`: game-hide-n-seek's bodies in sight (`HsBots._sees`, `_nearest_seen_seeker`,
+//! `GSSimBodySight`: game-hide-n-seek's bodies in sight (`HsBots._sees`, `_nearest_seen_seeker`,
 //! `_visible_prey`), the tick's bodies written once and each ask one call.
 //!
-//! The game binds a [`DotSimSightRay`] to its world (`set_sight`), sets its rules (`set_rules`),
+//! The game binds a [`GSSimSightRay`] to its world (`set_sight`), sets its rules (`set_rules`),
 //! writes the bodies as the tick has them before the bots are driven (`set_bodies`), then asks
 //! `nearest_seen` and `sees` by body index (`dot_sim_seek::body`; the game's
 //! `headless_native_sight` and its `HS_SIGHT_VERIFY` hold the two together). Every line of sight
 //! is the script's `_clear_between` ray, asked natively.
 
-use crate::sight::{DotSimSightRay, SightQuery};
+use crate::sight::{GSSimSightRay, SightQuery};
 use dot_sim_math::Vec3;
 use dot_sim_seek::body::{Body, BodyRules, Look, body_sees, nearest_seen};
 use godot::prelude::*;
@@ -20,20 +20,20 @@ const MARKED: i32 = 8;
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimBodySight {
+pub struct GSSimBodySight {
     bodies: Vec<Body>,
     rules: BodyRules,
-    sight: Option<Gd<DotSimSightRay>>,
+    sight: Option<Gd<GSSimSightRay>>,
     query: SightQuery,
     /// Rays asked since the last `rays` read.
     rays: i64,
 }
 
 #[godot_api]
-impl DotSimBodySight {
+impl GSSimBodySight {
     /// The ray every line of sight is asked with (none: every line is clear).
     #[func]
-    fn set_sight(&mut self, ray: Option<Gd<DotSimSightRay>>) {
+    fn set_sight(&mut self, ray: Option<Gd<GSSimSightRay>>) {
         self.sight = ray;
         self.query = SightQuery::default();
     }
@@ -78,7 +78,7 @@ impl DotSimBodySight {
             .any(|&l| l != n)
         {
             godot_error!(
-                "DotSimBodySight.set_bodies: {} feet, {} eyes, {} aims, {} velocities, {} crouches, {} flags, {} sides",
+                "GSSimBodySight.set_bodies: {} feet, {} eyes, {} aims, {} velocities, {} crouches, {} flags, {} sides",
                 n,
                 e.len(),
                 f.len(),

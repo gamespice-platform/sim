@@ -1,5 +1,5 @@
 //! Golden bytes worked by hand from the script codec, and round trips. The engine-side parity
-//! suite (`examples/snapshot_selftest.tscn`) compares against `DotNetWriter` itself.
+//! suite (`examples/snapshot_selftest.tscn`) compares against `GSNetWriter` itself.
 
 use super::*;
 

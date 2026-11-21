@@ -1,5 +1,5 @@
-//! `DotSimHullWorld`: where every player stands during a server's players' loop, so a motor tick
-//! gathers the other players' standing hulls natively (`DotSimFpsBody` hulls mode 3) instead of
+//! `GSSimHullWorld`: where every player stands during a server's players' loop, so a motor tick
+//! gathers the other players' standing hulls natively (`GSSimFpsBody` hulls mode 3) instead of
 //! asking the game script once per player and tick.
 //!
 //! The answer is the script gather's to the bit (game-fatal-contact `_add_hulls_local`): the roster in
@@ -11,7 +11,7 @@ use dot_sim_motor::Vec3 as V3;
 use dot_sim_motor::slide::Aabb as SlideBox;
 use godot::prelude::*;
 
-/// Per slot in [`DotSimHullWorld::begin`]'s data: x, y, z, radius, stand height, flags.
+/// Per slot in [`GSSimHullWorld::begin`]'s data: x, y, z, radius, stand height, flags.
 const SLOT_LEN: usize = 6;
 /// The slot has a controller and a state.
 const PRESENT: i64 = 1;
@@ -23,7 +23,7 @@ const NATIVE: i64 = 4;
 /// Where the players stand during one players' loop, and this loop's pair answers.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimHullWorld {
+pub struct GSSimHullWorld {
     live: bool,
     ids: Vec<i64>,
     feet: Vec<V3>,
@@ -39,7 +39,7 @@ pub struct DotSimHullWorld {
 }
 
 #[godot_api]
-impl DotSimHullWorld {
+impl GSSimHullWorld {
     /// Starts a players' loop: `ids` the roster in order, `data` per slot x, y, z, radius, stand
     /// height and flags (1 present, 2 alive, 4 may gather natively), `pair` the symmetric
     /// `(id, other_id) -> bool` blocks test (invalid: every pair blocks), `reach_sq` the squared
@@ -141,7 +141,7 @@ impl DotSimHullWorld {
     }
 }
 
-impl DotSimHullWorld {
+impl GSSimHullWorld {
     /// Where slot `slot` stands, for a batch that moves it and may have to put it back.
     pub fn feet(&self, slot: i64) -> Option<V3> {
         usize::try_from(slot)

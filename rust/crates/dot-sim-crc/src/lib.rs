@@ -1,5 +1,5 @@
 //! CRC-32 (the zlib polynomial, reflected) by slicing-by-8: the same value as dot-map's
-//! `DotMapVpk.crc32`, which stays the specification and the fallback.
+//! `GSMapVpk.crc32`, which stays the specification and the fallback.
 
 const fn tables() -> [[u32; 256]; 8] {
     let mut t = [[0u32; 256]; 8];

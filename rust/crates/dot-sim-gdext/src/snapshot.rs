@@ -1,21 +1,21 @@
-//! `DotSimSnapshotCodec`: one behaviour's state encode and decode, byte for byte the script's.
+//! `GSSimSnapshotCodec`: one behaviour's state encode and decode, byte for byte the script's.
 
 use dot_sim_snapshot::{
     Decl, Decoded, Kind, Reader, Stop, Value, Writer, decode_state, encode_state, to_int,
 };
 use godot::prelude::*;
 
-/// One behaviour class's declarations (`DotNetBehaviour._native_spec()` rows) and scratch.
+/// One behaviour class's declarations (`GSNetBehaviour._native_spec()` rows) and scratch.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimSnapshotCodec {
+pub struct GSSimSnapshotCodec {
     decls: Vec<Decl>,
     writer: Writer,
     entries: Vec<(usize, Value)>,
     decoded: Decoded,
 }
 
-/// The value as `DotNetVar.write` converts it (what dot-net's C++ core accepts too), or `None`
+/// The value as `GSNetVar.write` converts it (what dot-net's C++ core accepts too), or `None`
 /// for one only the script converts.
 fn to_value(d: &Decl, v: &Variant) -> Option<Value> {
     let t = v.get_type();
@@ -83,8 +83,8 @@ fn to_variant(v: &Value) -> Variant {
 }
 
 #[godot_api]
-impl DotSimSnapshotCodec {
-    /// The declarations, one `PackedFloat64Array` per `DotNetVar` in registration order. Returns
+impl GSSimSnapshotCodec {
+    /// The declarations, one `PackedFloat64Array` per `GSNetVar` in registration order. Returns
     /// how many of them the codec does itself (the rest stop it, and the script does them).
     #[func]
     fn set_spec(&mut self, rows: VarArray) -> i64 {
@@ -107,7 +107,7 @@ impl DotSimSnapshotCodec {
             .is_some_and(|d| d.native)
     }
 
-    /// `DotNetBehaviour._encode`'s bytes: `pad` zero bits, `count` in 6 bits, then
+    /// `GSNetBehaviour._encode`'s bytes: `pad` zero bits, `count` in 6 bits, then
     /// `indices[i]` and `values[i]` for each. `[bytes, bit_length]`, or empty when any value is
     /// one the script must write.
     #[func]
@@ -144,7 +144,7 @@ impl DotSimSnapshotCodec {
         out
     }
 
-    /// `DotNetBehaviour.read_state`'s reads from bit `bit_pos` of `bytes`, ending at `end_bits`
+    /// `GSNetBehaviour.read_state`'s reads from bit `bit_pos` of `bytes`, ending at `end_bits`
     /// (negative: the buffer's end): the count header when `remaining` is negative, else that
     /// many more entries. Fills `out` with `[bit position after, exhausted, entries left,
     /// stopped index, index, value, index, value...]` and returns the stop: 0 all read,

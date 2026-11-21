@@ -1,5 +1,5 @@
-//! The path half of a zombie's move: dot-npc's `DotNpcPathing.path_toward` on a path that is not due a
-//! repath (its repath test, `DotNpcPath.needs_repath`, then `DotNpcPath.advance`), so the steer after it
+//! The path half of a zombie's move: dot-npc's `GSNpcPathing.path_toward` on a path that is not due a
+//! repath (its repath test, `GSNpcPath.needs_repath`, then `GSNpcPath.advance`), so the steer after it
 //! ([`crate::steer`]) has its goal without a script call.
 //!
 //! Pure: [`path_goal`] takes the path's state and returns the goal and where the path's index ends up,
@@ -8,7 +8,7 @@
 
 use dot_sim_math::{Vec3, maxf};
 
-/// A `DotNpcPath` as `path_toward` reads it.
+/// A `GSNpcPath` as `path_toward` reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PathState {
     /// `index`.
@@ -42,13 +42,13 @@ pub enum PathGoal {
     Goal { goal: Vec3, index: i64 },
 }
 
-/// `DotNpcPath.is_finished`.
+/// `GSNpcPath.is_finished`.
 #[inline]
 fn finished(points: &[Vec3], index: i64) -> bool {
     points.is_empty() || index >= points.len() as i64
 }
 
-/// `DotNpcPath.needs_repath`.
+/// `GSNpcPath.needs_repath`.
 pub fn needs_repath(
     points: &[Vec3],
     p: &PathState,
@@ -69,7 +69,7 @@ pub fn needs_repath(
     drift > 0.0 && f64::from(goal.distance_to(p.goal_at_compute)) > drift
 }
 
-/// `DotNpcPath.advance(position, fallback)`: past every point `here` is within the arrive radius of
+/// `GSNpcPath.advance(position, fallback)`: past every point `here` is within the arrive radius of
 /// (measured flat), returning the next one and the index it stopped at, or `fallback` at the end.
 /// `None` for a negative index, which the script reads from the end of the array: the caller lets the
 /// script walk such a path.

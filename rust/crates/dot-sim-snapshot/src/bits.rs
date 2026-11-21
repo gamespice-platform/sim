@@ -1,9 +1,9 @@
-//! `DotNetWriter` and `DotNetReader`'s bit packing: least significant bit first, bytes in order.
+//! `GSNetWriter` and `GSNetReader`'s bit packing: least significant bit first, bytes in order.
 
-/// `DotNetWriter.MAX_BYTES`.
+/// `GSNetWriter.MAX_BYTES`.
 pub const MAX_BYTES: usize = 1 << 22;
 
-/// A growing bit buffer, as `DotNetWriter`.
+/// A growing bit buffer, as `GSNetWriter`.
 #[derive(Default, Debug, Clone)]
 pub struct Writer {
     pub bytes: Vec<u8>,
@@ -73,7 +73,7 @@ impl Writer {
     }
 }
 
-/// A bounded bit cursor over borrowed bytes, as `DotNetReader`: once a read runs past the end it
+/// A bounded bit cursor over borrowed bytes, as `GSNetReader`: once a read runs past the end it
 /// is exhausted, and every read after returns zero.
 #[derive(Debug)]
 pub struct Reader<'a> {

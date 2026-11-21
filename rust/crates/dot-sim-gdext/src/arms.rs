@@ -1,4 +1,4 @@
-//! `DotSimViewArms`: the view arms' elbow clearance scan (dot-player-char `DotViewArmsClear.scan`),
+//! `GSSimViewArms`: the view arms' elbow clearance scan (dot-player-char `GSViewArmsClear.scan`),
 //! bit for bit the script's. Presentation only: it never feeds the simulation.
 
 use dot_sim_arms::{Aabb as Box3, Vec3 as V3, Xform, scan};
@@ -12,11 +12,11 @@ fn v3(v: Vector3) -> V3 {
 /// Stateless; one per view arms node.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimViewArms {}
+pub struct GSSimViewArms {}
 
 #[godot_api]
-impl DotSimViewArms {
-    /// `DotViewArmsClear.scan`'s `[turned.x, turned.y, turned.z, turn, depth]`.
+impl GSSimViewArms {
+    /// `GSViewArmsClear.scan`'s `[turned.x, turned.y, turned.z, turn, depth]`.
     #[allow(clippy::too_many_arguments)]
     #[func]
     fn clear_pole(

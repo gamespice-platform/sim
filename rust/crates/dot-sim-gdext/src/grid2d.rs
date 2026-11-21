@@ -1,4 +1,4 @@
-//! `DotSimGrid2D`: dot-2d's `Dot2DGrid` kept in step by the game, and Hungario's bot forage.
+//! `GSSimGrid2D`: dot-2d's `GS2DGrid` kept in step by the game, and Hungario's bot forage.
 //!
 //! The game mirrors each `place`, `remove` and `clear` of its script grid here (with a worth per
 //! id: Hungario's mass of a pellet), or adopts a grid the script already built in one call
@@ -15,7 +15,7 @@ use godot::prelude::*;
 /// A script grid's ids, cells and positions, with a worth per id, and the bot forage over them.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimGrid2D {
+pub struct GSSimGrid2D {
     grid: Grid,
     rules: ForageRules,
     query: Vec<i64>,
@@ -23,7 +23,7 @@ pub struct DotSimGrid2D {
 }
 
 #[godot_api]
-impl DotSimGrid2D {
+impl GSSimGrid2D {
     /// The script grid's `cell_size` (at least 1). Set it while empty.
     #[func]
     fn set_cell_size(&mut self, cell_size: f64) {
@@ -35,19 +35,19 @@ impl DotSimGrid2D {
         self.grid.cell()
     }
 
-    /// `Dot2DGrid.place` with the id's worth.
+    /// `GS2DGrid.place` with the id's worth.
     #[func]
     fn place(&mut self, id: i64, position: Vector2, worth: f64) {
         self.grid.place(id, position.x, position.y, worth);
     }
 
-    /// `Dot2DGrid.remove`.
+    /// `GS2DGrid.remove`.
     #[func]
     fn remove(&mut self, id: i64) {
         self.grid.remove(id);
     }
 
-    /// `Dot2DGrid.clear`.
+    /// `GS2DGrid.clear`.
     #[func]
     fn clear(&mut self) {
         self.grid.clear();
@@ -96,7 +96,7 @@ impl DotSimGrid2D {
         let (ids, positions, worths) = (ids.as_slice(), positions.as_slice(), worths.as_slice());
         if keys.len() != counts.len() || ids.len() != positions.len() || ids.len() != worths.len() {
             godot_error!(
-                "DotSimGrid2D.adopt: {} keys, {} counts, {} ids, {} positions, {} worths",
+                "GSSimGrid2D.adopt: {} keys, {} counts, {} ids, {} positions, {} worths",
                 keys.len(),
                 counts.len(),
                 ids.len(),
@@ -113,7 +113,7 @@ impl DotSimGrid2D {
                 .and_then(|n| at.checked_add(n))
                 .filter(|&end| end <= ids.len())
             else {
-                godot_error!("DotSimGrid2D.adopt: cell count {count} runs past the ids");
+                godot_error!("GSSimGrid2D.adopt: cell count {count} runs past the ids");
                 self.grid.clear();
                 return false;
             };
@@ -125,7 +125,7 @@ impl DotSimGrid2D {
         true
     }
 
-    /// `Dot2DGrid.query_rect`: the same ids in the same order.
+    /// `GS2DGrid.query_rect`: the same ids in the same order.
     #[func]
     fn query_rect(&mut self, rect: Rect2, exclude: i64) -> PackedInt64Array {
         let r = Rect {

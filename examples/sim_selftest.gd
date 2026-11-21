@@ -23,13 +23,13 @@ var _failed := 0
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	_run.call_deferred()
 
 
 func _run() -> void:
 	print("dot-sim self-test")
-	var native := DotSim.has(&"bots")
+	var native := GSSim.has(&"bots")
 	print("  native bots module: %s" % ("loaded" if native else "absent (script fallback only)"))
 	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
 		_check(native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
@@ -39,9 +39,9 @@ func _run() -> void:
 		_test_brain_parity()
 		_test_tier_parity()
 		_bench_scan()
-	if DotSim.has(&"arms"):
+	if GSSim.has(&"arms"):
 		_test_arms_parity()
-	if DotSim.has(&"sight"):
+	if GSSim.has(&"sight"):
 		await _test_sight_ray_parity()
 		await _test_sight_clear_to_parity()
 	print("")
@@ -58,9 +58,9 @@ func _check(ok: bool, what: String, detail: String = "") -> void:
 		print("  FAIL  %s%s" % [what, "" if detail == "" else " (%s)" % detail])
 
 
-## Random sight rays through DotSimSightRay against the script's PhysicsRayQueryParameters3D ray (same mask, exclusions
+## Random sight rays through GSSimSightRay against the script's PhysicsRayQueryParameters3D ray (same mask, exclusions
 ## and end point), on the main thread and on a worker holding the lock, after a rebind changes the mask, and with a jail
-## cell bound (dot_map's DotMapGlassSight.blocks in front, written out here: glass on its own layer).
+## cell bound (dot_map's GSMapGlassSight.blocks in front, written out here: glass on its own layer).
 func _test_sight_ray_parity() -> void:
 	var root := Node3D.new()
 	add_child(root)
@@ -71,7 +71,7 @@ func _test_sight_ray_parity() -> void:
 	await get_tree().physics_frame
 	var space := root.get_world_3d().direct_space_state
 	var exclude: Array[RID] = [rids[1], rids[2], rids[3]]
-	var ray: Object = ClassDB.instantiate(&"DotSimSightRay")
+	var ray: Object = ClassDB.instantiate(&"GSSimSightRay")
 	var lock := Mutex.new()
 	var cases := _sight_cases(rng)
 	var blocked := 0
@@ -134,7 +134,7 @@ func _test_sight_ray_parity() -> void:
 	root.queue_free()
 
 
-## DotSimSightRay.clear_to against a game's `_clear_between` ray (PhysicsRayQueryParameters3D.create(from, to) with the
+## GSSimSightRay.clear_to against a game's `_clear_between` ray (PhysicsRayQueryParameters3D.create(from, to) with the
 ## mask set, no exclusions): the end point as given and no short-ray answer, so every ray agrees to the bit.
 func _test_sight_clear_to_parity() -> void:
 	var root := Node3D.new()
@@ -145,7 +145,7 @@ func _test_sight_clear_to_parity() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	var space := root.get_world_3d().direct_space_state
-	var ray: Object = ClassDB.instantiate(&"DotSimSightRay")
+	var ray: Object = ClassDB.instantiate(&"GSSimSightRay")
 	var cases := _sight_cases(rng)
 	var blocked := 0
 	for mask: int in [1, 3, 7]:
@@ -200,14 +200,14 @@ func _test_fallback() -> void:
 	var world := _world(_bodies(RandomNumberGenerator.new(), 12))
 	world.contacts_version = -1
 	_check(world.senses(world.contacts()) == null, "a world that does not bump contacts_version scans in script")
-	DotBotWorld.native_enabled = false
+	GSBotWorld.native_enabled = false
 	world.contacts_version = 1
 	_check(world.senses(world.contacts()) == null, "native_enabled off scans in script")
-	DotBotWorld.native_enabled = true
+	GSBotWorld.native_enabled = true
 	var thread := Thread.new()
 	thread.start(func() -> bool: return world.senses(world.contacts()) == null)
 	_check(thread.wait_to_finish(), "a brain on a worker thread scans in script")
-	var brain := DotBotBrain.new(1)
+	var brain := GSBotBrain.new(1)
 	var intent := brain.think(world.contacts()[0], world, 1.0)
 	_check(intent != null, "a brain thinks with the script scan")
 
@@ -224,16 +224,16 @@ func _test_scan_parity() -> void:
 		var bodies := _bodies(rng, rng.randi_range(2, 64))
 		var world := _world(bodies)
 		world.contacts_version = n
-		var me: DotBotContact = bodies[rng.randi_range(0, bodies.size() - 1)]
-		var p := DotBotProfile.new()
+		var me: GSBotContact = bodies[rng.randi_range(0, bodies.size() - 1)]
+		var p := GSBotProfile.new()
 		p.fov = rng.randf_range(40.0, 200.0)
 		p.sight = rng.randf_range(5.0, 120.0)
-		var forward := DotBotAim.direction(rng.randf_range(-180.0, 180.0), rng.randf_range(-85.0, 85.0))
-		var target: int = (bodies[rng.randi_range(0, bodies.size() - 1)] as DotBotContact).id if rng.randf() < 0.6 else -1
+		var forward := GSBotAim.direction(rng.randf_range(-180.0, 180.0), rng.randf_range(-85.0, 85.0))
+		var target: int = (bodies[rng.randi_range(0, bodies.size() - 1)] as GSBotContact).id if rng.randf() < 0.6 else -1
 		var visible := rng.randf() < 0.5
-		var a := DotBotBrain.new(me.id)
-		var b := DotBotBrain.new(me.id)
-		for brain: DotBotBrain in [a, b]:
+		var a := GSBotBrain.new(me.id)
+		var b := GSBotBrain.new(me.id)
+		for brain: GSBotBrain in [a, b]:
 			brain.target_id = target
 			brain._visible = visible
 		var sa := PackedFloat32Array()
@@ -257,9 +257,9 @@ func _test_scan_parity() -> void:
 ## Whole brains over a moving fight, once in script and once native: every intent of every tick the same.
 func _test_brain_parity() -> void:
 	print("brains: native against script")
-	DotBotWorld.native_enabled = false
+	GSBotWorld.native_enabled = false
 	var script_run := _play()
-	DotBotWorld.native_enabled = true
+	GSBotWorld.native_enabled = true
 	var native_run := _play()
 	var first := -1
 	for t in mini(script_run.size(), native_run.size()):
@@ -278,12 +278,12 @@ func _test_brain_parity() -> void:
 ## The same fight with the sight LOD on (far 20 m, hold 0.15 s): every intent equal, script against native, and fewer rays than without it.
 func _test_sight_lod_parity() -> void:
 	print("sight LOD: native against script")
-	DotBotWorld.native_enabled = false
+	GSBotWorld.native_enabled = false
 	var script_run := _play(20.0, 0.15)
 	var rays_script_lod := _rays
 	var plain := _play()
 	var rays_script_plain := _rays
-	DotBotWorld.native_enabled = true
+	GSBotWorld.native_enabled = true
 	var native_run := _play(20.0, 0.15)
 	var rays_lod := _rays
 	var first := -1
@@ -306,7 +306,7 @@ func _play(sight_far: float = 0.0, sight_far_reuse: float = 0.15, think_every: i
 	rng.seed = 11
 	var bodies := []
 	for i in BOTS:
-		var c := DotBotContact.make(100 + i, Vector3(rng.randf_range(-30, 30), 0.0, rng.randf_range(-30, 30)), 1 + i % 2)
+		var c := GSBotContact.make(100 + i, Vector3(rng.randf_range(-30, 30), 0.0, rng.randf_range(-30, 30)), 1 + i % 2)
 		c.view_yaw = rng.randf_range(-180.0, 180.0)
 		c.view_pitch = 0.0
 		bodies.append(c)
@@ -320,13 +320,13 @@ func _play(sight_far: float = 0.0, sight_far_reuse: float = 0.15, think_every: i
 	world.line_of_sight_fn = func(a: Vector3, b: Vector3) -> bool:
 		_rays += 1
 		for q in pillars:
-			if DotBotWorld.segment_hits_sphere(a, b, q, 2.0):
+			if GSBotWorld.segment_hits_sphere(a, b, q, 2.0):
 				return false
 		return true
 	world.waypoints_fn = func() -> PackedVector3Array: return PackedVector3Array([Vector3(-20, 0, -20), Vector3(20, 0, 20), Vector3(-20, 0, 20), Vector3(20, 0, -20)])
-	var brains: Array[DotBotBrain] = []
-	for c: DotBotContact in bodies:
-		brains.append(DotBotBrain.new(c.id))
+	var brains: Array[GSBotBrain] = []
+	for c: GSBotContact in bodies:
+		brains.append(GSBotBrain.new(c.id))
 	var out := PackedStringArray()
 	var last := {}
 	var dt := 1.0 / RATE
@@ -336,15 +336,15 @@ func _play(sight_far: float = 0.0, sight_far_reuse: float = 0.15, think_every: i
 		var line := ""
 		# Every bot thinks over the same bodies, then the tick applies them all, as a game does
 		# (the bodies may not change between bumps of contacts_version).
-		var intents: Array[DotBotIntent] = []
+		var intents: Array[GSBotIntent] = []
 		for i in BOTS:
-			var me: DotBotContact = bodies[i]
-			var it: DotBotIntent = brains[i].think(me, world, now) if (t + i) % think_every == 0 or t == 0 else last[i]
+			var me: GSBotContact = bodies[i]
+			var it: GSBotIntent = brains[i].think(me, world, now) if (t + i) % think_every == 0 or t == 0 else last[i]
 			last[i] = it
 			intents.append(it)
 			line += "%d:%s %.4f %.4f %s %s %d|" % [me.id, it.state, it.yaw, it.pitch, it.move, it.fire, it.target_id]
 		for i in BOTS:
-			var me: DotBotContact = bodies[i]
+			var me: GSBotContact = bodies[i]
 			var it := intents[i]
 			me.view_yaw = it.yaw
 			me.view_pitch = it.pitch
@@ -352,11 +352,11 @@ func _play(sight_far: float = 0.0, sight_far_reuse: float = 0.15, think_every: i
 			me.velocity = step / dt
 			me.position += step
 			if it.fire and it.target_id >= 0:
-				var hit := DotBotWorld.find(bodies, it.target_id)
+				var hit := GSBotWorld.find(bodies, it.target_id)
 				if hit != null and hit.alive:
 					hit.health -= 0.02
 					hit.alive = hit.health > 0.0
-		for c: DotBotContact in bodies:
+		for c: GSBotContact in bodies:
 			if not c.alive and rng.randf() < 0.02:
 				c.alive = true
 				c.health = 1.0
@@ -366,7 +366,7 @@ func _play(sight_far: float = 0.0, sight_far_reuse: float = 0.15, think_every: i
 
 ## What the LOD saves for a crowd that thinks every third tick: rays and wall time of the native mind, off against on.
 func _bench_sight_lod() -> void:
-	DotBotWorld.native_enabled = true
+	GSBotWorld.native_enabled = true
 	var off_us := 0
 	var on_us := 0
 	var off_rays := 0
@@ -384,19 +384,19 @@ func _bench_sight_lod() -> void:
 	_check(on_rays < off_rays, "the LOD saves rays for a crowd thinking every third tick", "%d vs %d" % [on_rays, off_rays])
 
 
-## GameSpice Bot's think tiers (DotSimThinkTier): random settings, people and bots; every schedule, period and body period equal, and the same counts.
+## GameSpice Bot's think tiers (GSSimThinkTier): random settings, people and bots; every schedule, period and body period equal, and the same counts.
 func _test_tier_parity() -> void:
 	print("think tiers: native against script")
 	var rng := RandomNumberGenerator.new()
-	var gd := DotBotThinkTier.new()
+	var gd := GSBotThinkTier.new()
 	gd.native = false
-	var nat := DotBotThinkTier.new()
+	var nat := GSBotThinkTier.new()
 	var mismatches := 0
 	var queries := 0
 	var on := 0
 	var first := ""
 	for round in TIER_ROUNDS:
-		for t: DotBotThinkTier in [gd, nat]:
+		for t: GSBotThinkTier in [gd, nat]:
 			rng.seed = round * 7919 + 1
 			t.above = rng.randi_range(0, 8)
 			t.near_every = rng.randi_range(1, 4)
@@ -472,21 +472,21 @@ func _bench_scan() -> void:
 	var bodies := _bodies(rng, 32)
 	var world := _world(bodies)
 	world.contacts_version = 1
-	var p := DotBotProfile.new()
-	var brain := DotBotBrain.new(1)
-	var forward := DotBotAim.direction(30.0, 0.0)
+	var p := GSBotProfile.new()
+	var brain := GSBotBrain.new(1)
+	var forward := GSBotAim.direction(30.0, 0.0)
 	var reps := 20000
 	var sc := PackedFloat32Array()
 	var t0 := Time.get_ticks_usec()
 	for i in reps:
 		sc.clear()
-		brain._candidates(bodies[i % 32], bodies, p, (bodies[i % 32] as DotBotContact).eye(), forward, p.fov * 0.5, sc)
+		brain._candidates(bodies[i % 32], bodies, p, (bodies[i % 32] as GSBotContact).eye(), forward, p.fov * 0.5, sc)
 	var gd := float(Time.get_ticks_usec() - t0) / reps
 	var senses := world.senses(bodies)
 	t0 = Time.get_ticks_usec()
 	for i in reps:
 		sc.clear()
-		brain._candidates_native(senses, world, bodies[i % 32], p, (bodies[i % 32] as DotBotContact).eye(), forward, p.fov * 0.5, sc)
+		brain._candidates_native(senses, world, bodies[i % 32], p, (bodies[i % 32] as GSBotContact).eye(), forward, p.fov * 0.5, sc)
 	var nat := float(Time.get_ticks_usec() - t0) / reps
 	print("  32 bodies: script %.2f us/scan, native %.2f us/scan (%.1fx)" % [gd, nat, gd / maxf(nat, 0.001)])
 	_check(nat < gd, "the native scan is cheaper than the script one")
@@ -495,7 +495,7 @@ func _bench_scan() -> void:
 func _bodies(rng: RandomNumberGenerator, n: int) -> Array:
 	var out := []
 	for i in n:
-		var c := DotBotContact.make(i + 1, Vector3(rng.randf_range(-40, 40), rng.randf_range(-2, 6), rng.randf_range(-40, 40)), rng.randi_range(0, 2))
+		var c := GSBotContact.make(i + 1, Vector3(rng.randf_range(-40, 40), rng.randf_range(-2, 6), rng.randf_range(-40, 40)), rng.randi_range(0, 2))
 		c.alive = rng.randf() > 0.1
 		c.aim_height = rng.randf_range(0.8, 1.4)
 		c.eye_height = rng.randf_range(1.2, 1.8)
@@ -503,15 +503,15 @@ func _bodies(rng: RandomNumberGenerator, n: int) -> Array:
 	return out
 
 
-func _world(bodies: Array) -> DotBotWorld:
-	var w := DotBotWorld.new()
+func _world(bodies: Array) -> GSBotWorld:
+	var w := GSBotWorld.new()
 	w.contacts_fn = func() -> Array: return bodies
 	return w
 
 
 func _ids(list: Array) -> String:
 	var ids := PackedStringArray()
-	for c: DotBotContact in list:
+	for c: GSBotContact in list:
 		ids.append(str(c.id))
 	return ",".join(ids)
 
@@ -529,7 +529,7 @@ func _test_arms_parity() -> void:
 		print("  skip  %s not linked" % ARMS_SCRIPT)
 		return
 	var clear: Script = load(ARMS_SCRIPT)
-	var native: Object = ClassDB.instantiate(&"DotSimViewArms")
+	var native: Object = ClassDB.instantiate(&"GSSimViewArms")
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261113
 	var same := 0

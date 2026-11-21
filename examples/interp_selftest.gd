@@ -1,6 +1,6 @@
 extends Node
 
-## The interp module's suite: GameSpice Net's [code]DotNetInterpolator.apply[/code] in GDScript and [code]DotSimInterpolator[/code] on the same seeded streams (loss, reordering, duplicate and partial ticks, stalls, extrapolation past its cap,
+## The interp module's suite: GameSpice Net's [code]GSNetInterpolator.apply[/code] in GDScript and [code]GSSimInterpolator[/code] on the same seeded streams (loss, reordering, duplicate and partial ticks, stalls, extrapolation past its cap,
 ## resumes eased and teleports not, vectors, rotations, colours, discrete and type-switching values, a write hook, a plan that changes, forget and prune, an entity turned predicted and back), frame for frame, odd seeds through [code]apply_frame[/code] (one library call a frame) and even seeds through [code]apply[/code] per entity.
 ## Every property written, every [code]_net_interpolated[/code] tick and every counter must be equal to the bit. With no library it checks the fallback and says the native half was skipped; with [code]GS_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
 
@@ -8,7 +8,7 @@ const ENTITIES := 4
 const FRAMES := 2400
 
 ## Every kind of value the interpolator draws, interpolated; one plain property it must not touch.
-class Body extends DotNetBehaviour:
+class Body extends GSNetBehaviour:
 	var position: Variant = Vector3.ZERO
 	var aim: Variant = Vector2.ZERO
 	var yaw: Variant = 0.0
@@ -21,15 +21,15 @@ class Body extends DotNetBehaviour:
 	var ticks: Array = []
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION).interpolated()
-		replicate(&"aim", DotNetVar.Type.FLOAT).interpolated()
-		replicate(&"yaw", DotNetVar.Type.FLOAT).interpolated()
-		replicate(&"rot", DotNetVar.Type.QUATERNION).interpolated()
-		replicate(&"tint", DotNetVar.Type.FLOAT).interpolated()
-		replicate(&"stance", DotNetVar.Type.UINT).bits(3).interpolated()
-		replicate(&"alive", DotNetVar.Type.BOOL).interpolated()
-		replicate(&"mixed", DotNetVar.Type.FLOAT).interpolated()
-		replicate(&"health", DotNetVar.Type.UINT).bits(8)
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+		replicate(&"aim", GSNetVar.Type.FLOAT).interpolated()
+		replicate(&"yaw", GSNetVar.Type.FLOAT).interpolated()
+		replicate(&"rot", GSNetVar.Type.QUATERNION).interpolated()
+		replicate(&"tint", GSNetVar.Type.FLOAT).interpolated()
+		replicate(&"stance", GSNetVar.Type.UINT).bits(3).interpolated()
+		replicate(&"alive", GSNetVar.Type.BOOL).interpolated()
+		replicate(&"mixed", GSNetVar.Type.FLOAT).interpolated()
+		replicate(&"health", GSNetVar.Type.UINT).bits(8)
 
 	func _net_interpolated(tick: int) -> void:
 		ticks.append(tick)
@@ -42,15 +42,15 @@ class Body extends DotNetBehaviour:
 
 
 ## A behaviour that overrides the write: each value goes through the hook, which keeps its own copy.
-class Hooked extends DotNetBehaviour:
+class Hooked extends GSNetBehaviour:
 	var velocity: Variant = Vector3.ZERO
 	var spin: Variant = 0.0
 	var writes: Array = []
 	var write_count := 0
 
 	func _register_net_vars() -> void:
-		replicate(&"spin", DotNetVar.Type.FLOAT).interpolated()
-		replicate(&"velocity", DotNetVar.Type.VECTOR3_VELOCITY).interpolated()
+		replicate(&"spin", GSNetVar.Type.FLOAT).interpolated()
+		replicate(&"velocity", GSNetVar.Type.VECTOR3_VELOCITY).interpolated()
 
 	func _net_write_property(property: StringName, value: Variant) -> void:
 		writes.append([property, value])
@@ -70,13 +70,13 @@ var _native := false
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	_run.call_deferred()
 
 
 func _run() -> void:
 	print("dot-sim interp self-test")
-	_native = DotSim.has(&"interp")
+	_native = GSSim.has(&"interp")
 	print("  native interp module: %s" % ("loaded" if _native else "absent (script interpolator only)"))
 	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
 		_check(_native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
@@ -102,8 +102,8 @@ func _check(ok: bool, what: String, detail: String = "") -> void:
 		print("  FAIL  %s%s" % [what, "" if detail == "" else " (%s)" % detail])
 
 
-func _config() -> DotNetConfig:
-	var config := DotNetConfig.new()
+func _config() -> GSNetConfig:
+	var config := GSNetConfig.new()
 	config.tick_rate = 64
 	config.snapshot_rate = 32
 	config.max_extrapolation_sec = 0.1
@@ -112,29 +112,29 @@ func _config() -> DotNetConfig:
 	return config
 
 
-func _interpolator(config: DotNetConfig, native: bool) -> DotNetInterpolator:
-	var was := DotNetInterpolator.native_enabled
-	DotNetInterpolator.native_enabled = native
-	var interpolator := DotNetInterpolator.new(config)
-	DotNetInterpolator.native_enabled = was
+func _interpolator(config: GSNetConfig, native: bool) -> GSNetInterpolator:
+	var was := GSNetInterpolator.native_enabled
+	GSNetInterpolator.native_enabled = native
+	var interpolator := GSNetInterpolator.new(config)
+	GSNetInterpolator.native_enabled = was
 	return interpolator
 
 
 ## One side of a run: an interpolator and its entities.
 class Rig:
-	var interpolator: DotNetInterpolator
-	var identities: Array[DotNetIdentity] = []
+	var interpolator: GSNetInterpolator
+	var identities: Array[GSNetIdentity] = []
 
-	func _init(p_interpolator: DotNetInterpolator, config: DotNetConfig, count: int) -> void:
+	func _init(p_interpolator: GSNetInterpolator, config: GSNetConfig, count: int) -> void:
 		interpolator = p_interpolator
 		for i in range(count):
-			var identity := DotNetIdentity.new()
+			var identity := GSNetIdentity.new()
 			identity.net_id = 10 + i
 			var body := Body.new()
 			var hooked := Hooked.new()
 			body._bind(config)
 			hooked._bind(config)
-			var list: Array[DotNetBehaviour] = [body, hooked]
+			var list: Array[GSNetBehaviour] = [body, hooked]
 			identity.behaviours = list
 			identities.append(identity)
 
@@ -202,7 +202,7 @@ func _values(rng: RandomNumberGenerator, tick: int, entity: int, partial: bool, 
 
 
 ## Both sides fed the same pushes, frames and housekeeping; compared after every frame.
-## With [param settle], [member DotNetConfig.skip_settled_interp] on both sides (odd seeds: [method DotNetInterpolator.apply_frame]).
+## With [param settle], [member GSNetConfig.skip_settled_interp] on both sides (odd seeds: [method GSNetInterpolator.apply_frame]).
 func _test_stream(run_seed: int, settle: bool = false) -> void:
 	var config := _config()
 	config.skip_settled_interp = settle
@@ -303,7 +303,7 @@ func _stream_housekeeping(sides: Array[Rig], frame: int) -> void:
 	if frame == 1500:
 		for side in sides:
 			var body := side.identities[0].behaviours[0] as Body
-			body.replicate(&"health", DotNetVar.Type.UINT).interpolated()
+			body.replicate(&"health", GSNetVar.Type.UINT).interpolated()
 	if frame == 1900:
 		for side in sides:
 			side.interpolator.clear()
@@ -311,7 +311,7 @@ func _stream_housekeeping(sides: Array[Rig], frame: int) -> void:
 	if frame == 300 or frame == 900:
 		for side in sides:
 			var identity := side.identities[2]
-			identity.authority = DotNetIdentity.Authority.SHARED if frame == 300 else DotNetIdentity.Authority.SERVER
+			identity.authority = GSNetIdentity.Authority.SHARED if frame == 300 else GSNetIdentity.Authority.SERVER
 			identity.is_owner = frame == 300
 
 

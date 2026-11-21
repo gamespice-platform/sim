@@ -1,8 +1,8 @@
-//! `DotSimWitches`: mg-look-at-me's `LmGame._watch` witch half (`_listen` over every witch, then
+//! `GSSimWitches`: mg-look-at-me's `LmGame._watch` witch half (`_listen` over every witch, then
 //! `exposure` over every witch) for one player in one call, with the script's rays cast from here.
 //!
 //! The game registers each level's witch loops and door bodies once (`clear_level`, `add_witch`,
-//! `set_doors`), then per player per tick packs the gaze it keeps, calls [`DotSimWitches::watch`]
+//! `set_doors`), then per player per tick packs the gaze it keeps, calls [`GSSimWitches::watch`]
 //! and unpacks the answer: the same states, rates and `listened` as the script to the bit
 //! (`dot_sim_witches`; the game's `headless_native_witches` and its `witch_verify` hold the two
 //! together). The script keeps the gaze, the meter and the signals.
@@ -44,7 +44,7 @@ struct Witches {
 /// Every registered level's witches and the per-player pass over them.
 #[derive(GodotClass)]
 #[class(base = RefCounted)]
-pub struct DotSimWitches {
+pub struct GSSimWitches {
     levels: HashMap<i64, Witches>,
     ray: Gd<PhysicsRayQueryParameters3D>,
     states: Vec<Option<Gaze>>,
@@ -52,7 +52,7 @@ pub struct DotSimWitches {
 }
 
 #[godot_api]
-impl IRefCounted for DotSimWitches {
+impl IRefCounted for GSSimWitches {
     fn init(_base: Base<RefCounted>) -> Self {
         let mut ray = PhysicsRayQueryParameters3D::new_gd();
         ray.set_collision_mask(LAYER_WORLD);
@@ -104,7 +104,7 @@ impl witches::Rays for Caster<'_> {
 }
 
 #[godot_api]
-impl DotSimWitches {
+impl GSSimWitches {
     /// Forgets level [param key]'s witches and doors (it then has none).
     #[func]
     fn clear_level(&mut self, key: i64) {
@@ -185,14 +185,14 @@ impl DotSimWitches {
         exclude: Array<Rid>,
     ) -> PackedFloat64Array {
         let Some(level) = self.levels.get(&key) else {
-            godot_error!("DotSimWitches.watch: level {key} is not registered");
+            godot_error!("GSSimWitches.watch: level {key} is not registered");
             return PackedFloat64Array::new();
         };
         let c = config.as_slice();
         let pl = player.as_slice();
         if c.len() != CONFIG_F || pl.len() != PLAYER_F {
             godot_error!(
-                "DotSimWitches.watch: config has {} floats (want {CONFIG_F}), player {} (want {PLAYER_F})",
+                "GSSimWitches.watch: config has {} floats (want {CONFIG_F}), player {} (want {PLAYER_F})",
                 c.len(),
                 pl.len()
             );

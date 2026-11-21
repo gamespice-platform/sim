@@ -1,6 +1,6 @@
-//! `DotSimRagdollPose`: a skinned ragdoll's bones put where its parts are, each physics step.
+//! `GSSimRagdollPose`: a skinned ragdoll's bones put where its parts are, each physics step.
 //!
-//! The twin of `DotPlayerRagdoll._pose_bones` (dot-player-char): every carried bone's global pose
+//! The twin of `GSPlayerRagdoll._pose_bones` (dot-player-char): every carried bone's global pose
 //! is `(base_inverse * part) * offset`, the part's global transform read from the engine, the
 //! product in the engine's f32 order (`dot_sim_math::Xform`), and the bones written through
 //! `Skeleton3D.set_bone_global_pose` in the same order as the script writes them. When two parts
@@ -21,7 +21,7 @@ struct Write {
 /// Poses one ragdoll's skeleton; made per body, planned once its parts carry their bones.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimRagdollPose {
+pub struct GSSimRagdollPose {
     bodies: Vec<Gd<Node3D>>,
     writes: Vec<Write>,
     /// Scratch: each part's `base_inverse * global_transform` this step.
@@ -29,7 +29,7 @@ pub struct DotSimRagdollPose {
 }
 
 #[godot_api]
-impl DotSimRagdollPose {
+impl GSSimRagdollPose {
     /// Plans the writes. Entry `i` of [param bones], [param offsets] and [param part_of] is one
     /// part's carried bone (parts in order, each part's bones in order), [param part_of] its index
     /// into [param bodies]; [param order] is the write order (parents first). Returns how many

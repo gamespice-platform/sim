@@ -1,15 +1,15 @@
-//! The motor's collide-and-slide: dot-player-controller's `DotFpsMotor._slide`, its duplicate-plane
+//! The motor's collide-and-slide: dot-player-controller's `GSFpsMotor._slide`, its duplicate-plane
 //! legs, `_slide_with_step` and `_prefer_step`, over a [`Body`] and optionally other players' hulls
-//! (`DotFpsHullBody`), spelled operation for operation so a native client and a web client agree to the bit.
+//! (`GSFpsHullBody`), spelled operation for operation so a native client and a web client agree to the bit.
 
 use crate::{Body, DOWN, Hit, Masks, Space, UP, Vec3};
 use dot_sim_math::{clampf, maxf, minf};
 
-/// `DotFpsMotorBase.SWEEP_TOLERANCE`.
+/// `GSFpsMotorBase.SWEEP_TOLERANCE`.
 const SWEEP_TOLERANCE: f64 = 0.02;
-/// `DotFpsHullBody.HULL_ID_BASE`.
+/// `GSFpsHullBody.HULL_ID_BASE`.
 pub const HULL_ID_BASE: i64 = 1 << 24;
-/// `DotFpsFlatBody.SWEEP_REJECT_MARGIN`.
+/// `GSFpsFlatBody.SWEEP_REJECT_MARGIN`.
 const SWEEP_REJECT_MARGIN: f64 = 1e-3;
 
 /// The tunables the slide reads.
@@ -47,7 +47,7 @@ impl Aabb {
     }
 }
 
-/// `DotFpsMotor.MoveResult`.
+/// `GSFpsMotor.MoveResult`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MoveResult {
     pub position: Vec3,
@@ -127,7 +127,7 @@ pub(crate) fn capsule_centre(feet: Vec3, height: f64) -> Vec3 {
     feet + UP.scale(height * 0.5)
 }
 
-/// `DotFpsFlatBody._slab_sweep`: the entry fraction (rounded through `Vector2`) and axis, or none.
+/// `GSFpsFlatBody._slab_sweep`: the entry fraction (rounded through `Vector2`) and axis, or none.
 fn slab_sweep(start: &Aabb, motion: Vec3, b: &Aabb) -> Option<(f64, usize)> {
     let mut entry = f64::NEG_INFINITY;
     let mut exit_t = f64::INFINITY;
@@ -164,7 +164,7 @@ fn slab_sweep(start: &Aabb, motion: Vec3, b: &Aabb) -> Option<(f64, usize)> {
     Some((entry as f32 as f64, axis as usize))
 }
 
-/// `DotFpsFlatBody.sweep` over boxes only (no floor, no planes, broad phase on): the hull body's `_near`.
+/// `GSFpsFlatBody.sweep` over boxes only (no floor, no planes, broad phase on): the hull body's `_near`.
 fn boxes_sweep(
     from: Vec3,
     motion: Vec3,
@@ -250,7 +250,7 @@ pub struct Mover<'a, S: Space> {
     pub body: &'a mut Body,
     pub space: &'a mut S,
     pub masks: Masks,
-    /// Other players' hulls; `None` for a body without them (`DotFpsPhysicsBody`), which counts no touches.
+    /// Other players' hulls; `None` for a body without them (`GSFpsPhysicsBody`), which counts no touches.
     pub hulls: Option<&'a [Aabb]>,
     pub t: Tun,
     pub counters: Counters,
@@ -278,7 +278,7 @@ impl<'a, S: Space> Mover<'a, S> {
         }
     }
 
-    /// The motor body's `sweep`: the world, then (`DotFpsHullBody.sweep`) the hulls the swept bounds touch.
+    /// The motor body's `sweep`: the world, then (`GSFpsHullBody.sweep`) the hulls the swept bounds touch.
     pub fn body_sweep(&mut self, from: Vec3, motion: Vec3, height: f64, radius: f64) -> Hit {
         let world = self
             .body
@@ -330,13 +330,13 @@ impl<'a, S: Space> Mover<'a, S> {
             .rest_contact(self.space, at, height, radius, self.masks)
     }
 
-    /// `DotFpsMotorWalls._sweep`: sweeps a margin further and gives it back.
+    /// `GSFpsMotorWalls._sweep`: sweeps a margin further and gives it back.
     pub(crate) fn sweep(&mut self, centre: Vec3, motion: Vec3, height: f64) -> Hit {
         let radius = self.t.radius;
         self.sweep_r(centre, motion, height, radius)
     }
 
-    /// `DotFpsMotorWalls._sweep` with its `radius` argument.
+    /// `GSFpsMotorWalls._sweep` with its `radius` argument.
     pub(crate) fn sweep_r(&mut self, centre: Vec3, motion: Vec3, height: f64, radius: f64) -> Hit {
         let length = motion.length() as f64;
         if length <= 0.0 {
@@ -406,7 +406,7 @@ impl<'a, S: Space> Mover<'a, S> {
         Vec3::default()
     }
 
-    /// `DotFpsMotor._slide`.
+    /// `GSFpsMotor._slide`.
     pub fn slide(&mut self, from: Vec3, velocity: Vec3, motion: Vec3, height: f64) -> MoveResult {
         let mut result = MoveResult {
             position: from,
@@ -507,7 +507,7 @@ impl<'a, S: Space> Mover<'a, S> {
         result
     }
 
-    /// `DotFpsMotor._leave_face`.
+    /// `GSFpsMotor._leave_face`.
     fn leave_face(
         &mut self,
         result: &mut MoveResult,
@@ -537,7 +537,7 @@ impl<'a, S: Space> Mover<'a, S> {
         false
     }
 
-    /// `DotFpsMotor._leave_crease`.
+    /// `GSFpsMotor._leave_crease`.
     #[allow(clippy::too_many_arguments)]
     fn leave_crease(
         &mut self,
@@ -602,7 +602,7 @@ impl<'a, S: Space> Mover<'a, S> {
         false
     }
 
-    /// `DotFpsMotor._split_leg`.
+    /// `GSFpsMotor._split_leg`.
     fn split_leg(&mut self, result: &mut MoveResult, leg: Vec3, height: f64) -> bool {
         for part in [Vec3::new(0.0, leg.y, 0.0), Vec3::new(leg.x, 0.0, leg.z)] {
             if (part.length_squared() as f64) <= 1e-12 {
@@ -619,7 +619,7 @@ impl<'a, S: Space> Mover<'a, S> {
         false
     }
 
-    /// `DotFpsMotor._slide_with_step`: up, across, down.
+    /// `GSFpsMotor._slide_with_step`: up, across, down.
     pub fn slide_with_step(
         &mut self,
         from: Vec3,
@@ -676,7 +676,7 @@ impl<'a, S: Space> Mover<'a, S> {
         result
     }
 
-    /// `DotFpsMotor._edge_floor_normal`.
+    /// `GSFpsMotor._edge_floor_normal`.
     pub(crate) fn edge_floor_normal(&mut self, landing: &Hit, feet: Vec3, start_y: f64) -> Vec3 {
         if (landing.point.y as f64) - start_y > self.t.step_height + self.t.skin_width {
             return Vec3::default();
@@ -706,7 +706,7 @@ impl<'a, S: Space> Mover<'a, S> {
         }
     }
 
-    /// `DotFpsMotor._move`'s slide and `_prefer_step`: the plain slide, or the stepped one when it got further.
+    /// `GSFpsMotor._move`'s slide and `_prefer_step`: the plain slide, or the stepped one when it got further.
     /// Stepping is skipped when only another player's hull stopped the slide.
     pub fn move_walking(
         &mut self,
@@ -737,7 +737,7 @@ impl<'a, S: Space> Mover<'a, S> {
         plain
     }
 
-    /// `DotFpsMotor.move_and_slide`'s collision: the slide, and with `step` the stepped one when it got further.
+    /// `GSFpsMotor.move_and_slide`'s collision: the slide, and with `step` the stepped one when it got further.
     pub fn move_and_slide(
         &mut self,
         from: Vec3,

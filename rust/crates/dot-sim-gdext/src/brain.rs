@@ -1,10 +1,10 @@
-//! `DotSimBotMind`: one bot brain's aim state and its fight step, native. DotBotAim keeps its
+//! `GSSimBotMind`: one bot brain's aim state and its fight step, native. GSBotAim keeps its
 //! public fields (the view, the engagement's times) and hands each call the ones it needs; the
 //! private ones (aim error, overshoot, tracked velocity, bursts, the aim's random stream) live here.
 //! The view comes back as `f64`s, never a `Vector2`, so the script's yaw keeps its precision.
 
-use crate::bots::{DotSimBotSenses, Packed};
-use crate::sight::{DotSimSightRay, SightQuery};
+use crate::bots::{GSSimBotSenses, Packed};
+use crate::sight::{GSSimSightRay, SightQuery};
 use dot_sim_bots::{Found, Query, candidates};
 use dot_sim_brain::aim::direction;
 use dot_sim_brain::fight::FirstShot;
@@ -16,13 +16,13 @@ use godot::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// How long a line-of-sight answer is reused (DotBotBrain.SIGHT_REUSE).
+/// How long a line-of-sight answer is reused (GSBotBrain.SIGHT_REUSE).
 const SIGHT_REUSE: f64 = 0.045;
 
-/// How close a body is felt from outside the view cone (DotBotBrain.CLOSE_NOTICE).
+/// How close a body is felt from outside the view cone (GSBotBrain.CLOSE_NOTICE).
 const CLOSE_NOTICE: f64 = 2.0;
 
-/// The `io` layout of [`DotSimBotMind::fight`] (and DotBotBrain's packing of it).
+/// The `io` layout of [`GSSimBotMind::fight`] (and GSBotBrain's packing of it).
 mod io {
     pub const YAW: usize = 0;
     pub const PITCH: usize = 1;
@@ -46,7 +46,7 @@ mod io {
     /// turn_smooth, turn_rate, max_range, burst_range, burst, burst_pause, range, strafe,
     /// strafe_jitter, strafe_time, jump.
     pub const PROFILE: usize = 18;
-    /// 1 when the brain's stale-standoff clock says walk in (DotBotBrain.STALE_FIGHT).
+    /// 1 when the brain's stale-standoff clock says walk in (GSBotBrain.STALE_FIGHT).
     pub const PUSH: usize = PROFILE + 17;
     pub const LEN: usize = PUSH + 1;
 }
@@ -79,7 +79,7 @@ fn view_out(v: View) -> PackedFloat64Array {
 /// One brain's native aim and fight step.
 #[derive(GodotClass)]
 #[class(base = RefCounted)]
-pub struct DotSimBotMind {
+pub struct GSSimBotMind {
     aim: Aim,
     brain_key: i64,
     /// Per target id: when sight was last asked, the answer and the world's sight stamp then.
@@ -90,11 +90,11 @@ pub struct DotSimBotMind {
     found: Found,
     /// The tick's bodies handed over on the main thread (`hold_senses`) for `perceive_held`.
     held: Option<Arc<Packed>>,
-    /// The query this mind asks a [`DotSimSightRay`] with, when that is its `los`.
+    /// The query this mind asks a [`GSSimSightRay`] with, when that is its `los`.
     query: SightQuery,
 }
 
-impl DotSimBotMind {
+impl GSSimBotMind {
     /// The cached answer for `id`, if it is still good at `now` under `stamp`.
     fn sight_held(&self, id: i64, now: f64, stamp: i64) -> Option<bool> {
         self.sight_held_far(id, now, stamp, 0.0)
@@ -121,7 +121,7 @@ fn gv(v: V3) -> Vector3 {
 }
 
 #[godot_api]
-impl IRefCounted for DotSimBotMind {
+impl IRefCounted for GSSimBotMind {
     fn init(_base: Base<RefCounted>) -> Self {
         Self {
             aim: Aim::new(0),
@@ -137,7 +137,7 @@ impl IRefCounted for DotSimBotMind {
 }
 
 #[godot_api]
-impl DotSimBotMind {
+impl GSSimBotMind {
     /// The aim's stream key (`stream(&"dot_bot_aim")`) and the brain's (`stream(&"dot_bot")`).
     #[func]
     fn set_keys(&mut self, aim_key: i64, brain_key: i64) {
@@ -264,7 +264,7 @@ impl DotSimBotMind {
     ) -> PackedFloat64Array {
         let a = io.as_slice();
         if a.len() < 18 {
-            godot_error!("DotSimBotMind.track: io holds {} of 18 values", a.len());
+            godot_error!("GSSimBotMind.track: io holds {} of 18 values", a.len());
             return PackedFloat64Array::new();
         }
         let p = aim_profile(&a[6..18]);
@@ -291,7 +291,7 @@ impl DotSimBotMind {
     fn trigger(&mut self, now: f64, distance: f64, io: PackedFloat64Array) -> bool {
         let a = io.as_slice();
         if a.len() < 15 {
-            godot_error!("DotSimBotMind.trigger: io holds {} of 15 values", a.len());
+            godot_error!("GSSimBotMind.trigger: io holds {} of 15 values", a.len());
             return false;
         }
         let p = aim_profile(&a[3..15]);
@@ -313,7 +313,7 @@ impl DotSimBotMind {
         rad_to_deg(direction(yaw, pitch).angle_to(v3(point) - v3(eye)) as f64)
     }
 
-    /// DotBotBrain's whole fight step (see the `io` layout in the source). Returns yaw, pitch,
+    /// GSBotBrain's whole fight step (see the `io` layout in the source). Returns yaw, pitch,
     /// first_shot_at, first_shot_error, the brain stream's counter, fire, crouch, jump, move (2),
     /// scene (0 fight, 1 close, 2 flee), retreat, strafe, strafe_until, strafe_eased.
     #[func]
@@ -329,7 +329,7 @@ impl DotSimBotMind {
         let a = io.as_slice();
         if a.len() < io::LEN {
             godot_error!(
-                "DotSimBotMind.fight: io holds {} of {} values",
+                "GSSimBotMind.fight: io holds {} of {} values",
                 a.len(),
                 io::LEN
             );
@@ -426,7 +426,7 @@ impl DotSimBotMind {
         }
     }
 
-    /// The sight LOD `perceive` applies (DotBotWorld.sight_far, sight_far_reuse); `far` 0 is off.
+    /// The sight LOD `perceive` applies (GSBotWorld.sight_far, sight_far_reuse); `far` 0 is off.
     #[func]
     fn set_sight_lod(&mut self, far: f64, far_reuse: f64) {
         self.far = far;
@@ -439,10 +439,10 @@ impl DotSimBotMind {
         self.sight.insert(id, (now, seen, stamp));
     }
 
-    /// DotBotBrain._perceive's choice over `senses`' packed bodies: the native scan, the current
+    /// GSBotBrain._perceive's choice over `senses`' packed bodies: the native scan, the current
     /// target kept while in sight, else the best score seen (`los(from, to) -> bool`, the world's
     /// line of sight, asked of the chest then the head, through the sight cache; a
-    /// [`DotSimSightRay`]'s `clear` is asked natively, the same answer). `flags`: 1 the
+    /// [`GSSimSightRay`]'s `clear` is asked natively, the same answer). `flags`: 1 the
     /// target is visible, 2 the bot sees through walls. Returns
     /// [chosen row or -1, 1 when the visible target was found dead], or nothing when `senses`
     /// has no eyes for its rows (the script then perceives).
@@ -450,7 +450,7 @@ impl DotSimBotMind {
     #[allow(clippy::too_many_arguments)]
     fn perceive(
         &mut self,
-        senses: Gd<DotSimBotSenses>,
+        senses: Gd<GSSimBotSenses>,
         me_id: i64,
         me_team: i64,
         eye: Vector3,
@@ -494,7 +494,7 @@ impl DotSimBotMind {
     /// main thread: the handle is what lets a brain perceive on a worker thread, where several
     /// brains must not bind the one senses object at once. A later repack leaves the handle whole.
     #[func]
-    fn hold_senses(&mut self, senses: Gd<DotSimBotSenses>) {
+    fn hold_senses(&mut self, senses: Gd<GSSimBotSenses>) {
         self.held = Some(senses.bind().share());
     }
 
@@ -544,7 +544,7 @@ impl DotSimBotMind {
     }
 }
 
-impl DotSimBotMind {
+impl GSSimBotMind {
     #[allow(clippy::too_many_arguments)]
     fn perceive_in(
         &mut self,
@@ -593,7 +593,7 @@ impl DotSimBotMind {
         // The world's sight as a native ray: asked here, not through a call into script.
         let direct = match (los.object(), los.method_name()) {
             (Some(obj), Some(name)) if name == "clear" && los.get_bound_arguments_count() == 0 => {
-                obj.try_cast::<DotSimSightRay>()
+                obj.try_cast::<GSSimSightRay>()
                     .ok()
                     .map(|ray| ray.bind().conf())
             }

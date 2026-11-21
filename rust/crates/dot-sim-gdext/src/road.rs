@@ -1,4 +1,4 @@
-//! `DotSimRoad`: a route's centreline samples, mg-dangerous-delivery's `DdRouteBase.nearest_index`,
+//! `GSSimRoad`: a route's centreline samples, mg-dangerous-delivery's `DdRouteBase.nearest_index`,
 //! `index_at_distance` and the oncoming car's `_car_blocked`.
 //!
 //! The route writes its samples once after it is built (`set_samples`) and the yield rule's
@@ -15,13 +15,13 @@ use godot::prelude::*;
 /// One route's centreline and the asks over it.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimRoad {
+pub struct GSSimRoad {
     road: Road,
     trucks: Vec<Vec3>,
 }
 
 #[godot_api]
-impl DotSimRoad {
+impl GSSimRoad {
     /// Holds the route's samples: [param points], [param distances] and [param yaws], one each per
     /// sample. Counts that differ are an error and hold nothing (every ask then answers as an empty
     /// road).
@@ -37,7 +37,7 @@ impl DotSimRoad {
         self.road.yaws.clear();
         if distances.len() != points.len() || yaws.len() != points.len() {
             godot_error!(
-                "DotSimRoad.set_samples: {} points, {} distances, {} yaws",
+                "GSSimRoad.set_samples: {} points, {} distances, {} yaws",
                 points.len(),
                 distances.len(),
                 yaws.len()

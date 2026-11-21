@@ -3,7 +3,7 @@
 //! Stage 1 holds the idle posture group of FC's `FcPlayerBody.tick_post`: from the motor state a
 //! player ends its tick with (velocity, mode, crouch, slide, wall run, sprint) and its last hurt
 //! tick, the 9-float posture row dot-weapon's spread reads (`[speed, airborne, crouched, aiming,
-//! sliding, sprinting, wall_running, tick, hurt_tick]`, `DotWeaponHitscan`'s row) and whether the
+//! sliding, sprinting, wall_running, tick, hurt_tick]`, `GSWeaponHitscan`'s row) and whether the
 //! pose is settled with no flinch left (FC's `_idle_row`, which `AwWeaponRig.simulate_idle_row`
 //! takes as `still`).
 //!
@@ -17,19 +17,19 @@ pub const IN: usize = 10;
 pub const IN_VEL_X: usize = 0;
 /// Velocity z (an f32 widened).
 pub const IN_VEL_Z: usize = 1;
-/// `DotFpsState.mode`.
+/// `GSFpsState.mode`.
 pub const IN_MODE: usize = 2;
-/// `DotFpsState.crouch_fraction`.
+/// `GSFpsState.crouch_fraction`.
 pub const IN_CROUCH: usize = 3;
-/// `DotFpsState.slide_time` (negative: not sliding).
+/// `GSFpsState.slide_time` (negative: not sliding).
 pub const IN_SLIDE: usize = 4;
-/// `DotFpsState.wall_run_time` (negative: not wall running).
+/// `GSFpsState.wall_run_time` (negative: not wall running).
 pub const IN_WALL: usize = 5;
-/// `DotFpsState.sprinting`, 0 or 1.
+/// `GSFpsState.sprinting`, 0 or 1.
 pub const IN_SPRINT: usize = 6;
 /// The tick being run.
 pub const IN_TICK: usize = 7;
-/// `DotHealth.last_damage_tick`, or -1 with no health.
+/// `GSHealth.last_damage_tick`, or -1 with no health.
 pub const IN_LAST_HURT: usize = 8;
 /// The arsenal's `tick_rate`, or 0 with no arsenal.
 pub const IN_RATE: usize = 9;
@@ -44,8 +44,8 @@ pub const OUT_STILL: usize = 9;
 /// The lowest tick rate the flinch window is counted at (FC's `maxi(arsenal.tick_rate, 64)`).
 pub const MIN_RATE: i64 = 64;
 
-/// What the script reads from outside the row: `DotFpsState.Mode.GROUND` and
-/// `DotWeaponAccuracyClass.FLINCH_SEC`.
+/// What the script reads from outside the row: `GSFpsState.Mode.GROUND` and
+/// `GSWeaponAccuracyClass.FLINCH_SEC`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Config {
     pub ground_mode: i64,
@@ -100,7 +100,7 @@ fn flag(b: bool) -> f64 {
 
 /// FC's `_idle_row`: writes the posture row into `out[..POSTURE]` and returns `still`.
 pub fn idle_row(p: &PostIn, cfg: &Config, out: &mut [f64]) -> bool {
-    // DotFpsState.horizontal_speed: Vector2(velocity.x, velocity.z).length() in f32.
+    // GSFpsState.horizontal_speed: Vector2(velocity.x, velocity.z).length() in f32.
     let speed = (p.vel_x * p.vel_x + p.vel_z * p.vel_z).sqrt() as f64;
     let grounded = p.mode == cfg.ground_mode;
     let crouched = p.crouch_fraction > 0.001;

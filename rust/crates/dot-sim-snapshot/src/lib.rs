@@ -1,6 +1,6 @@
 //! Snapshot encode and decode, bit-identical to dot-net's script codec.
 //!
-//! The wire format is frozen by `DotNetWriter`, `DotNetReader` and `DotNetVar.write` / `read` in
+//! The wire format is frozen by `GSNetWriter`, `GSNetReader` and `GSNetVar.write` / `read` in
 //! dot-net: this crate transcribes them, operation for operation, in the same float widths
 //! (GDScript computes in f64, `Vector3` and `Quaternion` hold f32), with no fused multiply-add and
 //! the platform's own `acos`, `atan2`, `sin`, `cos` and `sqrt` (the engine calls the same ones).
@@ -8,7 +8,7 @@
 //! than 32 bits) it declines, and the script does that value.
 //!
 //! A behaviour's state is `count:6`, then per entry `index:6` and the value
-//! (`DotNetBehaviour._encode` / `read_state`).
+//! (`GSNetBehaviour._encode` / `read_state`).
 
 mod bits;
 #[cfg(test)]
@@ -16,7 +16,7 @@ mod tests;
 
 pub use bits::{Reader, Writer};
 
-/// `DotNetVar.Type`, in its enum order.
+/// `GSNetVar.Type`, in its enum order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Bool,
@@ -63,21 +63,21 @@ impl Kind {
     }
 }
 
-/// One declaration, resolved against its config: the bits and range `DotNetVar.write` uses.
+/// One declaration, resolved against its config: the bits and range `GSNetVar.write` uses.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Decl {
     pub kind: Kind,
     pub bits: i64,
     pub min: f64,
     pub max: f64,
-    /// `DotNetVar.length`: a `PackedFloat32`'s entries.
+    /// `GSNetVar.length`: a `PackedFloat32`'s entries.
     pub len: i64,
     /// False for what the script must do itself (see the crate docs).
     pub native: bool,
 }
 
 impl Decl {
-    /// From a row of `DotNetBehaviour._native_spec()`: `[type, audience, max_rate, epsilon,
+    /// From a row of `GSNetBehaviour._native_spec()`: `[type, audience, max_rate, epsilon,
     /// on_spawn_only, bit_width, min, max, extent, position_bits, max_speed, velocity_bits,
     /// rotation_bits, slot, length]` (a row without `length` reads it as 0).
     pub fn from_spec(row: &[f64]) -> Decl {
@@ -110,7 +110,7 @@ impl Decl {
     }
 }
 
-/// A value as `DotNetVar` reads it.
+/// A value as `GSNetVar` reads it.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Bool(bool),
@@ -136,7 +136,7 @@ pub fn quiet_f32(f: f32) -> f32 {
 /// The script's 0.7071067811865476, the same double.
 const LIMIT: f64 = std::f64::consts::FRAC_1_SQRT_2;
 const PI: f64 = std::f64::consts::PI;
-/// `DotNetReader.read_bytes`' default bound.
+/// `GSNetReader.read_bytes`' default bound.
 pub const MAX_READ_BYTES: i64 = 1 << 20;
 
 /// GDScript's `int(float)` as the engine compiles it on x86-64 (`cvttsd2si`): a NaN or an
@@ -310,7 +310,7 @@ impl Writer {
         self.append_aligned(data);
     }
 
-    /// One declaration's value, as `DotNetVar.write` writes it. False, part written, for a
+    /// One declaration's value, as `GSNetVar.write` writes it. False, part written, for a
     /// declaration or value the script must write.
     pub fn write_value(&mut self, d: &Decl, value: &Value) -> bool {
         if !d.native {
@@ -484,7 +484,7 @@ impl Reader<'_> {
         out
     }
 
-    /// One declaration's value, as `DotNetVar.read` reads it; `None` (nothing read) for a
+    /// One declaration's value, as `GSNetVar.read` reads it; `None` (nothing read) for a
     /// declaration the script must read.
     pub fn read_value(&mut self, d: &Decl) -> Option<Value> {
         if !d.native {
@@ -510,7 +510,7 @@ impl Reader<'_> {
     }
 }
 
-/// `DotNetBehaviour._encode`: `pad` zero bits, `count`, then each `(index, value)`. False when
+/// `GSNetBehaviour._encode`: `pad` zero bits, `count`, then each `(index, value)`. False when
 /// any of them is one the script must write (`out` is then partly written).
 pub fn encode_state(
     decls: &[Decl],
@@ -536,7 +536,7 @@ pub fn encode_state(
     true
 }
 
-/// How [`decode_state`] stopped. The codes are the script's (`DotNetSimCodec`).
+/// How [`decode_state`] stopped. The codes are the script's (`GSNetSimCodec`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stop {
     /// Every entry read.
@@ -562,7 +562,7 @@ pub struct Decoded {
     pub stopped_index: i64,
 }
 
-/// The reads of `DotNetBehaviour.read_state`, from the reader's position: the count header when
+/// The reads of `GSNetBehaviour.read_state`, from the reader's position: the count header when
 /// `remaining` is negative, else `remaining` more entries. Stops at the first error, or at a
 /// declaration the script reads (it reads that one value and calls again with `remaining`).
 pub fn decode_state(decls: &[Decl], r: &mut Reader<'_>, remaining: i64, out: &mut Decoded) -> Stop {

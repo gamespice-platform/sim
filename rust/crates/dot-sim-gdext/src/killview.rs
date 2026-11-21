@@ -1,6 +1,6 @@
-//! `DotSimKillViewTrack`: one entity's ring of kill-cam view samples, each row built natively.
+//! `GSSimKillViewTrack`: one entity's ring of kill-cam view samples, each row built natively.
 //!
-//! The twin of `DotKillViewRing._Track` and the row its `record` builds (dot-replay): time apart,
+//! The twin of `GSKillViewRing._Track` and the row its `record` builds (dot-replay): time apart,
 //! a row is `[0, origin xyz, rotation xyzw, fov, cursor xy, aux 0..AUX]` in `f32`, the rotation
 //! `basis.orthonormalized().get_rotation_quaternion()` in the engine's order and rounding
 //! (`dot_sim_math::rotation_quaternion`), aux zero-padded or cut to `AUX`, the oldest row
@@ -10,9 +10,9 @@
 use dot_sim_math::{Vec3, orthonormalized, rotation_quaternion};
 use godot::prelude::*;
 
-/// Floats per row, as `DotKillViewRing.STRIDE`.
+/// Floats per row, as `GSKillViewRing.STRIDE`.
 const STRIDE: usize = 23;
-/// Game-defined floats per row, as `DotKillViewRing.AUX`.
+/// Game-defined floats per row, as `GSKillViewRing.AUX`.
 const AUX: usize = 12;
 /// Floats before the aux ones.
 const HEAD: usize = STRIDE - AUX;
@@ -20,12 +20,12 @@ const HEAD: usize = STRIDE - AUX;
 /// One entity's samples; [method setup] sizes it before the first [method record].
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimKillViewTrack {
+pub struct GSSimKillViewTrack {
     ring: Ring,
 }
 
 #[godot_api]
-impl DotSimKillViewTrack {
+impl GSSimKillViewTrack {
     /// Holds the newest [param cap] samples (at least one); clears any held.
     #[func]
     fn setup(&mut self, cap: i32) {

@@ -1,6 +1,6 @@
-//! dot-npc's perception pass, native: `DotNpcSenses.rank_many` (who is within reach, nearest first) and
-//! `DotNpcSenses.decide` (sight, hearing, cone, smoke, line of sight, then the commitment with its
-//! stickiness and grace), over the packed arrays the script's `DotNpcPerception` already builds.
+//! dot-npc's perception pass, native: `GSNpcSenses.rank_many` (who is within reach, nearest first) and
+//! `GSNpcSenses.decide` (sight, hearing, cone, smoke, line of sight, then the commitment with its
+//! stickiness and grace), over the packed arrays the script's `GSNpcPerception` already builds.
 //!
 //! The script's arithmetic in the script's order and precision (engine vectors `f32`, script floats
 //! `f64`), so an NPC deciding natively commits to the same target at the same moment as the GDScript it
@@ -11,7 +11,7 @@ use dot_sim_math::{Vec3, clampf, maxf, minf};
 #[cfg(test)]
 mod tests;
 
-/// The settings of a `DotNpcSenses` that a pass reads.
+/// The settings of a `GSNpcSenses` that a pass reads.
 #[derive(Clone, Copy, Debug)]
 pub struct Tuning {
     /// `switch_ratio`: how much nearer a rival must be before an NPC switches to it.
@@ -35,7 +35,7 @@ impl Default for Tuning {
     }
 }
 
-/// The candidates of a pass, as `DotNpcSenses.Packed` holds them.
+/// The candidates of a pass, as `GSNpcSenses.Packed` holds them.
 #[derive(Clone, Copy, Debug)]
 pub struct Cands<'a> {
     pub pos: &'a [Vec3],
@@ -56,7 +56,7 @@ impl Cands<'_> {
     }
 }
 
-/// A sight-blocking sphere (smoke): `DotNpcSenses.add_sight_blocker`.
+/// A sight-blocking sphere (smoke): `GSNpcSenses.add_sight_blocker`.
 #[derive(Clone, Copy, Debug)]
 pub struct Blocker {
     pub center: Vec3,
@@ -65,7 +65,7 @@ pub struct Blocker {
     pub until: f64,
 }
 
-/// What a pass reads of one NPC (`DotNpcInstance` and its `DotNpcDef`).
+/// What a pass reads of one NPC (`GSNpcInstance` and its `GSNpcDef`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Npc {
     /// `position()`.
@@ -74,7 +74,7 @@ pub struct Npc {
     pub facing: Vec3,
     /// `def.eye_height`.
     pub eye: f64,
-    /// `DotNpcSenses.reach_of`: `def.sight_range * maxf(sight_scale, 0.0)`.
+    /// `GSNpcSenses.reach_of`: `def.sight_range * maxf(sight_scale, 0.0)`.
     pub reach: f64,
     /// `def.hearing_range`.
     pub hearing: f64,
@@ -128,7 +128,7 @@ fn d2(a: Vec3, b: Vec3) -> f32 {
     (b - a).length_squared()
 }
 
-/// `DotNpcSenses.rank_many` for one NPC: the candidates it could perceive by range alone, nearest first,
+/// `GSNpcSenses.rank_many` for one NPC: the candidates it could perceive by range alone, nearest first,
 /// at most `cap` (0 or less is all of them), into `out`. `keys` is scratch.
 #[allow(clippy::too_many_arguments)]
 pub fn rank(
@@ -181,7 +181,7 @@ impl<L: FnMut(Vec3, Vec3) -> bool> Pass<'_, L> {
         self.npc.here + Vec3::new(0.0, 1.0, 0.0).scale(self.npc.eye)
     }
 
-    /// `DotNpcSenses.sight_blocked`; expired blockers never block.
+    /// `GSNpcSenses.sight_blocked`; expired blockers never block.
     fn sight_blocked(&self, from: Vec3, to: Vec3) -> bool {
         if self.blockers.is_empty() {
             return false;
@@ -205,7 +205,7 @@ impl<L: FnMut(Vec3, Vec3) -> bool> Pass<'_, L> {
         false
     }
 
-    /// `DotNpcSenses._perceives_at` for candidate `i`.
+    /// `GSNpcSenses._perceives_at` for candidate `i`.
     fn perceives(&mut self, i: usize) -> bool {
         *self.checks += 1;
         let npc = self.npc;
@@ -245,7 +245,7 @@ impl<L: FnMut(Vec3, Vec3) -> bool> Pass<'_, L> {
         self.npc.here.distance_to(self.c.pos[i]) as f64
     }
 
-    /// `DotNpcSenses.decide`.
+    /// `GSNpcSenses.decide`.
     fn decide(&mut self, order: &[i32]) -> Outcome {
         let npc = self.npc;
         let held = npc.held;
@@ -287,7 +287,7 @@ impl<L: FnMut(Vec3, Vec3) -> bool> Pass<'_, L> {
         self.commit(best, committed)
     }
 
-    /// `DotNpcSenses._commit`.
+    /// `GSNpcSenses._commit`.
     fn commit(&self, best: Option<(usize, f64)>, committed: Option<(usize, f64)>) -> Outcome {
         let npc = self.npc;
         let first = self.c.first;
@@ -336,7 +336,7 @@ impl<L: FnMut(Vec3, Vec3) -> bool> Pass<'_, L> {
         Outcome::KEEP
     }
 
-    /// `DotNpcSenses._decide_held`.
+    /// `GSNpcSenses._decide_held`.
     fn decide_held(&mut self, order: &[i32], held: usize) -> Outcome {
         let limit = self.dist(held) * self.t.switch_ratio;
         let mut last: isize = -1;
@@ -367,7 +367,7 @@ impl<L: FnMut(Vec3, Vec3) -> bool> Pass<'_, L> {
     }
 }
 
-/// `DotNpcSenses.decide` for `npc` over `order` (from [`rank`]) at simulated second `now`. Every
+/// `GSNpcSenses.decide` for `npc` over `order` (from [`rank`]) at simulated second `now`. Every
 /// perception test adds one to `checks` (`sight_checks`); `los(from, to)` is asked exactly where the script
 /// casts its occlusion ray, in the same order, and answers whether the line is clear.
 #[allow(clippy::too_many_arguments)]

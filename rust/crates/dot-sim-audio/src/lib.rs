@@ -1,6 +1,6 @@
-//! dot-audio's per-body probes, pure: the footstep stride and landing of `DotAudioFootsteps.advance`,
-//! the gate of `DotAudioSlide`/`DotAudioSurf`'s tick (reach, speed, whether the body is asked at
-//! all) and `DotAudioSurfRules`' ramp test with its per-physics-frame cache.
+//! dot-audio's per-body probes, pure: the footstep stride and landing of `GSAudioFootsteps.advance`,
+//! the gate of `GSAudioSlide`/`GSAudioSurf`'s tick (reach, speed, whether the body is asked at
+//! all) and `GSAudioSurfRules`' ramp test with its per-physics-frame cache.
 //!
 //! Each is the script's arithmetic in the script's precision: positions are `Vector3` (`f32`), the
 //! script's floats `f64`, and a `Vector2(...).length()` is an `f32` square root widened after.
@@ -42,14 +42,14 @@ pub fn ray_down(pos: Vec3, depth: f64) -> (Vec3, Vec3) {
     )
 }
 
-/// `DotAudioSurfRules.is_ramp_normal`: steeper than walkable and not a wall.
+/// `GSAudioSurfRules.is_ramp_normal`: steeper than walkable and not a wall.
 #[inline]
 pub fn is_ramp(normal_y: f32, min_normal_y: f64, max_normal_y: f64) -> bool {
     let y = normal_y as f64;
     y > min_normal_y && y < max_normal_y
 }
 
-/// `DotAudioSurfRules`' `_seen`: one verdict per body per physics frame, emptied past 256 bodies.
+/// `GSAudioSurfRules`' `_seen`: one verdict per body per physics frame, emptied past 256 bodies.
 #[derive(Default, Debug, Clone)]
 pub struct SeenCache {
     seen: HashMap<i64, (u64, bool)>,
@@ -83,7 +83,7 @@ impl SeenCache {
     }
 }
 
-/// `DotAudioFootsteps`' tuning, as the script holds it.
+/// `GSAudioFootsteps`' tuning, as the script holds it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StepTun {
     pub quiet_speed: f64,
@@ -152,7 +152,7 @@ pub struct Steps {
     pub stride: Option<f64>,
 }
 
-/// `DotAudioFootsteps.advance` for one body and one physics frame. `out_of_earshot`, `surfing` and
+/// `GSAudioFootsteps.advance` for one body and one physics frame. `out_of_earshot`, `surfing` and
 /// `grounded` are asked in that order, each only when the script would ask it.
 pub fn step_advance(
     st: &mut StepState,
@@ -209,7 +209,7 @@ pub fn step_advance(
     out
 }
 
-/// `DotAudioSlide.advance`'s speed: ground distance over `maxf(delta, 0.0001)`, a jump past 60 m/s
+/// `GSAudioSlide.advance`'s speed: ground distance over `maxf(delta, 0.0001)`, a jump past 60 m/s
 /// (a respawn or a correction) read as standing still.
 #[inline]
 pub fn slide_speed(last: Vec3, pos: Vec3, delta: f64) -> f64 {
@@ -231,10 +231,10 @@ pub enum SlideGate {
     Advance,
 }
 
-/// The gate of `DotAudioSlide._physics_process` and the head of `advance` for one body.
+/// The gate of `GSAudioSlide._physics_process` and the head of `advance` for one body.
 /// `ear_sq` is `pos.distance_squared_to(ear)`, `reach_sq` the tick's `reach_squared()` (0: every
 /// body is in reach). `quiet` is the speed under which a body not yet playing is not asked
-/// (`DotAudioSurf`'s `rules.quiet_speed`), or `None` when every body is asked (`DotAudioSlide`).
+/// (`GSAudioSurf`'s `rules.quiet_speed`), or `None` when every body is asked (`GSAudioSlide`).
 #[allow(clippy::neg_cmp_op_on_partial_ord)] // the script's `speed >= quiet`, NaN included
 pub fn slide_gate(
     ear_sq: f32,

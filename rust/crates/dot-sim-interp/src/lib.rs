@@ -1,4 +1,4 @@
-//! Snapshot interpolation for remote entities, bit-identical to dot-net's `DotNetInterpolator`.
+//! Snapshot interpolation for remote entities, bit-identical to dot-net's `GSNetInterpolator`.
 //!
 //! The script stays the specification: `Track.push`, `sample`, `_extrapolate`, `_continue`,
 //! `_blend`, `_blend_value` and `_ease_resume` are transcribed here operation for operation.
@@ -23,7 +23,7 @@ use std::rc::Rc;
 #[cfg(test)]
 mod tests;
 
-/// Samples kept per entity: `DotNetInterpolator.TRACK_CAPACITY`.
+/// Samples kept per entity: `GSNetInterpolator.TRACK_CAPACITY`.
 pub const TRACK_CAPACITY: usize = 32;
 
 /// A value the crate does not do arithmetic on: the binding's variant.
@@ -392,7 +392,7 @@ fn find_offset(offsets: &[(u32, Offset)], key: u32) -> Option<Offset> {
     offsets.iter().find(|(k, _)| *k == key).map(|(_, o)| *o)
 }
 
-/// Every entity's track, and the counters: the native half of a `DotNetInterpolator`.
+/// Every entity's track, and the counters: the native half of a `GSNetInterpolator`.
 pub struct Interp<O, P> {
     tracks: HashMap<i64, Track<O, P>>,
     pub counts: Counts,

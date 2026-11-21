@@ -1,4 +1,4 @@
-//! dot-2d's `Dot2DGrid` to the bit, and game-hungario's bot forage scan over it.
+//! dot-2d's `GS2DGrid` to the bit, and game-hungario's bot forage scan over it.
 //!
 //! The grid is the script's: a cell key packed from two 32-bit halves, an id list per cell in
 //! insertion order with swap-and-pop removal, empty cells dropped, and the position each id was
@@ -125,7 +125,7 @@ pub struct Forage {
     pub rivals: Vec<Rival>,
 }
 
-/// `Dot2DGrid`'s state, with a worth per id.
+/// `GS2DGrid`'s state, with a worth per id.
 pub struct Grid {
     cell: f64,
     cells: Map<Vec<i64>>,

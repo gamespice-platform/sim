@@ -1,4 +1,4 @@
-//! `DotSimHazards`: mg-wipeout's `WoCourse.knock` and `path_clear` over a table of the course's
+//! `GSSimHazards`: mg-wipeout's `WoCourse.knock` and `path_clear` over a table of the course's
 //! hazards.
 //!
 //! The course writes each hazard once after it is built (`add`: its root frame, the spec's numbers,
@@ -14,12 +14,12 @@ use godot::prelude::*;
 /// A course's hazards and the knock asks over them.
 #[derive(GodotClass)]
 #[class(base = RefCounted)]
-pub struct DotSimHazards {
+pub struct GSSimHazards {
     table: Hazards,
 }
 
 #[godot_api]
-impl IRefCounted for DotSimHazards {
+impl IRefCounted for GSSimHazards {
     fn init(_base: Base<RefCounted>) -> Self {
         Self {
             table: Hazards::new(64),
@@ -28,7 +28,7 @@ impl IRefCounted for DotSimHazards {
 }
 
 #[godot_api]
-impl DotSimHazards {
+impl GSSimHazards {
     /// Forgets every hazard.
     #[func]
     fn clear(&mut self) {
@@ -78,13 +78,13 @@ impl DotSimHazards {
             "pendulum" => 5,
             "pusher" | "fall" => 7,
             other => {
-                godot_error!("DotSimHazards.add: unknown kind {other:?}");
+                godot_error!("GSSimHazards.add: unknown kind {other:?}");
                 return false;
             }
         };
         if p.len() != want {
             godot_error!(
-                "DotSimHazards.add: {kind} takes {want} numbers, got {}",
+                "GSSimHazards.add: {kind} takes {want} numbers, got {}",
                 p.len()
             );
             return false;

@@ -1,4 +1,4 @@
-//! `DotSimThinkPacer`: dot-npc's think pacing (`DotNpcPacer`) held natively, one batch per tick.
+//! `GSSimThinkPacer`: dot-npc's think pacing (`GSNpcPacer`) held natively, one batch per tick.
 //! See [`dot_sim_zombie::pace`] for the steps; this class only moves packed arrays across.
 
 use dot_sim_zombie::pace::{Counters, Pacer};
@@ -14,14 +14,14 @@ fn counters(c: Option<Counters>) -> PackedFloat64Array {
 /// The spawner's pacing rows, in its NPC order.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimThinkPacer {
+pub struct GSSimThinkPacer {
     pacer: Pacer,
     ids: Vec<i64>,
     owed: Vec<f64>,
 }
 
 #[godot_api]
-impl DotSimThinkPacer {
+impl GSSimThinkPacer {
     /// Appends an NPC, unpaced. False when it already has a row.
     #[func]
     fn add(&mut self, id: i64) -> bool {

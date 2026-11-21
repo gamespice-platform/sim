@@ -1,5 +1,5 @@
-//! `DotSimWeaponSpread`: dot-weapon's `DotWeaponHitscan._tick` and `_spread_with` (with `DotWeaponSpreadRules` and
-//! `DotWeaponBallistics.spread_for`), bit for bit the script's, reading and writing the behaviour's `state`
+//! `GSSimWeaponSpread`: dot-weapon's `GSWeaponHitscan._tick` and `_spread_with` (with `GSWeaponSpreadRules` and
+//! `GSWeaponBallistics.spread_for`), bit for bit the script's, reading and writing the behaviour's `state`
 //! dictionary in place. The caller keeps one per weapon behaviour: the weapon's numbers are set once
 //! ([method set_tuning]) and again only when they change, so a tick marshals the posture row and nothing else.
 
@@ -9,7 +9,7 @@ use dot_sim_weapon::{
 };
 use godot::prelude::*;
 
-/// The behaviour's state keys (`DotWeaponHitscan._SINCE` and the rest), as dictionary keys.
+/// The behaviour's state keys (`GSWeaponHitscan._SINCE` and the rest), as dictionary keys.
 struct Keys {
     since: Variant,
     bloom: Variant,
@@ -34,14 +34,14 @@ impl Keys {
 /// One hitscan weapon's spread tick. Until [method set_tuning] succeeds every call answers -1 and writes nothing.
 #[derive(GodotClass)]
 #[class(base = RefCounted)]
-pub struct DotSimWeaponSpread {
+pub struct GSSimWeaponSpread {
     tuning: Option<Tuning>,
     frame: Frame,
     keys: Keys,
 }
 
 #[godot_api]
-impl IRefCounted for DotSimWeaponSpread {
+impl IRefCounted for GSSimWeaponSpread {
     fn init(_base: Base<RefCounted>) -> Self {
         Self {
             tuning: None,
@@ -67,7 +67,7 @@ fn int_of(v: &Variant) -> Option<i64> {
     }
 }
 
-impl DotSimWeaponSpread {
+impl GSSimWeaponSpread {
     fn read(&self, state: &VarDictionary) -> State {
         let k = &self.keys;
         State {
@@ -118,7 +118,7 @@ impl DotSimWeaponSpread {
 }
 
 #[godot_api]
-impl DotSimWeaponSpread {
+impl GSSimWeaponSpread {
     /// The weapon's numbers: `[spread, spread_moving, spread_speed_ref, spread_airborne, spread_crouched, bloom,
     /// bloom_max, scaled_per_tick(bloom_recovery), _bloom_delay_of(b), _settle_ticks_of(b), hip, slide, sprint,
     /// flinch, bloom_crouch, aim]`, each accuracy term already the field when 0 or more, else the class preset.
@@ -158,7 +158,7 @@ impl DotSimWeaponSpread {
         self.run(t, p.as_ref(), &mut s, &mut state)
     }
 
-    /// An idle player's tick in one call: [method DotWeaponHitscan.rest_tick] when [param rest_ok] (the carrier is
+    /// An idle player's tick in one call: [method GSWeaponHitscan.rest_tick] when [param rest_ok] (the carrier is
     /// settled and the arsenal skips rest ticks) and the state has nothing to recover, else the [method tick] the arsenal
     /// would run with [param posture] (the `idle_posture` context as a row). Returns -2 for a rest tick (only the ticks
     /// since the last use moved; the cone was not computed), the cone for a tick, -1 with no tuning or a short row.
@@ -186,7 +186,7 @@ impl DotSimWeaponSpread {
         }
     }
 
-    /// `DotWeaponSpreadRules.target_factor(ctx)` under the frame's rules (1 with none or disabled).
+    /// `GSWeaponSpreadRules.target_factor(ctx)` under the frame's rules (1 with none or disabled).
     #[func]
     fn target_factor(&self, posture: PackedFloat64Array) -> f64 {
         match (self.frame.rules.as_ref(), Self::posture(&posture)) {
@@ -195,7 +195,7 @@ impl DotSimWeaponSpread {
         }
     }
 
-    /// `DotWeaponBallistics.spread_for(speed, airborne, crouched)`; -1 with no tuning.
+    /// `GSWeaponBallistics.spread_for(speed, airborne, crouched)`; -1 with no tuning.
     #[func]
     fn spread_for(&self, speed: f64, airborne: bool, crouched: bool) -> f64 {
         self.tuning

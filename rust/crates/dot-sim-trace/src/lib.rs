@@ -1,6 +1,6 @@
 //! GameSpice Combat's flat world ray: which of many axis-aligned boxes a ray enters first.
 //!
-//! The script original is `DotTraceFlat._world_ray` and `_ray_aabb` (dot-combat). Box corners are
+//! The script original is `GSTraceFlat._world_ray` and `_ray_aabb` (dot-combat). Box corners are
 //! the engine's `f32`; the slab arithmetic is the script's `f64`, in its order, with Godot's
 //! `maxf`/`minf` (`a > b ? a : b`, `a < b ? a : b`), so the chosen box is the script's to the bit.
 

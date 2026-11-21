@@ -1,4 +1,4 @@
-//! The player motor's collision body: dot-player-controller's `DotFpsPhysicsBody` (sweep, rest
+//! The player motor's collision body: dot-player-controller's `GSFpsPhysicsBody` (sweep, rest
 //! contact, overlap and their fallbacks), spelled operation for operation so that a native client
 //! and a web client running the script agree to the bit.
 //!
@@ -56,7 +56,7 @@ pub trait Space {
     fn ray(&mut self, from: Vec3, to: Vec3, mask: i64) -> Option<Contact>;
 }
 
-/// `DotFpsBody.Hit`.
+/// `GSFpsBody.Hit`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Hit {
     pub hit: bool,
@@ -79,7 +79,7 @@ impl Hit {
     };
 }
 
-/// `DotFpsBody.capsule_support`: how far the capsule reaches from its centre along `normal`.
+/// `GSFpsBody.capsule_support`: how far the capsule reaches from its centre along `normal`.
 #[inline]
 pub fn capsule_support(normal: Vec3, height: f64, radius: f64) -> f64 {
     maxf(height * 0.5 - radius, 0.0) * (normal.y as f64).abs() + radius
@@ -106,7 +106,7 @@ pub struct Body {
     rm_radius: f64,
     rm_mask: i64,
     rm_found: Option<(Vec3, Vec3, i64, f64)>,
-    /// Nothing the body queries moves between ticks (`DotFpsMotor.static_world`): the first rest
+    /// Nothing the body queries moves between ticks (`GSFpsMotor.static_world`): the first rest
     /// query of a tick (the depenetrate) is remembered across ticks, so a body that did not move
     /// does not ask the engine the same question again.
     static_world: bool,
@@ -205,7 +205,7 @@ impl Body {
         self.set_mask(s, m.collision & !m.pass_out);
     }
 
-    /// `DotFpsPhysicsBody.sweep`.
+    /// `GSFpsPhysicsBody.sweep`.
     pub fn sweep<S: Space>(
         &mut self,
         s: &mut S,
@@ -400,7 +400,7 @@ impl Body {
         Some(resting)
     }
 
-    /// `DotFpsPhysicsBody.rest_contact`: the engine's rest answer at `at`, its normal turned round
+    /// `GSFpsPhysicsBody.rest_contact`: the engine's rest answer at `at`, its normal turned round
     /// when it points into the surface it came from.
     pub fn rest_contact<S: Space>(
         &mut self,
@@ -537,7 +537,7 @@ impl Body {
         })
     }
 
-    /// `DotFpsPhysicsBody.overlaps`.
+    /// `GSFpsPhysicsBody.overlaps`.
     pub fn overlaps<S: Space>(
         &mut self,
         s: &mut S,

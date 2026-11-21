@@ -1,4 +1,4 @@
-//! `DotSimRouteBots`: Airdrift's route bots (`AirdriftRouteBot.command`), every bot of a tick in
+//! `GSSimRouteBots`: Airdrift's route bots (`AirdriftRouteBot.command`), every bot of a tick in
 //! one call.
 //!
 //! The game writes each map's route once (`add_route`), gives each bot a slot on it (`add`), and
@@ -64,7 +64,7 @@ impl Space for Engine<'_> {
 /// Every route bot of a map: its routes, a slot per bot, and the reused ray query.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimRouteBots {
+pub struct GSSimRouteBots {
     routes: Vec<Route>,
     /// Per slot: the route it drives and its state; `None` once removed.
     bots: Vec<Option<(usize, Bot)>>,
@@ -72,13 +72,13 @@ pub struct DotSimRouteBots {
     ray: Option<Gd<PhysicsRayQueryParameters3D>>,
 }
 
-impl DotSimRouteBots {
+impl GSSimRouteBots {
     fn slot(&self, slot: i32, what: &str) -> Option<usize> {
         let s = usize::try_from(slot).ok()?;
         match self.bots.get(s) {
             Some(Some(_)) => Some(s),
             _ => {
-                godot_error!("DotSimRouteBots.{what}: no bot in slot {slot}");
+                godot_error!("GSSimRouteBots.{what}: no bot in slot {slot}");
                 None
             }
         }
@@ -86,7 +86,7 @@ impl DotSimRouteBots {
 }
 
 #[godot_api]
-impl DotSimRouteBots {
+impl GSSimRouteBots {
     /// Holds a route: per point its position (metres), radius (metres), speed cap (u/s, 0 for
     /// none) and flags (1 walk, 2 hop, 4 land, 8 door, 16 launch, 32 slide); then the finish's
     /// centre. Returns the route's id, or -1 when the counts differ (an error).
@@ -102,7 +102,7 @@ impl DotSimRouteBots {
         let n = at.len();
         if radius.len() != n || max.len() != n || flags.len() != n {
             godot_error!(
-                "DotSimRouteBots.add_route: {} points, {} radii, {} caps, {} flags",
+                "GSSimRouteBots.add_route: {} points, {} radii, {} caps, {} flags",
                 n,
                 radius.len(),
                 max.len(),
@@ -146,7 +146,7 @@ impl DotSimRouteBots {
             .ok()
             .is_none_or(|r| r >= self.routes.len())
         {
-            godot_error!("DotSimRouteBots.add: no route {route}");
+            godot_error!("GSSimRouteBots.add: no route {route}");
             return -1;
         }
         let bot = Some((route as usize, Bot::default()));
@@ -223,7 +223,7 @@ impl DotSimRouteBots {
     fn set_state(&mut self, slot: i32, state: PackedFloat64Array) {
         let Ok(s) = <&[f64; STATE_LEN]>::try_from(state.as_slice()) else {
             godot_error!(
-                "DotSimRouteBots.set_state: {} values, want {}",
+                "GSSimRouteBots.set_state: {} values, want {}",
                 state.len(),
                 STATE_LEN
             );
@@ -259,7 +259,7 @@ impl DotSimRouteBots {
             || tunables.len() != 5
         {
             godot_error!(
-                "DotSimRouteBots.drive: {} slots, {} positions, {} velocities, {} grounded, {} tunables (want 5)",
+                "GSSimRouteBots.drive: {} slots, {} positions, {} velocities, {} grounded, {} tunables (want 5)",
                 n,
                 positions.len(),
                 velocities.len(),

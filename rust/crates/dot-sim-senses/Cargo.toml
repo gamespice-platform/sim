@@ -1,6 +1,6 @@
 [package]
 name = "dot-sim-senses"
-description = "dot-npc's perception pass (DotNpcSenses rank and decide): nearest-first ranking, sight, hearing, cone, smoke and target commitment, pure Rust over packed arrays with the line-of-sight ray left to the caller."
+description = "dot-npc's perception pass (GSNpcSenses rank and decide): nearest-first ranking, sight, hearing, cone, smoke and target commitment, pure Rust over packed arrays with the line-of-sight ray left to the caller."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,8 +1,8 @@
-//! `DotSimSenses`: a whole perception pass of dot-npc's `DotNpcPerception` (`DotNpcSenses.rank_many`, then
-//! `DotNpcSenses.decide` for each NPC due) in one call, with the same targets, timestamps and counters as
+//! `GSSimSenses`: a whole perception pass of dot-npc's `GSNpcPerception` (`GSNpcSenses.rank_many`, then
+//! `GSNpcSenses.decide` for each NPC due) in one call, with the same targets, timestamps and counters as
 //! the script (`dot_sim_senses`, to the bit) and the same occlusion rays, cast in the same order.
 //!
-//! The script packs what it already reads per NPC and per candidate, calls [`DotSimSenses::perceive`] and
+//! The script packs what it already reads per NPC and per candidate, calls [`GSSimSenses::perceive`] and
 //! writes the answers back; it keeps every NPC's state, so the script pass and this one see one state.
 
 use dot_sim_math::Vec3;
@@ -45,10 +45,10 @@ enum Caster {
     Space(Gd<PhysicsDirectSpaceState3D>, Option<Rid>),
 }
 
-/// The perception pass; [method configure] mirrors the `DotNpcSenses` settings.
+/// The perception pass; [method configure] mirrors the `GSNpcSenses` settings.
 #[derive(GodotClass)]
 #[class(base = RefCounted)]
-pub struct DotSimSenses {
+pub struct GSSimSenses {
     tuning: Tuning,
     mask: u32,
     ray: Gd<PhysicsRayQueryParameters3D>,
@@ -61,7 +61,7 @@ pub struct DotSimSenses {
 }
 
 #[godot_api]
-impl IRefCounted for DotSimSenses {
+impl IRefCounted for GSSimSenses {
     fn init(_base: Base<RefCounted>) -> Self {
         Self {
             tuning: Tuning::default(),
@@ -77,7 +77,7 @@ impl IRefCounted for DotSimSenses {
 }
 
 #[godot_api]
-impl DotSimSenses {
+impl GSSimSenses {
     /// `switch_ratio`, `commitment_grace`, `line_of_sight_enabled`, `prune_by_held` and `occlusion_mask`.
     #[func]
     fn configure(
@@ -101,7 +101,7 @@ impl DotSimSenses {
     /// Per NPC, `npc_f` holds 13 floats (position xyz, facing xyz, eye height, sight reach, hearing range,
     /// half angle in degrees and in radians, blind until, target seen at), `npc_i` 4 ints (own faction
     /// number, held candidate index, has a target, needs line of sight) and `nodes` its node. Candidates
-    /// are `DotNpcSenses.Packed`'s arrays plus `cand_first` (each id as its first index); `blockers` 5 floats
+    /// are `GSNpcSenses.Packed`'s arrays plus `cand_first` (each id as its first index); `blockers` 5 floats
     /// each (centre xyz, radius, until). Answers 2 ints per NPC (target: -1 kept, -2 cleared, else the
     /// candidate index; flags: 1 seen, 2 since, 4 quiet), then the pass's sight checks and rays cast.
     #[func]
@@ -220,8 +220,8 @@ impl DotSimSenses {
     }
 }
 
-impl DotSimSenses {
-    /// `DotNpcSenses._has_line_of_sight` for NPC `k` of `nodes`.
+impl GSSimSenses {
+    /// `GSNpcSenses._has_line_of_sight` for NPC `k` of `nodes`.
     fn clear(
         &mut self,
         nodes: &VarArray,

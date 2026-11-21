@@ -1,14 +1,14 @@
-//! `DotSimHunterSeek`: game-prop-hunt's hunter senses for a tick, every hunter in one call.
+//! `GSSimHunterSeek`: game-prop-hunt's hunter senses for a tick, every hunter in one call.
 //!
 //! The game writes the map's pieces once a map (`set_pieces`), their broken flags as they change,
 //! each hunter's search places when the script moved them (`set_search`), binds a
-//! [`DotSimSightRay`] to its world (`set_sight`), then each tick hands the props as they stand
+//! [`GSSimSightRay`] to its world (`set_sight`), then each tick hands the props as they stand
 //! (`set_props`) and asks `sense` for all hunters: the prey each has in sight, the places it
 //! crosses off and the doubt rows it adds, the script's to the bit and in its order
 //! (`dot_sim_seek`; the game's `headless_native_seek` and its `seek_verify` hold the two together).
 //! Every line of sight is the script's `_clear_between` ray, asked natively.
 
-use crate::sight::{DotSimSightRay, SightQuery};
+use crate::sight::{GSSimSightRay, SightQuery};
 use dot_sim_math::Vec3;
 use dot_sim_seek::{Hunter, Piece, Prop, Rules, Search, Seek, Sensed, Taunt};
 use godot::prelude::*;
@@ -26,20 +26,20 @@ const OBSERVE: i32 = 4;
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimHunterSeek {
+pub struct GSSimHunterSeek {
     seek: Seek,
     props: Vec<Prop>,
     hunters: Vec<Hunter>,
     taunts: Vec<Taunt>,
     out: Vec<Sensed>,
-    sight: Option<Gd<DotSimSightRay>>,
+    sight: Option<Gd<GSSimSightRay>>,
     query: SightQuery,
     /// Rays asked since the last `rays` read.
     rays: i64,
 }
 
 #[godot_api]
-impl DotSimHunterSeek {
+impl GSSimHunterSeek {
     /// Holds the map's pieces: each one's middle, feet, kind code and kin near it (less itself;
     /// shorter than the pieces is allowed, the rest are counted), all whole.
     #[func]
@@ -53,7 +53,7 @@ impl DotSimHunterSeek {
         let (m, f, k) = (middles.as_slice(), feet.as_slice(), kinds.as_slice());
         if m.len() != f.len() || m.len() != k.len() {
             godot_error!(
-                "DotSimHunterSeek.set_pieces: {} middles, {} feet, {} kinds",
+                "GSSimHunterSeek.set_pieces: {} middles, {} feet, {} kinds",
                 m.len(),
                 f.len(),
                 k.len()
@@ -76,7 +76,7 @@ impl DotSimHunterSeek {
     fn set_broken(&mut self, index: i32, broken: bool) {
         if !usize::try_from(index).is_ok_and(|i| self.seek.set_broken(i, broken)) {
             godot_error!(
-                "DotSimHunterSeek.set_broken: index {index} outside {} pieces",
+                "GSSimHunterSeek.set_broken: index {index} outside {} pieces",
                 self.seek.pieces.len()
             );
         }
@@ -84,7 +84,7 @@ impl DotSimHunterSeek {
 
     /// The ray every line of sight asks (bound by the game to its world, mask and all).
     #[func]
-    fn set_sight(&mut self, ray: Option<Gd<DotSimSightRay>>) {
+    fn set_sight(&mut self, ray: Option<Gd<GSSimSightRay>>) {
         self.sight = ray;
         self.query = SightQuery::default();
     }
@@ -113,7 +113,7 @@ impl DotSimHunterSeek {
     ) {
         if at.len() != seen_at.len() {
             godot_error!(
-                "DotSimHunterSeek.set_search: {} places, {} seen times",
+                "GSSimHunterSeek.set_search: {} places, {} seen times",
                 at.len(),
                 seen_at.len()
             );
@@ -159,7 +159,7 @@ impl DotSimHunterSeek {
         .iter()
         .any(|&l| l != n)
         {
-            godot_error!("DotSimHunterSeek.set_props: columns of different lengths");
+            godot_error!("GSSimHunterSeek.set_props: columns of different lengths");
             self.props.clear();
             return;
         }
@@ -223,7 +223,7 @@ impl DotSimHunterSeek {
             .iter()
             .any(|&l| l != n)
         {
-            godot_error!("DotSimHunterSeek.sense: rules need 9 values and columns of one length");
+            godot_error!("GSSimHunterSeek.sense: rules need 9 values and columns of one length");
             return VarArray::new();
         }
         let rules = Rules {

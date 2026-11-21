@@ -1,4 +1,4 @@
-//! `DotSimCrowdGrid`: dot-npc-ai's `DotNpcAiCrowdGrid` with the same methods and the same
+//! `GSSimCrowdGrid`: dot-npc-ai's `GSNpcAiCrowdGrid` with the same methods and the same
 //! answers to the bit (`dot_sim_crowd::Grid`), plus `fill` to add a whole tick's crowd in one call.
 
 use dot_sim_crowd::Grid;
@@ -18,13 +18,13 @@ fn gv(v: Vec3) -> Vector3 {
 /// One tick's crowd; [method setup] sets the cell side (2 m until then).
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimCrowdGrid {
+pub struct GSSimCrowdGrid {
     pub(crate) grid: Grid,
     scratch: Vec<i32>,
 }
 
 #[godot_api]
-impl DotSimCrowdGrid {
+impl GSSimCrowdGrid {
     /// Empties the grid with [param cell]-metre cells (at least 0.1).
     #[func]
     fn setup(&mut self, cell: f64) {

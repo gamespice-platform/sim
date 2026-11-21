@@ -1,4 +1,4 @@
-//! DotBotBrain's `_fight` (and `_set_move`): track and trigger, then range, strafing, stopping
+//! GSBotBrain's `_fight` (and `_set_move`): track and trigger, then range, strafing, stopping
 //! to shoot, crouching and jumping, turned into the legs' move in the view's frame.
 
 use crate::aim::{Aim, AimProfile, View};

@@ -1,9 +1,9 @@
-//! `DotSimSightRay`: a world's bot line of sight as one native ray query. A game binds it to its
-//! physics space once a tick and hands its `clear` to DotBotBrain as the sight callable; a
-//! [`crate::brain::DotSimBotMind`] that is handed it asks the ray directly, with no call into
+//! `GSSimSightRay`: a world's bot line of sight as one native ray query. A game binds it to its
+//! physics space once a tick and hands its `clear` to GSBotBrain as the sight callable; a
+//! [`crate::brain::GSSimBotMind`] that is handed it asks the ray directly, with no call into
 //! script. The answer is the script's `PhysicsRayQueryParameters3D` ray to the bit: the same end
 //! point (`from + offset / distance * distance` in `f32`), mask, exclusions and flags. A bound jail
-//! cell adds dot_map's `DotMapGlassSight.blocks` in front: a ray starting inside the cell asks the
+//! cell adds dot_map's `GSMapGlassSight.blocks` in front: a ray starting inside the cell asks the
 //! glass layer first and is blocked by glass that lies within the cell's reach.
 
 // The Arc is shared by the brains thinking on worker threads: godot-rust (experimental-threads)
@@ -35,7 +35,7 @@ pub struct SightConf {
     cell: Option<Cell>,
 }
 
-/// `DotMapGlassSight` as bound: a ray from within `radius` of `centre` that meets `glass_mask`
+/// `GSMapGlassSight` as bound: a ray from within `radius` of `centre` that meets `glass_mask`
 /// within `reach` (radius plus margin) of the centre is blocked. The radii stay `f64`, as script
 /// compares an `f32` distance to them.
 struct Cell {
@@ -104,7 +104,7 @@ impl SightConf {
         self.locked(|| space.intersect_ray(&*ray).is_empty())
     }
 
-    /// `DotMapGlassSight.blocks` for a ray starting inside the cell: the glass layer alone, no
+    /// `GSMapGlassSight.blocks` for a ray starting inside the cell: the glass layer alone, no
     /// exclusions, from `from` to `to` as given.
     fn glass_blocks(
         &self,
@@ -157,14 +157,14 @@ pub struct SightQuery {
 
 #[derive(GodotClass)]
 #[class(base=RefCounted)]
-pub struct DotSimSightRay {
+pub struct GSSimSightRay {
     conf: Arc<SightConf>,
     /// The query `clear` uses when script (or a callable) asks.
     query: std::sync::Mutex<SightQuery>,
 }
 
 #[godot_api]
-impl IRefCounted for DotSimSightRay {
+impl IRefCounted for GSSimSightRay {
     fn init(_base: Base<RefCounted>) -> Self {
         Self {
             conf: Arc::new(SightConf {
@@ -181,11 +181,11 @@ impl IRefCounted for DotSimSightRay {
 }
 
 #[godot_api]
-impl DotSimSightRay {
+impl GSSimSightRay {
     /// Binds the ray to `space` with collision `mask` and the RIDs to `exclude`; `lock` (a
     /// `Mutex`, or null) is held around each query. A non-zero `glass_mask` with a `glass_space`
     /// puts the jail cell rule in front (`centre`, `radius`, and `reach` = radius + margin, as
-    /// `DotMapGlassSight` has them). Call it on the main thread, before any brain asks this tick.
+    /// `GSMapGlassSight` has them). Call it on the main thread, before any brain asks this tick.
     #[func]
     #[allow(clippy::too_many_arguments)]
     fn bind(
@@ -234,7 +234,7 @@ impl DotSimSightRay {
     }
 }
 
-impl DotSimSightRay {
+impl GSSimSightRay {
     /// The bound configuration, for a mind that asks it directly.
     pub fn conf(&self) -> Arc<SightConf> {
         self.conf.clone()

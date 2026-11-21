@@ -1,7 +1,7 @@
-//! `DotSimPlayerPost`: the idle posture group of a player's `tick_post` (FC's `_idle_row`) over
+//! `GSSimPlayerPost`: the idle posture group of a player's `tick_post` (FC's `_idle_row`) over
 //! `dot_sim_players`' packed columns: the posture row dot-weapon's spread reads and the settled,
 //! flinch-free flag, the same to the bit as the script (FC's `headless_posture_native_parity`
-//! runs both over seeded states). `DotSim.has(&"players")` switches it; the script stays the
+//! runs both over seeded states). `GSSim.has(&"players")` switches it; the script stays the
 //! fallback on the web and wherever the library is absent.
 
 use dot_sim_players::{Config, OUT, POSTURE, PostIn, idle_row, run_rows};
@@ -10,13 +10,13 @@ use godot::prelude::*;
 /// A player's post-motor posture (stage 1 of the native player table).
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimPlayerPost {
+pub struct GSSimPlayerPost {
     cfg: Config,
 }
 
 #[godot_api]
-impl DotSimPlayerPost {
-    /// Sets `DotFpsState.Mode.GROUND` ([param ground_mode]) and `DotWeaponAccuracyClass.FLINCH_SEC`
+impl GSSimPlayerPost {
+    /// Sets `GSFpsState.Mode.GROUND` ([param ground_mode]) and `GSWeaponAccuracyClass.FLINCH_SEC`
     /// ([param flinch_sec]); until then 0 and 0.4.
     #[func]
     fn configure(&mut self, ground_mode: i64, flinch_sec: f64) {

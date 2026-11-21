@@ -1,4 +1,4 @@
-//! `DotSimInterestGrid`: GameSpice Net's `DotNetInterestGrid` cell index natively. The script keeps the identities;
+//! `GSSimInterestGrid`: GameSpice Net's `GSNetInterestGrid` cell index natively. The script keeps the identities;
 //! this takes their positions once a tick (`build`) and answers each observer's slots (`query`), in the script's order.
 //! The script original stays the specification and the fallback.
 
@@ -8,12 +8,12 @@ use godot::prelude::*;
 /// The cell index of one interest grid.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimInterestGrid {
+pub struct GSSimInterestGrid {
     grid: InterestGrid,
 }
 
 #[godot_api]
-impl DotSimInterestGrid {
+impl GSSimInterestGrid {
     /// Rebuilds the index from [param positions] (slot = array index).
     #[func]
     fn build(&mut self, positions: PackedVector3Array, cell_size: f64, ignore_vertical: bool) {

@@ -1,6 +1,6 @@
 [package]
 name = "dot-sim-interest"
-description = "Spatial-hash interest index for GameSpice Net's DotNetInterestGrid: build once a tick, query per observer."
+description = "Spatial-hash interest index for GameSpice Net's GSNetInterestGrid: build once a tick, query per observer."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

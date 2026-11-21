@@ -1,5 +1,5 @@
-//! dot-audio's per-body probes, native: `DotSimSurfProbe` is `DotAudioSurfRules.is_surfing` (the ramp ray and
-//! its per-physics-frame cache), `DotSimAudioSteps` runs `DotAudioFootsteps`' and `DotAudioSlide`'s tick over
+//! dot-audio's per-body probes, native: `GSSimSurfProbe` is `GSAudioSurfRules.is_surfing` (the ramp ray and
+//! its per-physics-frame cache), `GSSimAudioSteps` runs `GSAudioFootsteps`' and `GSAudioSlide`'s tick over
 //! the script's own body dictionary (see `dot-sim-audio` for the arithmetic, to the bit).
 //!
 //! The script keeps every body's state in its dictionary and plays every sound: a pass reads and writes the
@@ -83,17 +83,17 @@ fn rid_of(body: &Gd<Node3D>) -> Option<Rid> {
         .map(|co| co.get_rid())
 }
 
-/// `DotAudioSurfRules.is_surfing`, native: a ray down `probe` metres, a ramp normal, one verdict per body per physics frame.
+/// `GSAudioSurfRules.is_surfing`, native: a ray down `probe` metres, a ramp normal, one verdict per body per physics frame.
 #[derive(GodotClass)]
 #[class(base = RefCounted)]
-pub struct DotSimSurfProbe {
+pub struct GSSimSurfProbe {
     ray: DownRay,
     seen: SeenCache,
     normal: Variant,
 }
 
 #[godot_api]
-impl IRefCounted for DotSimSurfProbe {
+impl IRefCounted for GSSimSurfProbe {
     fn init(_base: Base<RefCounted>) -> Self {
         Self {
             ray: DownRay::new(),
@@ -103,7 +103,7 @@ impl IRefCounted for DotSimSurfProbe {
     }
 }
 
-impl DotSimSurfProbe {
+impl GSSimSurfProbe {
     fn surfing(
         &mut self,
         body: &Gd<Node3D>,
@@ -164,8 +164,8 @@ impl DotSimSurfProbe {
 }
 
 #[godot_api]
-impl DotSimSurfProbe {
-    /// Whether `body` is on a surf ramp now: `DotAudioSurfRules.is_surfing` with the rules' probe, mask and normal bounds.
+impl GSSimSurfProbe {
+    /// Whether `body` is on a surf ramp now: `GSAudioSurfRules.is_surfing` with the rules' probe, mask and normal bounds.
     #[func]
     fn is_surfing(
         &mut self,
@@ -179,10 +179,10 @@ impl DotSimSurfProbe {
     }
 }
 
-/// `DotAudioFootsteps`' and `DotAudioSlide`'s tick: the bodies' state is held here, loaded from the scripts' dictionaries.
+/// `GSAudioFootsteps`' and `GSAudioSlide`'s tick: the bodies' state is held here, loaded from the scripts' dictionaries.
 #[derive(GodotClass)]
 #[class(base = RefCounted)]
-pub struct DotSimAudioSteps {
+pub struct GSSimAudioSteps {
     ray: DownRay,
     no_args: VarArray,
     /// The packed footstep pass's bodies, in the script's dictionary order (see `steps_load`).
@@ -198,7 +198,7 @@ struct SlideBody {
     last: Vec3,
     on: bool,
     sliding: Option<Callable>,
-    /// Its `sliding` is the stock `DotAudioSurf._is_surfer`: asked of the surf probe here.
+    /// Its `sliding` is the stock `GSAudioSurf._is_surfer`: asked of the surf probe here.
     surfer: bool,
 }
 
@@ -218,7 +218,7 @@ struct StepBody {
 const STEP_STRIDE: usize = 6;
 
 #[godot_api]
-impl IRefCounted for DotSimAudioSteps {
+impl IRefCounted for GSSimAudioSteps {
     fn init(_base: Base<RefCounted>) -> Self {
         Self {
             ray: DownRay::new(),
@@ -230,7 +230,7 @@ impl IRefCounted for DotSimAudioSteps {
 }
 
 #[godot_api]
-impl DotSimAudioSteps {
+impl GSSimAudioSteps {
     /// Loads the packed footstep pass: `keys` the script's body keys in order, `state` their states (`STEP_STRIDE`
     /// values each: last x, y, z, travelled, air, grounded) and `grounded` each body's `grounded` callable or null.
     /// The state is held here from now on; `steps_state` reads it back.
@@ -279,10 +279,10 @@ impl DotSimAudioSteps {
         PackedFloat64Array::from(out.as_slice())
     }
 
-    /// One `DotAudioFootsteps._physics_process` over the loaded bodies: returns `[key, loudness, ...]` in order, -1 for a body
+    /// One `GSAudioFootsteps._physics_process` over the loaded bodies: returns `[key, loudness, ...]` in order, -1 for a body
     /// dropped (freed or out of the tree) that the script erases.
     /// `tun` is `[quiet_speed, run_speed, stride_walk, stride_run, walk_loudness, landing_air_time]`;
-    /// `hear_distance` 0 when there is no manager. `surf` is null (no surf muting), a `DotSimSurfProbe` asked with
+    /// `hear_distance` 0 when there is no manager. `surf` is null (no surf muting), a `GSSimSurfProbe` asked with
     /// `surf_args` `[probe, mask, min_normal_y, max_normal_y]`, or a `Callable(body) -> bool`.
     #[func]
     #[allow(clippy::too_many_arguments)]
@@ -299,7 +299,7 @@ impl DotSimAudioSteps {
     ) -> VarArray {
         let mut out = VarArray::new();
         let tun = StepTun::from_slice(tun.as_slice());
-        let mut probe = surf.try_to::<Gd<DotSimSurfProbe>>().ok();
+        let mut probe = surf.try_to::<Gd<GSSimSurfProbe>>().ok();
         let callable = if probe.is_none() {
             surf.try_to::<Callable>().ok()
         } else {
@@ -429,7 +429,7 @@ impl DotSimAudioSteps {
         PackedVector3Array::from(v.as_slice())
     }
 
-    /// One `DotAudioSlide._physics_process` gate over the loaded bodies (`reach_sq` the tick's `reach_squared()`,
+    /// One `GSAudioSlide._physics_process` gate over the loaded bodies (`reach_sq` the tick's `reach_squared()`,
     /// `quiet` the speed a body not yet playing must reach to be asked, negative: every body is asked). Every body's `last` becomes its position (as every script path does).
     /// Returns `SLIDE_STRIDE` values per body the script must handle: index, code, the `last` before this tick.
     /// Codes: 0 freed or out of the tree (dropped here), 1 `out_of_reach`, 2 `_advance` (not asked), 3 `_advance`
@@ -452,7 +452,7 @@ impl DotSimAudioSteps {
         let mut out: Vec<f64> = Vec::with_capacity(self.slides.len() * SLIDE_STRIDE);
         let ear = v3(ear);
         let quiet = (quiet >= 0.0).then_some(quiet);
-        let mut probe = surf.try_to::<Gd<DotSimSurfProbe>>().ok();
+        let mut probe = surf.try_to::<Gd<GSSimSurfProbe>>().ok();
         let mut probe = probe.as_mut().map(|p| p.bind_mut());
         let sa = surf_args.as_slice();
         let sa = |i: usize| sa.get(i).copied().unwrap_or(0.0);

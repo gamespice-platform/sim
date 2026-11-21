@@ -1,16 +1,16 @@
-//! `DotSimBotSenses`: the sight scan of a bot's think, over one packed table per tick.
+//! `GSSimBotSenses`: the sight scan of a bot's think, over one packed table per tick.
 
 use dot_sim_bots::{Contacts, Found, Query, Vec3 as V3, candidates};
 use godot::prelude::*;
 use std::sync::Arc;
 
 /// One tick's packed bodies. Shared by `Arc`: a mind takes a handle on the main thread
-/// (`DotSimBotMind.hold_senses`) and reads it on a worker thread without binding the senses
+/// (`GSSimBotMind.hold_senses`) and reads it on a worker thread without binding the senses
 /// object, which several workers must never do at once.
 #[derive(Default, Debug, Clone)]
 pub struct Packed {
     pub table: Contacts,
-    /// The bodies' eyes, row for row with `table` once [`DotSimBotSenses::load_eyes`] gave them.
+    /// The bodies' eyes, row for row with `table` once [`GSSimBotSenses::load_eyes`] gave them.
     pub eyes: Vec<V3>,
     /// The bodies' positions (feet), row for row, for the sight LOD's distance.
     pub positions: Vec<V3>,
@@ -19,13 +19,13 @@ pub struct Packed {
 /// The packed bodies of one tick and the last scan's answer.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimBotSenses {
+pub struct GSSimBotSenses {
     /// Refilled in place while no mind holds it, else copied on write, so a held tick stays whole.
     pub(crate) packed: Arc<Packed>,
     found: Found,
 }
 
-impl DotSimBotSenses {
+impl GSSimBotSenses {
     /// A handle on this tick's bodies for a mind to read later, on any thread.
     pub(crate) fn share(&self) -> Arc<Packed> {
         Arc::clone(&self.packed)
@@ -33,7 +33,7 @@ impl DotSimBotSenses {
 }
 
 #[godot_api]
-impl DotSimBotSenses {
+impl GSSimBotSenses {
     /// Replaces the table: ids, aim points, teams and alive flags, one row per body.
     #[func]
     fn load_contacts(

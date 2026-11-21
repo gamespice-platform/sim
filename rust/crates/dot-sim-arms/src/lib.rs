@@ -1,4 +1,4 @@
-//! The view arms' elbow clearance scan: dot-player-char's `DotViewArmsClear.scan`, spelled in the
+//! The view arms' elbow clearance scan: dot-player-char's `GSViewArmsClear.scan`, spelled in the
 //! engine's order and precision so it agrees with the script to the bit. The view arms run it per
 //! arm per frame (eleven turns of the elbow pole, each an elbow solve and a depth test against the
 //! held weapon's box); it is presentation only and never feeds the simulation.
@@ -6,7 +6,7 @@
 pub use dot_sim_math::Vec3;
 use dot_sim_math::{clampf, maxf, minf};
 
-/// Turns tried, degrees; ties go to the earlier (smaller) one (`DotViewArmsClear.ANGLES`).
+/// Turns tried, degrees; ties go to the earlier (smaller) one (`GSViewArmsClear.ANGLES`).
 pub const ANGLES: [f64; 11] = [
     0.0, 15.0, -15.0, 30.0, -30.0, 45.0, -45.0, 60.0, -60.0, 80.0, -80.0,
 ];
@@ -139,7 +139,7 @@ pub fn deg_to_rad(d: f64) -> f64 {
     d * (std::f64::consts::PI / 180.0)
 }
 
-/// `DotViewArmsClear.elbow_for`: where the two-bone solve puts the elbow for this target and pole.
+/// `GSViewArmsClear.elbow_for`: where the two-bone solve puts the elbow for this target and pole.
 /// `la`, `lb` are the upper arm and forearm (a `Vector2`'s `f32`s).
 pub fn elbow_for(shoulder: Vec3, target: Vec3, la: f32, lb: f32, pole: Vec3) -> Vec3 {
     let (la, lb) = (la as f64, lb as f64);
@@ -163,7 +163,7 @@ pub fn elbow_for(shoulder: Vec3, target: Vec3, la: f32, lb: f32, pole: Vec3) -> 
     shoulder + dir.scale(along) + side.scale(maxf(la * la - along * along, 0.0).sqrt())
 }
 
-/// `DotViewArmsClear.depth_in`: how far `q` is inside `bounds` from its nearest face, or 0 outside.
+/// `GSViewArmsClear.depth_in`: how far `q` is inside `bounds` from its nearest face, or 0 outside.
 #[inline]
 pub fn depth_in(bounds: &Aabb, q: Vec3) -> f64 {
     if !bounds.has_point(q) {
@@ -180,7 +180,7 @@ pub fn depth_in(bounds: &Aabb, q: Vec3) -> f64 {
     )
 }
 
-/// `DotViewArmsClear.arm_depth`: how deep the upper arm and the forearm (all but its hand end) go into `bounds`.
+/// `GSViewArmsClear.arm_depth`: how deep the upper arm and the forearm (all but its hand end) go into `bounds`.
 pub fn arm_depth(
     to_anchor: &Xform,
     bounds: &Aabb,
@@ -216,7 +216,7 @@ pub struct Clear {
     pub depth: f64,
 }
 
-/// `DotViewArmsClear.scan`: the eased turn of `pole` about the unit `dir` toward the least-buried of [`ANGLES`].
+/// `GSViewArmsClear.scan`: the eased turn of `pole` about the unit `dir` toward the least-buried of [`ANGLES`].
 #[allow(clippy::too_many_arguments)]
 pub fn scan(
     shoulder: Vec3,

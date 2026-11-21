@@ -1,5 +1,5 @@
-//! `DotSimThinkTier`: dot-bot's think-rate tiers (`DotBotThinkTier`) for one tick, natively.
-//! The script keeps the settings and hands them over with [`DotSimThinkTier::configure`].
+//! `GSSimThinkTier`: dot-bot's think-rate tiers (`GSBotThinkTier`) for one tick, natively.
+//! The script keeps the settings and hands them over with [`GSSimThinkTier::configure`].
 
 use dot_sim_bots::Vec3 as V3;
 use dot_sim_bots::tier::{Tier, TierConfig};
@@ -12,7 +12,7 @@ fn v3(p: &Vector3) -> V3 {
 /// The tiers of one tick: people's eyes and looks, the pinned bots, and the counts.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimThinkTier {
+pub struct GSSimThinkTier {
     tier: Tier,
     eyes: Vec<V3>,
     looks: Vec<V3>,
@@ -21,7 +21,7 @@ pub struct DotSimThinkTier {
 }
 
 #[godot_api]
-impl DotSimThinkTier {
+impl GSSimThinkTier {
     /// The settings, in this order: above, near_every, far_every, far_range, close_range, nearest,
     /// engaged_far_every, engaged_range, idle_view_every, load_scale, view_range, view_cos,
     /// body_near_every, body_far_every, body_above, max_period (0: unlimited). Missing values keep their defaults.
@@ -51,7 +51,7 @@ impl DotSimThinkTier {
             max_period: n(15, d.max_period),
         };
         if let Err(e) = config.validate() {
-            godot_error!("DotSimThinkTier.configure: {e}");
+            godot_error!("GSSimThinkTier.configure: {e}");
             return false;
         }
         self.tier.config = config;

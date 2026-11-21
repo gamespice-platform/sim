@@ -37,7 +37,7 @@ const STUCK_RADIUS: f64 = 1.0;
 const UNSTICK_SECONDS: f64 = 1.0;
 const UNSTICK_TURNS: [f64; 7] = [90.0, -90.0, 180.0, 45.0, -45.0, 135.0, -135.0];
 
-/// `DotFpsCommand.BUTTON_JUMP`.
+/// `GSFpsCommand.BUTTON_JUMP`.
 pub const BUTTON_JUMP: i64 = 1;
 
 const INF3: Vec3 = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
@@ -166,7 +166,7 @@ pub trait Space {
     fn ray(&mut self, from: Vec3, to: Vec3) -> Option<Hit>;
 }
 
-/// A tick's command: the parts of a `DotFpsCommand` the bot sets (pitch stays 0).
+/// A tick's command: the parts of a `GSFpsCommand` the bot sets (pitch stays 0).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Command {
     pub yaw: f64,

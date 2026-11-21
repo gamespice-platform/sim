@@ -1,4 +1,4 @@
-//! A map's PVS: dot-net's `DotNetVisibility` (`cluster_of`, `cluster_sees`, `visible`) over the
+//! A map's PVS: dot-net's `GSNetVisibility` (`cluster_of`, `cluster_sees`, `visible`) over the
 //! same arrays, to the bit.
 //!
 //! The Source engine asks the PVS before it traces a line of sight (`CCSBot::IsVisible`): a
@@ -12,7 +12,7 @@
 #[cfg(test)]
 mod tests;
 
-/// A map's visibility set, as `DotNetVisibility.native_dict()` hands it over.
+/// A map's visibility set, as `GSNetVisibility.native_dict()` hands it over.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Pvs {
     /// Per plane `nx, ny, nz, d` (metres, Godot axes): in front when `n.p - d >= 0`.
@@ -32,7 +32,7 @@ pub struct Pvs {
 }
 
 impl Pvs {
-    /// `DotNetVisibility.is_ready`: whether this holds a usable set.
+    /// `GSNetVisibility.is_ready`: whether this holds a usable set.
     pub fn is_ready(&self) -> bool {
         let node_count = self.nodes.len() / 3;
         self.clusters > 0
@@ -46,7 +46,7 @@ impl Pvs {
             && !self.leaf_cluster.is_empty()
     }
 
-    /// `DotNetVisibility.cluster_of`: the cluster at `p`, `-1` for none. A node naming a plane
+    /// `GSNetVisibility.cluster_of`: the cluster at `p`, `-1` for none. A node naming a plane
     /// past the table also answers `-1` (the script would stop on the bad index).
     pub fn cluster_of(&self, p: [f32; 3]) -> i32 {
         if let Some((lo, hi)) = self.bounds
@@ -89,7 +89,7 @@ impl Pvs {
         self.leaf_cluster.get(leaf).copied().unwrap_or(-1)
     }
 
-    /// `DotNetVisibility.cluster_sees`: whether cluster `from` may see cluster `to`; either out of
+    /// `GSNetVisibility.cluster_sees`: whether cluster `from` may see cluster `to`; either out of
     /// range answers true.
     pub fn cluster_sees(&self, from: i32, to: i32) -> bool {
         if from < 0 || to < 0 || i64::from(from) >= self.clusters || i64::from(to) >= self.clusters
@@ -102,7 +102,7 @@ impl Pvs {
             .is_none_or(|b| b & (1u8 << (to & 7)) != 0)
     }
 
-    /// `DotNetVisibility.visible`: whether anything at `from` could see anything at `to`.
+    /// `GSNetVisibility.visible`: whether anything at `from` could see anything at `to`.
     pub fn visible(&self, from: [f32; 3], to: [f32; 3]) -> bool {
         if !self.is_ready() {
             return true;

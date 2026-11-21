@@ -1,4 +1,4 @@
-//! The engine's scalar helpers, its `Vector2`, and dot-core's `DotRandomStream`, rounded and
+//! The engine's scalar helpers, its `Vector2`, and dot-core's `GSRandomStream`, rounded and
 //! ordered as the engine and the script do them.
 
 pub use dot_sim_math::{Vec3, clampf, maxf, minf, rad_to_deg};
@@ -188,7 +188,7 @@ fn ushr(z: i64, n: u32) -> i64 {
     ((z as u64) >> n) as i64
 }
 
-/// dot-core's `DotRandomStream._mix` (the splitmix64 finaliser over wrapping `i64`).
+/// dot-core's `GSRandomStream._mix` (the splitmix64 finaliser over wrapping `i64`).
 #[inline]
 pub fn mix(x: i64) -> i64 {
     let mut z = x.wrapping_add(GAMMA);
@@ -197,7 +197,7 @@ pub fn mix(x: i64) -> i64 {
     z ^ ushr(z, 31)
 }
 
-/// One `DotRandomStream`: its key (made by the script) and its counter.
+/// One `GSRandomStream`: its key (made by the script) and its counter.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Stream {
     pub key: i64,

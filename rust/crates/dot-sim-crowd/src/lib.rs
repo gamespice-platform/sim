@@ -1,5 +1,5 @@
 //! A crowd's positions in a flat spatial hash rebuilt once a tick: the twin of dot-npc-ai's
-//! `DotNpcAiCrowdGrid` to the bit. Cells are linked lists in insertion order and every sum is
+//! `GSNpcAiCrowdGrid` to the bit. Cells are linked lists in insertion order and every sum is
 //! spelled in the script's order and precision (f32 vectors, f64 script floats).
 
 use std::collections::HashMap;
@@ -172,7 +172,7 @@ impl Grid {
         }
     }
 
-    /// `DotNpcAiCrowdGrid.separation`: the spacing push on entry `self_index` from everybody
+    /// `GSNpcAiCrowdGrid.separation`: the spacing push on entry `self_index` from everybody
     /// within `query` metres of where it was added, pushed from `from`.
     pub fn separation(
         &self,
@@ -258,7 +258,7 @@ impl Grid {
     }
 }
 
-/// `DotNpcAiSteering.seek`: the flat unit direction from `from` to `goal`, zero within a millimetre.
+/// `GSNpcAiSteering.seek`: the flat unit direction from `from` to `goal`, zero within a millimetre.
 #[inline]
 pub fn seek(from: Vec3, goal: Vec3) -> Vec3 {
     let mut direction = goal - from;

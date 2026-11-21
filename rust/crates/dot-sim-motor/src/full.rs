@@ -1,4 +1,4 @@
-//! The whole of `DotFpsMotor._simulate` from the start ground check to the end one, for a plain
+//! The whole of `GSFpsMotor._simulate` from the start ground check to the end one, for a plain
 //! walker (GROUND or AIR, no surfaces, no edge friction): [`tick::pre`], the jump, the wall moves,
 //! the launch, the dash, the slide and the wall run, then [`tick::post`]. The script keeps the
 //! effects, noclip, crouch and the idle tick, which run before it, and the timers unless the
@@ -14,21 +14,21 @@ use crate::{Hit, Space, UP, Vec3};
 use dot_sim_math::{maxf, minf, rad_to_deg};
 use std::f64::consts::{PI, TAU};
 
-/// `DotFpsCommand.BUTTON_JUMP`.
+/// `GSFpsCommand.BUTTON_JUMP`.
 pub const BUTTON_JUMP: i64 = 1;
-/// `DotFpsCommand.BUTTON_CROUCH`.
+/// `GSFpsCommand.BUTTON_CROUCH`.
 pub const BUTTON_CROUCH: i64 = 2;
-/// `DotFpsCommand.BUTTON_SPRINT`.
+/// `GSFpsCommand.BUTTON_SPRINT`.
 pub const BUTTON_SPRINT: i64 = 4;
 
 const WALL_HEADINGS: i64 = 8;
 const WALL_JUMP_COUNT_MAX: i64 = 3;
 const WALL_PROBE_MIN_SPEED: f64 = 0.5;
 const WALL_RUN_TIME_SLACK: f64 = 1e-4;
-/// `DotFpsTunables.WALL_RUN_TIME_LIMIT`.
+/// `GSFpsTunables.WALL_RUN_TIME_LIMIT`.
 const WALL_RUN_TIME_LIMIT: f64 = 1.9;
 const WALL_ENTRY_MIN_AIR: f64 = 0.08;
-/// `DotFpsMotor.TIMER_CAP`.
+/// `GSFpsMotor.TIMER_CAP`.
 const TIMER_CAP: f64 = 1000.0;
 const WALL_PROBE_STEP: f64 = 0.25;
 const WALL_PROBE_STANDOFF: f64 = 0.12;
@@ -172,7 +172,7 @@ pub struct MoveCounters {
 pub struct FullOut {
     pub pre: PreOut,
     pub post: PostOut,
-    /// `DotFpsMotor.view_turn`.
+    /// `GSFpsMotor.view_turn`.
     pub view_turn: f64,
 }
 
@@ -195,7 +195,7 @@ fn view_basis(yaw_degrees: f64) -> (Vec3, Vec3) {
     (forward, right)
 }
 
-/// `DotFpsMotorWalls.forward_for`.
+/// `GSFpsMotorWalls.forward_for`.
 fn forward_for(yaw_degrees: f64) -> Vec3 {
     let yaw = deg_to_rad(yaw_degrees);
     Vec3::new((-yaw.sin()) as f32, 0.0, (-yaw.cos()) as f32)
@@ -234,7 +234,7 @@ fn flat(v: Vec3) -> Vec3 {
     Vec3::new(v.x, 0.0, v.z)
 }
 
-/// `DotFpsMotorWalls._flat_normal`.
+/// `GSFpsMotorWalls._flat_normal`.
 fn flat_normal(normal: Vec3) -> Vec3 {
     let f = flat(normal);
     if (f.length_squared() as f64) > 1e-8 {
@@ -244,7 +244,7 @@ fn flat_normal(normal: Vec3) -> Vec3 {
     }
 }
 
-/// `DotFpsMotorWalls.wall_heading_of`.
+/// `GSFpsMotorWalls.wall_heading_of`.
 pub fn wall_heading_of(normal: Vec3) -> i64 {
     let turns = (normal.x as f64).atan2(normal.z as f64) / TAU;
     ((turns * WALL_HEADINGS as f64).round() as i64).rem_euclid(WALL_HEADINGS)
@@ -255,7 +255,7 @@ fn same_wall(a: i64, b: i64) -> bool {
     apart <= 1 || apart >= WALL_HEADINGS - 1
 }
 
-/// `DotFpsMotor._try_jump`.
+/// `GSFpsMotor._try_jump`.
 fn try_jump(s: &mut State, x: &Ctx, mv: &mut Moves) -> bool {
     let (ft, inp) = (x.ft, x.inp);
     if !ft.can_jump || inp.deny_jump {
@@ -305,7 +305,7 @@ fn try_jump(s: &mut State, x: &Ctx, mv: &mut Moves) -> bool {
     true
 }
 
-/// `DotFpsMotor._try_launch`.
+/// `GSFpsMotor._try_launch`.
 fn try_launch(s: &mut State, x: &Ctx, mv: &mut Moves, mc: &mut MoveCounters) -> bool {
     let (ft, inp) = (x.ft, x.inp);
     if !ft.launch_enabled || ft.launch_button <= 0 || inp.deny_jump || inp.deny_move {
@@ -335,7 +335,7 @@ fn try_launch(s: &mut State, x: &Ctx, mv: &mut Moves, mc: &mut MoveCounters) -> 
     true
 }
 
-/// `DotFpsMotor._try_dash`.
+/// `GSFpsMotor._try_dash`.
 fn try_dash(s: &mut State, x: &Ctx, mv: &mut Moves, mc: &mut MoveCounters) -> bool {
     let (ft, inp) = (x.ft, x.inp);
     if !ft.dash_enabled || ft.dash_button <= 0 || inp.deny_move || mv.dash_cooldown_left > 0.0 {
@@ -378,7 +378,7 @@ fn end_slide(x: &Ctx, mv: &mut Moves) {
     mv.slide_cooldown_left = x.ft.slide_cooldown;
 }
 
-/// `DotFpsMotor._update_slide`.
+/// `GSFpsMotor._update_slide`.
 fn update_slide(s: &mut State, x: &Ctx, mv: &mut Moves, left_ground: bool, mc: &mut MoveCounters) {
     let (ft, inp) = (x.ft, x.inp);
     if !ft.slide_enabled {
@@ -431,7 +431,7 @@ fn update_slide(s: &mut State, x: &Ctx, mv: &mut Moves, left_ground: bool, mc: &
     }
 }
 
-/// `DotFpsMotorWalls._wall_contact`; also writes `wall_normal`.
+/// `GSFpsMotorWalls._wall_contact`; also writes `wall_normal`.
 fn wall_contact<S: Space>(m: &mut Mover<'_, S>, s: &State, x: &Ctx, mv: &mut Moves) -> Option<Hit> {
     let (ft, inp) = (x.ft, x.inp);
     if !ft.wall_run_enabled && !ft.wall_jump_enabled && x.tt.wall_slide_speed <= 0.0 {
@@ -508,7 +508,7 @@ fn wall_contact<S: Space>(m: &mut Mover<'_, S>, s: &State, x: &Ctx, mv: &mut Mov
     best
 }
 
-/// `DotFpsMotorWalls._wall_probe`: 2 inside solid, 1 the face found, 0 not.
+/// `GSFpsMotorWalls._wall_probe`: 2 inside solid, 1 the face found, 0 not.
 fn wall_probe<S: Space>(m: &mut Mover<'_, S>, at: Vec3, normal: Vec3, y: f64) -> i64 {
     let origin = Vec3::new(at.x, y as f32, at.z) + normal.scale(WALL_PROBE_STANDOFF);
     if m.body.overlaps(
@@ -569,7 +569,7 @@ fn wall_extent_along<S: Space>(
     reached
 }
 
-/// `DotFpsMotorWalls._wall_runnable`.
+/// `GSFpsMotorWalls._wall_runnable`.
 fn wall_runnable<S: Space>(m: &mut Mover<'_, S>, s: &State, x: &Ctx, wall: &Hit) -> bool {
     let (min_height, min_length) = (x.ft.wall_run_min_height, x.ft.wall_run_min_length);
     if min_height <= 0.0 && min_length <= 0.0 {
@@ -613,7 +613,7 @@ fn wall_runnable<S: Space>(m: &mut Mover<'_, S>, s: &State, x: &Ctx, wall: &Hit)
     true
 }
 
-/// `DotFpsMotor._advance_timers` without the ground ticks and stamina (the script keeps those):
+/// `GSFpsMotor._advance_timers` without the ground ticks and stamina (the script keeps those):
 /// the clocks, cooldowns, the landing crouch press and the wall reset on the ground. `grounded` is
 /// the mode the tick started in, before the crouch the script ran in between, which reads none of
 /// these.
@@ -666,7 +666,7 @@ fn speed_along_wall(s: &State, wall: &Hit) -> f64 {
     (f - normal.scale(f.dot(normal) as f64)).length() as f64
 }
 
-/// `DotFpsMotorWalls._turn_along`.
+/// `GSFpsMotorWalls._turn_along`.
 fn turn_along(
     s: &mut State,
     x: &Ctx,
@@ -690,7 +690,7 @@ fn turn_along(
     }
 }
 
-/// `DotFpsMotorWalls._run_speed`: the speed a run starts at. All of the horizontal speed, except
+/// `GSFpsMotorWalls._run_speed`: the speed a run starts at. All of the horizontal speed, except
 /// after a wall jump in this air, where the part going into the new wall is dropped.
 fn run_speed(wall_jumps_in_air: i64, f: Vec3, normal: Vec3) -> f64 {
     if wall_jumps_in_air <= 0 {
@@ -731,7 +731,7 @@ fn run_heading<S: Space>(
     Some(tangent.scale(speed))
 }
 
-/// `DotFpsMotorWalls._try_jump_run`.
+/// `GSFpsMotorWalls._try_jump_run`.
 fn try_jump_run<S: Space>(
     m: &mut Mover<'_, S>,
     s: &mut State,
@@ -765,7 +765,7 @@ fn try_jump_run<S: Space>(
     true
 }
 
-/// `DotFpsMotorWalls._try_auto_run`.
+/// `GSFpsMotorWalls._try_auto_run`.
 fn try_auto_run<S: Space>(
     m: &mut Mover<'_, S>,
     s: &mut State,
@@ -800,7 +800,7 @@ fn try_auto_run<S: Space>(
     }
 }
 
-/// `DotFpsMotorWalls._try_wall_jump`.
+/// `GSFpsMotorWalls._try_wall_jump`.
 fn try_wall_jump(
     s: &mut State,
     x: &Ctx,
@@ -869,7 +869,7 @@ fn try_wall_jump(
     true
 }
 
-/// `DotFpsMotorWalls._update_wall_run`.
+/// `GSFpsMotorWalls._update_wall_run`.
 fn update_wall_run<S: Space>(
     m: &mut Mover<'_, S>,
     s: &State,
@@ -947,7 +947,7 @@ fn update_wall_run<S: Space>(
     mc.wall_runs += 1;
 }
 
-/// `DotFpsMotorWalls._wall_slide_ok`.
+/// `GSFpsMotorWalls._wall_slide_ok`.
 fn wall_slide_ok(s: &State, x: &Ctx, mv: &Moves, wall: Option<&Hit>) -> bool {
     let Some(wall) = wall else { return false };
     if x.tt.wall_slide_speed <= 0.0 || s.mode != AIR || mv.wall_running() {

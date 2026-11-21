@@ -1,6 +1,6 @@
 extends Node
 
-## The snapshot module's suite: GameSpice Net's state codec in GDScript and in [code]DotSimSnapshotCodec[/code] on the same inputs (bytes, values, errors, reader positions), then servers and clients, codec off and on, over lossy 22-33 Hz links with interest rings.
+## The snapshot module's suite: GameSpice Net's state codec in GDScript and in [code]GSSimSnapshotCodec[/code] on the same inputs (bytes, values, errors, reader positions), then servers and clients, codec off and on, over lossy 22-33 Hz links with interest rings.
 ## Every payload and value received must be equal. With no library it checks the fallback and says the native half was skipped.
 ## With [code]GS_SIM_REQUIRE_NATIVE=1[/code] (CI) a missing library fails instead.
 
@@ -9,7 +9,7 @@ const NOISE := 1500
 
 
 ## Every wire type, and the cases the codec hands back to the script.
-class Every extends DotNetBehaviour:
+class Every extends GSNetBehaviour:
 	var b: Variant = false
 	var u3: Variant = 0
 	var u64: Variant = 0
@@ -34,73 +34,73 @@ class Every extends DotNetBehaviour:
 	var log: Array = []
 
 	func _register_net_vars() -> void:
-		replicate(&"b", DotNetVar.Type.BOOL)
-		replicate(&"u3", DotNetVar.Type.UINT).bits(3)
-		replicate(&"u64", DotNetVar.Type.UINT).bits(64)
-		replicate(&"i7", DotNetVar.Type.INT).bits(7)
-		replicate(&"i32", DotNetVar.Type.INT).bits(32)
-		replicate(&"vi", DotNetVar.Type.VARINT)
-		replicate(&"f", DotNetVar.Type.FLOAT)
-		replicate(&"fr", DotNetVar.Type.FLOAT_RANGE).range_of(-5.0, 20.0).bits(13)
-		replicate(&"fr40", DotNetVar.Type.FLOAT_RANGE).range_of(0.0, 1.0).bits(40)
-		replicate(&"pos", DotNetVar.Type.VECTOR3_POSITION)
-		replicate(&"vel", DotNetVar.Type.VECTOR3_VELOCITY)
-		replicate(&"vr", DotNetVar.Type.VECTOR3_RANGE).range_of(-3.0, 3.0).bits(10)
-		replicate(&"dir", DotNetVar.Type.DIRECTION).bits(12)
-		replicate(&"q", DotNetVar.Type.QUATERNION)
-		replicate(&"ang", DotNetVar.Type.ANGLE).bits(9)
-		replicate(&"ang16", DotNetVar.Type.ANGLE).bits(16)
-		replicate(&"s", DotNetVar.Type.STRING)
-		replicate(&"by", DotNetVar.Type.BYTES)
+		replicate(&"b", GSNetVar.Type.BOOL)
+		replicate(&"u3", GSNetVar.Type.UINT).bits(3)
+		replicate(&"u64", GSNetVar.Type.UINT).bits(64)
+		replicate(&"i7", GSNetVar.Type.INT).bits(7)
+		replicate(&"i32", GSNetVar.Type.INT).bits(32)
+		replicate(&"vi", GSNetVar.Type.VARINT)
+		replicate(&"f", GSNetVar.Type.FLOAT)
+		replicate(&"fr", GSNetVar.Type.FLOAT_RANGE).range_of(-5.0, 20.0).bits(13)
+		replicate(&"fr40", GSNetVar.Type.FLOAT_RANGE).range_of(0.0, 1.0).bits(40)
+		replicate(&"pos", GSNetVar.Type.VECTOR3_POSITION)
+		replicate(&"vel", GSNetVar.Type.VECTOR3_VELOCITY)
+		replicate(&"vr", GSNetVar.Type.VECTOR3_RANGE).range_of(-3.0, 3.0).bits(10)
+		replicate(&"dir", GSNetVar.Type.DIRECTION).bits(12)
+		replicate(&"q", GSNetVar.Type.QUATERNION)
+		replicate(&"ang", GSNetVar.Type.ANGLE).bits(9)
+		replicate(&"ang16", GSNetVar.Type.ANGLE).bits(16)
+		replicate(&"s", GSNetVar.Type.STRING)
+		replicate(&"by", GSNetVar.Type.BYTES)
 		replicate_custom(&"c", _write_c, _read_c)
-		replicate(&"rated", DotNetVar.Type.UINT).bits(12).at_most(10.0)
-		replicate(&"px", DotNetVar.Type.FLOAT).of_length(14)
+		replicate(&"rated", GSNetVar.Type.UINT).bits(12).at_most(10.0)
+		replicate(&"px", GSNetVar.Type.FLOAT).of_length(14)
 		for declaration in net_vars:
 			var property := declaration.property
 			var _h := declaration.on_change(func(previous: Variant, value: Variant) -> void:
 				log.append([property, previous, value]))
 
-	func _write_c(writer: DotNetWriter, value: Variant) -> void:
+	func _write_c(writer: GSNetWriter, value: Variant) -> void:
 		writer.write_uint(int(value) & 31, 5)
 		writer.write_float32(float(value) * 0.5)
 
-	func _read_c(reader: DotNetReader) -> Variant:
+	func _read_c(reader: GSNetReader) -> Variant:
 		var low := reader.read_uint(5)
 		var _half := reader.read_float32()
 		return low
 
 
 ## FC's exact floats alone: the crate's PACKED_FLOAT32 golden test.
-class Exact extends DotNetBehaviour:
+class Exact extends GSNetBehaviour:
 	var exact: Variant = PackedFloat32Array()
 
 	func _register_net_vars() -> void:
-		replicate(&"exact", DotNetVar.Type.FLOAT).of_length(3)
+		replicate(&"exact", GSNetVar.Type.FLOAT).of_length(3)
 
 
 ## FC's net_exact as it is now: 14 floats, the codec's own.
-class Exact14 extends DotNetBehaviour:
+class Exact14 extends GSNetBehaviour:
 	var exact: Variant = PackedFloat32Array()
 
 	func _register_net_vars() -> void:
-		replicate(&"exact", DotNetVar.Type.PACKED_FLOAT32).of_length(14)
+		replicate(&"exact", GSNetVar.Type.PACKED_FLOAT32).of_length(14)
 
 
 ## FC's net_exact before PACKED_FLOAT32: a custom codec, the script's 14 read_float32 calls.
-class ExactCustom extends DotNetBehaviour:
+class ExactCustom extends GSNetBehaviour:
 	var exact: Variant = PackedFloat32Array()
 
 	func _register_net_vars() -> void:
-		replicate(&"exact", DotNetVar.Type.CUSTOM).codec(_write, _read)
+		replicate(&"exact", GSNetVar.Type.CUSTOM).codec(_write, _read)
 
-	static func _write(writer: DotNetWriter, value: Variant) -> void:
+	static func _write(writer: GSNetWriter, value: Variant) -> void:
 		var floats: PackedFloat32Array = value if value is PackedFloat32Array else PackedFloat32Array()
 		writer.write_bool(floats.size() == 14)
 		if floats.size() == 14:
 			for f in floats:
 				writer.write_float32(f)
 
-	static func _read(reader: DotNetReader) -> Variant:
+	static func _read(reader: GSNetReader) -> Variant:
 		var floats := PackedFloat32Array()
 		if reader.read_bool():
 			floats.resize(14)
@@ -110,7 +110,7 @@ class ExactCustom extends DotNetBehaviour:
 
 
 ## A player as FC sends it: what a client applies 128 of per snapshot.
-class Player extends DotNetBehaviour:
+class Player extends GSNetBehaviour:
 	var position := Vector3.ZERO
 	var velocity := Vector3.ZERO
 	var yaw := 0.0
@@ -127,19 +127,19 @@ class Player extends DotNetBehaviour:
 	var changes := 0
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION).interpolated()
-		replicate(&"velocity", DotNetVar.Type.VECTOR3_VELOCITY)
-		replicate(&"yaw", DotNetVar.Type.ANGLE).bits(12)
-		replicate(&"pitch", DotNetVar.Type.ANGLE).bits(10)
-		replicate(&"health", DotNetVar.Type.FLOAT_RANGE).range_of(0.0, 2000.0).bits(14)
-		replicate(&"stance", DotNetVar.Type.UINT).bits(3)
-		replicate(&"weapon", DotNetVar.Type.UINT).bits(5)
-		replicate(&"ammo", DotNetVar.Type.UINT).bits(9).to_owner_only()
-		replicate(&"points", DotNetVar.Type.UINT).bits(16)
-		replicate(&"flags", DotNetVar.Type.UINT).bits(8)
-		replicate(&"grounded", DotNetVar.Type.BOOL)
-		replicate(&"tag", DotNetVar.Type.STRING)
-		replicate(&"spin", DotNetVar.Type.QUATERNION)
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+		replicate(&"velocity", GSNetVar.Type.VECTOR3_VELOCITY)
+		replicate(&"yaw", GSNetVar.Type.ANGLE).bits(12)
+		replicate(&"pitch", GSNetVar.Type.ANGLE).bits(10)
+		replicate(&"health", GSNetVar.Type.FLOAT_RANGE).range_of(0.0, 2000.0).bits(14)
+		replicate(&"stance", GSNetVar.Type.UINT).bits(3)
+		replicate(&"weapon", GSNetVar.Type.UINT).bits(5)
+		replicate(&"ammo", GSNetVar.Type.UINT).bits(9).to_owner_only()
+		replicate(&"points", GSNetVar.Type.UINT).bits(16)
+		replicate(&"flags", GSNetVar.Type.UINT).bits(8)
+		replicate(&"grounded", GSNetVar.Type.BOOL)
+		replicate(&"tag", GSNetVar.Type.STRING)
+		replicate(&"spin", GSNetVar.Type.QUATERNION)
 		for declaration in net_vars:
 			var _h := declaration.on_change(func(_p: Variant, _v: Variant) -> void: changes += 1)
 
@@ -172,17 +172,17 @@ class Link:
 var _passed := 0
 var _failed := 0
 var _native := false
-var _config := DotNetConfig.new()
+var _config := GSNetConfig.new()
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	_run.call_deferred()
 
 
 func _run() -> void:
 	print("dot-sim snapshot self-test")
-	_native = DotSim.has(&"snapshot")
+	_native = GSSim.has(&"snapshot")
 	print("  native snapshot module: %s" % ("loaded" if _native else "absent (script codec only)"))
 	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
 		_check(_native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
@@ -227,61 +227,61 @@ func _every(codec: bool) -> Every:
 
 func _test_fallback() -> void:
 	print("fallback")
-	DotNetSimCodec.enabled = false
-	_check(_every(true)._sim_codec == null, "DotNetSimCodec.enabled off: the script codec")
-	DotNetSimCodec.enabled = true
-	var off := DotNetConfig.new()
+	GSNetSimCodec.enabled = false
+	_check(_every(true)._sim_codec == null, "GSNetSimCodec.enabled off: the script codec")
+	GSNetSimCodec.enabled = true
+	var off := GSNetConfig.new()
 	off.sim_codec = false
 	var e := Every.new()
 	e._bind(off)
-	_check(e._sim_codec == null, "DotNetConfig.sim_codec off: the script codec")
-	_check(DotNetSimCodec.available() == _native, "available() follows the library", str(_native))
+	_check(e._sim_codec == null, "GSNetConfig.sim_codec off: the script codec")
+	_check(GSNetSimCodec.available() == _native, "available() follows the library", str(_native))
 	_check((_every(true)._sim_codec != null) == _native, "a behaviour binds the codec exactly when it can load")
 	var script := _every(false)
 	script.u3 = 5
 	script.s = "fallback"
-	var decls: Array[DotNetVar] = [script.net_vars[1], script.net_vars[16]]
+	var decls: Array[GSNetVar] = [script.net_vars[1], script.net_vars[16]]
 	var encoded := script._encode(decls, 3)
 	var back := _every(false)
-	var reader := DotNetReader.new(encoded[0])
+	var reader := GSNetReader.new(encoded[0])
 	reader.seek_bits(3)
 	var read := back.read_state(reader, 1)
 	_check(read.ok and back.u3 == 5 and back.s == "fallback", "the script codec round-trips")
 
 
-func _value(rng: RandomNumberGenerator, d: DotNetVar) -> Variant:
+func _value(rng: RandomNumberGenerator, d: GSNetVar) -> Variant:
 	var edge := rng.randi_range(0, 9) == 0
 	match d.type:
-		DotNetVar.Type.BOOL:
+		GSNetVar.Type.BOOL:
 			return [true, false, 0, 1, 2, 0.0, 0.5, -3][rng.randi_range(0, 7)]
-		DotNetVar.Type.UINT, DotNetVar.Type.INT, DotNetVar.Type.VARINT:
+		GSNetVar.Type.UINT, GSNetVar.Type.INT, GSNetVar.Type.VARINT:
 			if edge:
 				return [0, -1, 1 << 62, -(1 << 63), (1 << 63) - 1, 2.9, -2.9, 1.0e300, NAN, true, "12"][rng.randi_range(0, 10)]
 			return rng.randi_range(-100000, 100000) >> rng.randi_range(0, 16)
-		DotNetVar.Type.FLOAT, DotNetVar.Type.FLOAT_RANGE, DotNetVar.Type.ANGLE:
+		GSNetVar.Type.FLOAT, GSNetVar.Type.FLOAT_RANGE, GSNetVar.Type.ANGLE:
 			if edge:
 				return [0.0, -0.0, NAN, INF, -INF, 1.0e39, -1.0e-45, 7, true, 360.0, -720.0, 19.999999][rng.randi_range(0, 11)]
 			return rng.randf_range(-400.0, 400.0)
-		DotNetVar.Type.VECTOR3_POSITION, DotNetVar.Type.VECTOR3_VELOCITY, DotNetVar.Type.VECTOR3_RANGE, DotNetVar.Type.DIRECTION:
+		GSNetVar.Type.VECTOR3_POSITION, GSNetVar.Type.VECTOR3_VELOCITY, GSNetVar.Type.VECTOR3_RANGE, GSNetVar.Type.DIRECTION:
 			if edge:
 				return [Vector3.ZERO, Vector3(INF, -INF, NAN), Vector3(1e9, -1e9, 0.0), Vector3(0, -1, 0), Vector3(1e-30, 0, 0)][rng.randi_range(0, 4)]
 			var scale := [1.0, 50.0, 2000.0][rng.randi_range(0, 2)] as float
 			return Vector3(rng.randf_range(-scale, scale), rng.randf_range(-scale, scale), rng.randf_range(-scale, scale))
-		DotNetVar.Type.QUATERNION:
+		GSNetVar.Type.QUATERNION:
 			if edge:
 				return [Quaternion.IDENTITY, Quaternion(0, 0, 0, 0), Quaternion(0, 0, 0, -1), Quaternion(1, 2, 3, 4), Quaternion(0.5, 0.5, 0.5, 0.5), Quaternion(0, 0.7071067811865476, 0, 0.7071067811865476)][rng.randi_range(0, 5)]
 			var axis := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
 			if axis.is_zero_approx():
 				axis = Vector3.UP
 			return Quaternion(axis.normalized(), rng.randf_range(-TAU, TAU))
-		DotNetVar.Type.STRING:
+		GSNetVar.Type.STRING:
 			return ["", "a", "héllo", "x".repeat(rng.randi_range(0, 40))][rng.randi_range(0, 3)]
-		DotNetVar.Type.BYTES:
+		GSNetVar.Type.BYTES:
 			var out := PackedByteArray()
 			for i in rng.randi_range(0, 9 if not edge else 300):
 				out.append(rng.randi_range(0, 255))
 			return out
-		DotNetVar.Type.PACKED_FLOAT32:
+		GSNetVar.Type.PACKED_FLOAT32:
 			if edge:
 				return [PackedFloat32Array(), PackedFloat32Array([1.0]), null, 2.5, [1.0], _odd_floats(rng, d.length + 1)][rng.randi_range(0, 5)]
 			if rng.randi_range(0, 3) == 0:
@@ -313,13 +313,13 @@ func _test_encode_parity() -> void:
 	rng.seed = 2026
 	var script := _every(false)
 	var native := _every(true)
-	var stranger := DotNetVar.make(&"nobody", DotNetVar.Type.UINT)
+	var stranger := GSNetVar.make(&"nobody", GSNetVar.Type.UINT)
 	var mismatches := 0
 	var first := ""
 	var native_hits := 0
 	var per_type := {}
 	for n in ROUNDS:
-		var decls: Array[DotNetVar] = []
+		var decls: Array[GSNetVar] = []
 		for d in native.net_vars:
 			if rng.randf() < 0.4:
 				decls.append(d)
@@ -334,11 +334,11 @@ func _test_encode_parity() -> void:
 			script.set(d.property, v)
 			native.set(d.property, v)
 		var pad := n % 8
-		var script_decls: Array[DotNetVar] = []
+		var script_decls: Array[GSNetVar] = []
 		for d in decls:
 			script_decls.append(d if d == stranger else script.net_vars[native.net_vars.find(d)])
 		var a := script._encode(script_decls, pad)
-		var direct := DotNetSimCodec.encode(native, decls, pad)
+		var direct := GSNetSimCodec.encode(native, decls, pad)
 		var b := native._encode(decls, pad)
 		if not direct.is_empty():
 			native_hits += 1
@@ -359,19 +359,19 @@ func _test_encode_parity() -> void:
 	_check(types == 14, "every built-in type but string went through the codec (%d of 14)" % types)
 	# A value of a type only the script converts hands the whole state back.
 	native.i32 = "12"
-	var only: Array[DotNetVar] = [native.net_vars[4]]
-	_check(DotNetSimCodec.encode(native, only, 0).is_empty(), "a string for an INT is the script's")
+	var only: Array[GSNetVar] = [native.net_vars[4]]
+	_check(GSNetSimCodec.encode(native, only, 0).is_empty(), "a string for an INT is the script's")
 	var thread := Thread.new()
 	native.u3 = 3
-	var one: Array[DotNetVar] = [native.net_vars[1]]
-	thread.start(func() -> bool: return DotNetSimCodec.encode(native, one, 0).is_empty())
+	var one: Array[GSNetVar] = [native.net_vars[1]]
+	thread.start(func() -> bool: return GSNetSimCodec.encode(native, one, 0).is_empty())
 	_check(thread.wait_to_finish(), "a snapshot worker thread encodes in script")
 
 
 ## A receiver's whole visible result of one read.
 func _read_result(e: Every, bytes: PackedByteArray, pad: int, limit: int) -> PackedByteArray:
 	e.log.clear()
-	var reader := DotNetReader.new(bytes)
+	var reader := GSNetReader.new(bytes)
 	if limit >= 0:
 		reader.limit_bits(limit)
 	reader.seek_bits(pad)
@@ -394,7 +394,7 @@ func _test_decode_parity() -> void:
 	var native := _every(true)
 	var packets: Array = []
 	for n in ROUNDS:
-		var decls: Array[DotNetVar] = []
+		var decls: Array[GSNetVar] = []
 		for d in writer.net_vars:
 			if rng.randf() < 0.4:
 				decls.append(d)
@@ -440,7 +440,7 @@ func _test_decode_parity() -> void:
 			if first == "":
 				first = "noise %s: %s vs %s" % [noise.hex_encode(), bytes_to_var(a), bytes_to_var(b)]
 	_check(mismatches == 0, "%d noise packets read alike (%d errors)" % [NOISE, errors], first)
-	var exhausted := DotNetReader.new(PackedByteArray([0xff]))
+	var exhausted := GSNetReader.new(PackedByteArray([0xff]))
 	var _x := exhausted.read_bits(16)
 	var r1 := script.read_state(exhausted, 1)
 	exhausted.exhausted = true
@@ -472,15 +472,15 @@ func _first_diff(a: Array, b: Array) -> int:
 	return -1 if a.size() == b.size() else mini(a.size(), b.size()) + 1
 
 
-func _wire_manager(label: String, server: bool, peer: int, tick_rate: int, snapshot_rate: int) -> DotNetManager:
-	var m := DotNetManager.new()
+func _wire_manager(label: String, server: bool, peer: int, tick_rate: int, snapshot_rate: int) -> GSNetManager:
+	var m := GSNetManager.new()
 	m.name = label
 	m.is_server = server
 	m.service_scope = StringName(label.to_lower())
 	m.local_peer_id = peer
 	m.auto_tick = false
 	m.config_file = ""
-	m.config = DotNetConfig.new()
+	m.config = GSNetConfig.new()
 	m.config.tick_rate = tick_rate
 	m.config.snapshot_rate = snapshot_rate
 	m.config.per_client_budget = 0
@@ -493,10 +493,10 @@ func _wire_manager(label: String, server: bool, peer: int, tick_rate: int, snaps
 func _player_body(_context: Dictionary) -> Node:
 	var body := Node3D.new()
 	body.name = "Body"
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.name = "NetIdentity"
 	identity.prefab_id = &"player"
-	identity.authority = DotNetIdentity.Authority.SERVER
+	identity.authority = GSNetIdentity.Authority.SERVER
 	identity.interest_linger_sec = 0.0
 	body.add_child(identity)
 	var player := Player.new()
@@ -505,7 +505,7 @@ func _player_body(_context: Dictionary) -> Node:
 	identity.entity = body
 	identity.behaviours = [player]
 	player.identity = identity
-	player._bind(DotNetConfig.new())
+	player._bind(GSNetConfig.new())
 	return body
 
 
@@ -513,13 +513,13 @@ func _wire_run(codec: bool, tick_rate: int, snapshot_rate: int, loss: float, jit
 	const PEERS := 3
 	const ENTITIES := 40
 	const TICKS := 160
-	DotNetSimCodec.enabled = codec
+	GSNetSimCodec.enabled = codec
 	var tag := "%s%d_%d_%d" % ["On" if codec else "Off", tick_rate, snapshot_rate, workers]
 	var host := _wire_manager("WireServer" + tag, true, 1, tick_rate, snapshot_rate)
 	host.config.snapshot_workers = workers
 	if rings:
 		host.interest = _wire_rings()
-	var clients: Array[DotNetManager] = []
+	var clients: Array[GSNetManager] = []
 	var links := _wire_links(PEERS, 0, loss, jitter)
 	var acks := _wire_links(PEERS, 5, loss, jitter)
 	for i in PEERS:
@@ -535,7 +535,7 @@ func _wire_run(codec: bool, tick_rate: int, snapshot_rate: int, loss: float, jit
 		var index := peer_id - 2
 		if index < 0 or index >= PEERS:
 			return
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _r := clients[index].receive(payload, 1)
 			return
 		payloads[0] += 1
@@ -577,7 +577,7 @@ func _wire_run(codec: bool, tick_rate: int, snapshot_rate: int, loss: float, jit
 		codecs += 1 if p._sim_codec != null else 0
 	for client in clients:
 		for identity in client.registry.all():
-			codecs += 1 if (identity.behaviours[0] as DotNetBehaviour)._sim_codec != null else 0
+			codecs += 1 if (identity.behaviours[0] as GSNetBehaviour)._sim_codec != null else 0
 	_wire_free([host] + clients)
 	return {
 		"sent": sent.finish().hex_encode().substr(0, 12), "payloads": payloads[0],
@@ -587,15 +587,15 @@ func _wire_run(codec: bool, tick_rate: int, snapshot_rate: int, loss: float, jit
 
 
 func _wire_free(managers: Array) -> void:
-	for node: DotNetManager in managers:
+	for node: GSNetManager in managers:
 		node.stop()
 		remove_child(node)
 		node.free()
-	DotNetSimCodec.enabled = true
+	GSNetSimCodec.enabled = true
 
 
-func _wire_rings() -> DotNetInterestDistance:
-	var distance := DotNetInterestDistance.new()
+func _wire_rings() -> GSNetInterestDistance:
+	var distance := GSNetInterestDistance.new()
 	distance.radius = 45.0
 	distance.far_distance = 15.0
 	distance.far_every = 2
@@ -618,11 +618,11 @@ func _wire_links(peers: int, salt: int, loss: float, jitter: int) -> Array[Link]
 
 
 ## The peers' own players, then the NPCs, on the server and as remote copies on every client.
-func _wire_spawn(host: DotNetManager, clients: Array[DotNetManager], peers: int, npcs: int) -> Array[Player]:
+func _wire_spawn(host: GSNetManager, clients: Array[GSNetManager], peers: int, npcs: int) -> Array[Player]:
 	var server_side: Array[Player] = []
 	for i in peers + npcs:
 		var owner := 2 + i if i < peers else 0
-		var made: DotNetIdentity = host.spawner.spawn(&"player", owner, Transform3D.IDENTITY, 0).value
+		var made: GSNetIdentity = host.spawner.spawn(&"player", owner, Transform3D.IDENTITY, 0).value
 		server_side.append(made.behaviours[0] as Player)
 		for client in clients:
 			var _m := client.spawner.spawn_remote(&"player", made.net_id, owner, Transform3D.IDENTITY, 0)
@@ -651,10 +651,10 @@ func _wire_move(p: Player, i: int, t: int, npc: bool) -> void:
 
 
 ## What a client holds: every entity's received values and change count, by net id.
-func _wire_state(client: DotNetManager) -> Array:
+func _wire_state(client: GSNetManager) -> Array:
 	var state := []
 	var ids := client.registry.all()
-	ids.sort_custom(func(x: DotNetIdentity, y: DotNetIdentity) -> bool: return x.net_id < y.net_id)
+	ids.sort_custom(func(x: GSNetIdentity, y: GSNetIdentity) -> bool: return x.net_id < y.net_id)
 	for identity in ids:
 		var player := identity.behaviours[0] as Player
 		state.append([identity.net_id, player.received_values(), player.changes])
@@ -692,20 +692,20 @@ func _bench() -> void:
 			r._bind(_config)
 			if not codec:
 				r._sim_codec = null
-			writers[i]._sim_codec = DotNetSimCodec.create(writers[i].net_vars, _config) if codec else null
+			writers[i]._sim_codec = GSNetSimCodec.create(writers[i].net_vars, _config) if codec else null
 			readers.append(r)
 		for lap in LAPS:
 			packets.clear()
 			var at := Time.get_ticks_usec()
 			for p in writers:
-				var decls: Array[DotNetVar] = []
+				var decls: Array[GSNetVar] = []
 				for k: int in picks:
 					decls.append(p.net_vars[k])
 				packets.append(p._encode(decls, lap % 8)[0])
 			encode_us += Time.get_ticks_usec() - at
 			at = Time.get_ticks_usec()
 			for i in N:
-				var reader := DotNetReader.new(packets[i])
+				var reader := GSNetReader.new(packets[i])
 				reader.seek_bits(lap % 8)
 				var _r := readers[i].read_state(reader, lap)
 			decode_us += Time.get_ticks_usec() - at
@@ -741,9 +741,9 @@ func _bench_exact() -> void:
 	var ms := {}
 	var same := 0
 	for way in ["custom", "script", "codec"]:
-		var readers: Array[DotNetBehaviour] = []
+		var readers: Array[GSNetBehaviour] = []
 		for i in N:
-			var r: DotNetBehaviour
+			var r: GSNetBehaviour
 			if way == "custom":
 				r = ExactCustom.new()
 			else:
@@ -755,7 +755,7 @@ func _bench_exact() -> void:
 		var at := Time.get_ticks_usec()
 		for lap in LAPS:
 			for i in N:
-				var _r := readers[i].read_state(DotNetReader.new(packets[i]), lap)
+				var _r := readers[i].read_state(GSNetReader.new(packets[i]), lap)
 		ms[way] = float(Time.get_ticks_usec() - at) / LAPS / 1000.0
 		for i in N:
 			same += 1 if var_to_bytes(readers[i].get(&"exact")) == var_to_bytes(sent[i]) else 0
@@ -768,7 +768,7 @@ func _bench_exact() -> void:
 ## Bytes for the crate's own golden test (rust/crates/dot-sim-snapshot/src/tests.rs).
 func _golden() -> void:
 	var p := Player.new()
-	p._bind(DotNetConfig.new())
+	p._bind(GSNetConfig.new())
 	p._sim_codec = null
 	p.position = Vector3(12.5, -3.25, 100.0)
 	p.velocity = Vector3(4.0, 0.0, -2.5)
@@ -779,7 +779,7 @@ func _golden() -> void:
 	p.ammo = 300
 	p.grounded = false
 	p.spin = Quaternion(Vector3(0.0, 1.0, 0.0), 0.75)
-	var decls: Array[DotNetVar] = []
+	var decls: Array[GSNetVar] = []
 	for k in [0, 1, 2, 3, 4, 5, 7, 10, 12]:
 		decls.append(p.net_vars[k])
 	var e := p._encode(decls, 3)
@@ -787,7 +787,7 @@ func _golden() -> void:
 	_check(true, "golden printed")
 	# The crate's golden_packed_float32: a signalling NaN goes out quieted.
 	var x := Exact.new()
-	x._bind(DotNetConfig.new())
+	x._bind(GSNetConfig.new())
 	x._sim_codec = null
 	var raw := PackedByteArray()
 	raw.resize(12)

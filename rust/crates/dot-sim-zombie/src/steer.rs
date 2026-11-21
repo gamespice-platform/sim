@@ -1,6 +1,6 @@
 //! The rest of a zombie's steer after its path and spacing: dot-npc-ai's `steer_with_spacing` from the
 //! spaced heading on, through dot-npc-ai's `steer_toward` bookkeeping, Zombie Zone's `steer_toward` (the
-//! body's wish), dot-npc-ai's `face` and `DotNpcAiCharacter.turn_view` (the eased, clamped turn with its
+//! body's wish), dot-npc-ai's `face` and `GSNpcAiCharacter.turn_view` (the eased, clamped turn with its
 //! overshoot), dot-npc's `face` (the point the body looks at) and `_watch_progress`.
 //!
 //! Pure: [`steer`] takes the turn state and the watch and returns what the script would have written,
@@ -15,10 +15,10 @@ pub const RIGHT: Vec3 = Vec3::new(1.0, 0.0, 0.0);
 /// `Vector3.INF`.
 pub const INF: Vec3 = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
 
-/// `DotNpcAiCharacter.MASK`: keeps the mixer positive.
+/// `GSNpcAiCharacter.MASK`: keeps the mixer positive.
 const MASK: i64 = i64::MAX;
 
-/// `DotNpcAiCharacter.unit(salt)`: a reproducible number in [0, 1) from the character's seed and `salt`.
+/// `GSNpcAiCharacter.unit(salt)`: a reproducible number in [0, 1) from the character's seed and `salt`.
 /// GDScript ints wrap on overflow, so the products wrap here.
 pub fn unit(seed: i64, salt: i64) -> f64 {
     let mut x = (seed.wrapping_mul(0x9E37_79B1) ^ salt.wrapping_mul(0x85EB_CA6B)) & MASK;
@@ -90,7 +90,7 @@ pub fn flat_length(v: Vec3) -> f32 {
     (v.x * v.x + v.z * v.z).sqrt()
 }
 
-/// A `DotNpcAiCharacter`'s turn state: `_peak_turn`, `_over_amt`, `_over_axis`, `_turns`.
+/// A `GSNpcAiCharacter`'s turn state: `_peak_turn`, `_over_amt`, `_over_axis`, `_turns`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Turn {
     pub peak: f64,
@@ -110,7 +110,7 @@ impl Default for Turn {
     }
 }
 
-/// A `DotNpcAiCharacter`'s turning: `view_factor`, `view_turn_deg`, `overshoot`, `seed_value`.
+/// A `GSNpcAiCharacter`'s turning: `view_factor`, `view_turn_deg`, `overshoot`, `seed_value`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TurnProfile {
     pub view_factor: f64,
@@ -130,7 +130,7 @@ impl Default for TurnProfile {
     }
 }
 
-/// `DotNpcAiCharacter.turn_view`: `current` turned toward `wanted`, no faster than the character can.
+/// `GSNpcAiCharacter.turn_view`: `current` turned toward `wanted`, no faster than the character can.
 pub fn turn_view(t: &mut Turn, p: &TurnProfile, current: Vec3, wanted: Vec3, delta: f64) -> Vec3 {
     if f64::from(current.length_squared()) <= 0.0001 {
         return wanted;
@@ -181,7 +181,7 @@ pub fn turn_view(t: &mut Turn, p: &TurnProfile, current: Vec3, wanted: Vec3, del
     rotated(from, axis.normalized(), step as f32)
 }
 
-/// `DotNpcAiCharacter._arm_overshoot`.
+/// `GSNpcAiCharacter._arm_overshoot`.
 fn arm_overshoot(t: &mut Turn, p: &TurnProfile, to: Vec3, from: Vec3, peak: f64) -> Vec3 {
     if p.overshoot <= 0.0 || t.over_amt > 0.001 {
         return to;

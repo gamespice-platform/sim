@@ -39,7 +39,7 @@ pub struct Body {
     pub at: Vec3,
     /// `eye_position()` (also the head another sees).
     pub eye: Vec3,
-    /// `DotBotAim.direction(yaw, pitch)`.
+    /// `GSBotAim.direction(yaw, pitch)`.
     pub forward: Vec3,
     /// `controller.state.velocity`.
     pub velocity: Vec3,
@@ -53,7 +53,7 @@ pub struct Body {
     pub side: i32,
 }
 
-/// `DotBotHiding.sees(eye, forward, fov, sight, target, los)`.
+/// `GSBotHiding.sees(eye, forward, fov, sight, target, los)`.
 #[inline]
 pub fn sees(
     eye: Vec3,

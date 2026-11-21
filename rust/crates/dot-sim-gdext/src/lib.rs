@@ -68,7 +68,7 @@ mod witches;
 #[cfg(feature = "zombie")]
 mod zombie;
 
-struct DotSimExtension;
+struct GSSimExtension;
 
 #[gdextension]
-unsafe impl ExtensionLibrary for DotSimExtension {}
+unsafe impl ExtensionLibrary for GSSimExtension {}

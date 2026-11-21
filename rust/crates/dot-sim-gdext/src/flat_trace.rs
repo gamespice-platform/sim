@@ -1,4 +1,4 @@
-//! `DotSimFlatTrace`: GameSpice Combat's `DotTraceFlat` box walk natively. Stateless (the boxes
+//! `GSSimFlatTrace`: GameSpice Combat's `GSTraceFlat` box walk natively. Stateless (the boxes
 //! come in each call as a packed array the script keeps), so brains on worker threads may share it.
 
 use godot::prelude::*;
@@ -10,10 +10,10 @@ fn arr(v: Vector3) -> [f32; 3] {
 /// The nearest box along a ray over a caller's packed box corners.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimFlatTrace {}
+pub struct GSSimFlatTrace {}
 
 #[godot_api]
-impl DotSimFlatTrace {
+impl GSSimFlatTrace {
     /// The index of the box the ray from [param from] along [param direction] enters first within
     /// [param limit], or -1. [param corners] holds each box as `position` then `position + size`.
     #[func]
@@ -38,15 +38,15 @@ impl DotSimFlatTrace {
 
 /// A box world's bounding-volume hierarchy, built once by [method build] and then read-only: a ray
 /// visits the few boxes near its line, and a whole tick's rays go in one call. Same answers as
-/// [method DotSimFlatTrace.nearest] (the least entry distance, a later box winning a tie).
+/// [method GSSimFlatTrace.nearest] (the least entry distance, a later box winning a tie).
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-pub struct DotSimFlatBvh {
+pub struct GSSimFlatBvh {
     bvh: Option<dot_sim_trace::Bvh>,
 }
 
 #[godot_api]
-impl DotSimFlatBvh {
+impl GSSimFlatBvh {
     /// Builds over [param corners], each box as `position` then `position + size`.
     #[func]
     fn build(&mut self, corners: PackedVector3Array) {

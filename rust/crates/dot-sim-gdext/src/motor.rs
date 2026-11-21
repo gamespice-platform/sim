@@ -1,11 +1,11 @@
-//! `DotSimFpsBody`: dot-player-controller's `DotFpsPhysicsBody` queries (sweep, rest contact,
+//! `GSSimFpsBody`: dot-player-controller's `GSFpsPhysicsBody` queries (sweep, rest contact,
 //! overlap) run natively over the same physics space, to the bit (see `dot-sim-motor`).
 //!
 //! A hit comes back as a `PackedFloat64Array`, empty for a miss, else
 //! `[fraction, nx, ny, nz, px, py, pz, depth, id_lo, id_hi]`: the collider id in two 32-bit
 //! halves, since an object id need not fit a double.
 
-use crate::hulls::DotSimHullWorld;
+use crate::hulls::GSSimHullWorld;
 use dot_sim_motor::full::{self, FullIn, FullTun, MoveCounters, Moves};
 use dot_sim_motor::memo::MemoSpace;
 use dot_sim_motor::slide::{Aabb as SlideBox, Mover, Tun};
@@ -19,7 +19,7 @@ use godot::prelude::*;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
-/// Whether the engine queries and the whole tick are timed (`DotSimFpsBody.set_profile`): off,
+/// Whether the engine queries and the whole tick are timed (`GSSimFpsBody.set_profile`): off,
 /// nothing but one relaxed load per query.
 static PROFILE: AtomicBool = AtomicBool::new(false);
 /// Per slot a count then nanoseconds: cast, rest, overlap, ray, then the `motor_tick` calls.
@@ -283,19 +283,19 @@ impl Space for GdSpace {
 /// A collision body for one player's motor, over a physics space the script hands it.
 #[derive(GodotClass)]
 #[class(base = RefCounted)]
-pub struct DotSimFpsBody {
+pub struct GSSimFpsBody {
     body: Body,
-    /// The engine queries; a whole native tick ([`DotSimFpsBody::tick_into`]) repeats none.
+    /// The engine queries; a whole native tick ([`GSSimFpsBody::tick_into`]) repeats none.
     space: MemoSpace<GdSpace>,
     boxes: Vec<SlideBox>,
     /// The players' world hulls mode 3 gathers from, and this body's slot in it.
-    world: Option<(Gd<DotSimHullWorld>, i64)>,
+    world: Option<(Gd<GSSimHullWorld>, i64)>,
     /// The engine checks a slide normal only in debug builds; the script's answer follows that.
     math_checks: bool,
 }
 
 #[godot_api]
-impl IRefCounted for DotSimFpsBody {
+impl IRefCounted for GSSimFpsBody {
     fn init(_base: Base<RefCounted>) -> Self {
         Self {
             body: Body::default(),
@@ -574,7 +574,7 @@ fn full_in(p: &[f64]) -> (FullIn, Moves) {
 }
 
 #[godot_api]
-impl DotSimFpsBody {
+impl GSSimFpsBody {
     /// The physics space queried; a new one forgets the rest memo.
     #[func]
     fn set_space(&mut self, space: Option<Gd<PhysicsDirectSpaceState3D>>) {
@@ -592,13 +592,13 @@ impl DotSimFpsBody {
         self.body.invalidate();
     }
 
-    /// Whether a motor tick may answer a repeated rest query from memory (`DotFpsBody.perf_caches`).
+    /// Whether a motor tick may answer a repeated rest query from memory (`GSFpsBody.perf_caches`).
     #[func]
     fn set_perf_caches(&mut self, on: bool) {
         self.body.perf_caches = on;
     }
 
-    /// Nothing this body queries moves between ticks (`DotFpsMotor.static_world`): a rest query
+    /// Nothing this body queries moves between ticks (`GSFpsMotor.static_world`): a rest query
     /// at the spot the last tick began with is answered from memory. Off by default.
     #[func]
     fn set_static_world(&mut self, on: bool) {
@@ -615,7 +615,7 @@ impl DotSimFpsBody {
         self.body.end_tick();
     }
 
-    /// `DotFpsPhysicsBody.sweep`.
+    /// `GSFpsPhysicsBody.sweep`.
     #[func]
     fn sweep(
         &mut self,
@@ -636,7 +636,7 @@ impl DotSimFpsBody {
         packed(&h)
     }
 
-    /// `DotFpsPhysicsBody.rest_contact`.
+    /// `GSFpsPhysicsBody.rest_contact`.
     #[func]
     fn rest_contact(
         &mut self,
@@ -656,7 +656,7 @@ impl DotSimFpsBody {
         packed(&h)
     }
 
-    /// `DotFpsPhysicsBody.overlaps`.
+    /// `GSFpsPhysicsBody.overlaps`.
     #[func]
     fn overlaps(
         &mut self,
@@ -674,8 +674,8 @@ impl DotSimFpsBody {
             .overlaps(&mut self.space, mv(at), height, radius, m)
     }
 
-    /// `DotFpsMotor._move` (mode 0, `flag` = walking) or `move_and_slide` (mode 1, `flag` = step),
-    /// against the map and, when `has_hulls`, the boxes in `hulls` (`DotFpsHullBody`).
+    /// `GSFpsMotor._move` (mode 0, `flag` = walking) or `move_and_slide` (mode 1, `flag` = step),
+    /// against the map and, when `has_hulls`, the boxes in `hulls` (`GSFpsHullBody`).
     /// `tun` is `[max_slide_iterations, crease_slide, skin_width, max_slide_planes, step_height,
     /// radius, max_slope_radians]`. Returns `[px, py, pz, vx, vy, vz, travelled, flags,
     /// crease_legs, split_legs, world_touches, hull_blocks, hull_stops]`, flags being
@@ -762,13 +762,13 @@ impl DotSimFpsBody {
 
     /// The hull world hulls mode 3 gathers from and this body's slot in it; null for none.
     #[func]
-    fn set_hull_world(&mut self, world: Option<Gd<DotSimHullWorld>>, slot: i64) {
+    fn set_hull_world(&mut self, world: Option<Gd<GSSimHullWorld>>, slot: i64) {
         self.world = world.map(|w| (w, slot));
     }
 
     /// Fills the hull boxes: `hulls_mode` 0 none, 1 the boxes in `hulls`, 2 the ones the last call
     /// took (the hull body gathers once a tick, so the second half of a tick need not send them),
-    /// 3 the hull world's for a mover standing at `me` ([`DotSimHullWorld`]). `None` when mode 3
+    /// 3 the hull world's for a mover standing at `me` ([`GSSimHullWorld`]). `None` when mode 3
     /// has no answer (no world, the loop is not running, a lag-compensated mover): the caller
     /// answers empty and the script gathers.
     fn take_hulls(&mut self, hulls_mode: i64, hulls: &VarArray, me: V3) -> Option<bool> {
@@ -797,7 +797,7 @@ impl DotSimFpsBody {
         })
     }
 
-    /// The start of a motor tick (`DotFpsMotor._simulate` from `_depenetrate` to the start
+    /// The start of a motor tick (`GSFpsMotor._simulate` from `_depenetrate` to the start
     /// ground check), for a plain GROUND or AIR walker without surfaces. `state` is the state
     /// block (see `tick_out`) then `[rest_ok, rest_px, rest_py, rest_pz]`, `tun` the tick
     /// tunables. Flags: start_settled | reused << 1 | surface_cleared << 2.
@@ -944,7 +944,7 @@ impl DotSimFpsBody {
         PackedFloat64Array::from(&o[..])
     }
 
-    /// Whether `motor_tick` (and `DotSimMotorBatch.run_rows`) starts a wall run after a wall jump
+    /// Whether `motor_tick` (and `GSSimMotorBatch.run_rows`) starts a wall run after a wall jump
     /// in the same air at `_run_speed`'s speed, so the script need not run those ticks itself.
     #[func]
     fn runs_after_wall_jump() -> bool {
@@ -1024,7 +1024,7 @@ pub(crate) const TICK_IN_LEN: usize = STATE_LEN + FULL_IN_LEN;
 /// Values a whole tick answers: `tick_out`, the timers, `view_turn` and the move counts.
 pub(crate) const TICK_OUT_LEN: usize = 45;
 
-impl DotSimFpsBody {
+impl GSSimFpsBody {
     /// `motor_tick` on slices, its answer appended to `o`; false (nothing appended) where
     /// `motor_tick` answers empty. One body for the single call and [`crate::batch`]'s. `timers`
     /// bit 0: the input's timers are the ones before this tick and [`full::advance_timers`] moves
@@ -1110,7 +1110,7 @@ impl DotSimFpsBody {
     }
 
     /// The hull world this body gathers from and its slot in it.
-    pub(crate) fn hull_world(&self) -> Option<(Gd<DotSimHullWorld>, i64)> {
+    pub(crate) fn hull_world(&self) -> Option<(Gd<GSSimHullWorld>, i64)> {
         self.world.clone()
     }
 }
