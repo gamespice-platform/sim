@@ -6,20 +6,20 @@
 
 | Path | What |
 | --- | --- |
-| `rust/` | the Cargo workspace (`rust/Cargo.toml`); `crates/dot-sim-gdext` builds the one `cdylib` (`dot_sim`), the other crates are plain Rust ([design](design.md)); every job skips with a notice while `rust/Cargo.toml` is absent |
+| `rust/` | the Cargo workspace (`rust/Cargo.toml`); `crates/gs-sim-gdext` builds the one `cdylib` (`gs_sim`), the other crates are plain Rust ([design](design.md)); every job skips with a notice while `rust/Cargo.toml` is absent |
 | `ci/targets.tsv` | the platform matrix: platform, rust target, runner, library file, Godot feature key. The `web-wasm32` row is the dlink side module: `ci/web.sh` builds it (pinned nightly, emsdk), `ci/install.sh` only lays it out (`--no-build`) |
-| `ci/install.sh` | build one platform and lay it out under `addons/dot_sim/bin/<platform>/`, then regenerate `addons/dot_sim/dot_sim.gdextension` (both gitignored) |
-| `ci/package.sh` | zip one platform into `dist/dot_sim-<version>-<platform>.zip`, append `SHA256SUMS`, merge `natives.json` |
+| `ci/install.sh` | build one platform and lay it out under `addons/gs_sim/bin/<platform>/`, then regenerate `addons/gs_sim/gs_sim.gdextension` (both gitignored) |
+| `ci/package.sh` | zip one platform into `dist/gs_sim-<version>-<platform>.zip`, append `SHA256SUMS`, merge `natives.json` |
 | `ci/check.sh` | offline: scripts parse, `targets.tsv` is whole, both workflows' matrices name every platform. No toolchain needed |
 
 ## Workflows
 
-- `ci.yml`: dot-ci `validate` (GDScript), `ci/check.sh`, then a native job per platform: fmt and clippy (linux-x86_64 only), `cargo test`, `ci/install.sh`, the library uploaded as an artifact. Linux x86_64 and arm64, Windows x86_64, macOS arm64 and x86_64, and macos-universal (both Apple targets joined with lipo by ci/install.sh into one dylib; the workflow rows exist but the lipo step has only been exercised with a stand-in lipo on Linux, not yet on a macOS runner). Job `web` builds the side module with `ci/web.sh` (nightly-2026-01-10 with `rust-src`, emsdk 3.1.74, Godot for the API dump) and uploads it.
-- `release.yml` (tag `v*`): validate, dot-ci's addon release (the GDScript zip), the native matrix, job `web` packs `web-wasm32` the same way, then `attach` uploads `dot_sim-<version>-<platform>.zip`, `natives.json` and `SHA256SUMS.natives` to the same GitHub release, verifying the sums first.
+- `ci.yml`: gs-ci `validate` (GDScript), `ci/check.sh`, then a native job per platform: fmt and clippy (linux-x86_64 only), `cargo test`, `ci/install.sh`, the library uploaded as an artifact. Linux x86_64 and arm64, Windows x86_64, macOS arm64 and x86_64, and macos-universal (both Apple targets joined with lipo by ci/install.sh into one dylib; the workflow rows exist but the lipo step has only been exercised with a stand-in lipo on Linux, not yet on a macOS runner). Job `web` builds the side module with `ci/web.sh` (nightly-2026-01-10 with `rust-src`, emsdk 3.1.74, Godot for the API dump) and uploads it.
+- `release.yml` (tag `v*`): validate, gs-ci's addon release (the GDScript zip), the native matrix, job `web` packs `web-wasm32` the same way, then `attach` uploads `gs_sim-<version>-<platform>.zip`, `natives.json` and `SHA256SUMS.natives` to the same GitHub release, verifying the sums first.
 
 ## How it reaches the CDN
 
-It does not go from here. The site publishes an addon's pack from its release (hourly, or "Pull now") and holds the signing key, so this repository signs and uploads nothing to the content origin ([releases](../../dot-server-deploy/docs/releases.md)). A GDExtension must be a real file on disk, so the natives are never inside the mounted pack: the server install and the native client export unpack `dot_sim-<version>-<platform>.zip` at the project root, selecting by `natives.json`. The `.gdextension` lists only the platforms present, so a missing one means GDScript on that machine, never a load error.
+It does not go from here. The site publishes an addon's pack from its release (hourly, or "Pull now") and holds the signing key, so this repository signs and uploads nothing to the content origin ([releases](../../gs-server-deploy/docs/releases.md)). A GDExtension must be a real file on disk, so the natives are never inside the mounted pack: the server install and the native client export unpack `gs_sim-<version>-<platform>.zip` at the project root, selecting by `natives.json`. The `.gdextension` lists only the platforms present, so a missing one means GDScript on that machine, never a load error.
 
 ## Local
 

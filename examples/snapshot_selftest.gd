@@ -181,10 +181,10 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	print("dot-sim snapshot self-test")
+	print("gs-sim snapshot self-test")
 	_native = GSSim.has(&"snapshot")
 	print("  native snapshot module: %s" % ("loaded" if _native else "absent (script codec only)"))
-	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
+	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("GS_SIM_REQUIRE_NATIVE")) == "1":
 		_check(_native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	# Not the defaults: the spec must carry the config's grid, speed and rotation widths.
 	_config.world_extent = 1000.0
@@ -765,7 +765,7 @@ func _bench_exact() -> void:
 		"script_ms": snappedf(ms["script"], 0.001), "codec_ms": snappedf(ms["codec"], 0.001)}))
 
 
-## Bytes for the crate's own golden test (rust/crates/dot-sim-snapshot/src/tests.rs).
+## Bytes for the crate's own golden test (rust/crates/gs-sim-snapshot/src/tests.rs).
 func _golden() -> void:
 	var p := Player.new()
 	p._bind(GSNetConfig.new())

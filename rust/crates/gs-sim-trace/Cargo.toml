@@ -1,0 +1,9 @@
+[package]
+name = "gs-sim-trace"
+description = "GameSpice Combat's flat world ray (the nearest of many boxes along a ray) in the script's f64/f32 order."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]

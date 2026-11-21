@@ -1,4 +1,4 @@
-# GDScript half: dot-ci's validate (parse every script, run the suites, which exercise the
+# GDScript half: gs-ci's validate (parse every script, run the suites, which exercise the
 # GDScript twins). Native half: build the library for every desktop platform in
 # ci/targets.tsv, and the web side module (job web, ci/web.sh). A plain web export runs the
 # GDScript twins; only a dlink web export loads the side module, so a native build is optional. The native jobs skip
@@ -21,7 +21,7 @@ jobs:
             efficiency: true
             hygiene: true
         secrets:
-            DEPS_TOKEN: ${{ secrets.DOT_DEPS_TOKEN }}
+            DEPS_TOKEN: ${{ secrets.GS_DEPS_TOKEN }}
 
     matrix-check:
         runs-on: ubuntu-latest
@@ -91,7 +91,7 @@ jobs:
             - name: Unit tests (the library's own, no engine needed)
               if: steps.crate.outputs.present == 'true' && matrix.platform != 'macos-arm64' && matrix.platform != 'macos-universal'
               run: cargo test --manifest-path rust/Cargo.toml --target ${{ matrix.target }} --locked
-            # The patched godot-cell (rust/vendor/godot-cell/README.dot-sim.md): its own tests, the wakeup test among them.
+            # The patched godot-cell (rust/vendor/godot-cell/README.gs-sim.md): its own tests, the wakeup test among them.
             - name: Vendored godot-cell tests
               if: steps.crate.outputs.present == 'true' && matrix.platform == 'linux-x86_64'
               run: cargo test --manifest-path rust/vendor/godot-cell/Cargo.toml
@@ -101,8 +101,8 @@ jobs:
             - uses: actions/upload-artifact@v4
               if: steps.crate.outputs.present == 'true'
               with:
-                  name: dot_sim-${{ matrix.platform }}
-                  path: addons/dot_sim/bin/${{ matrix.platform }}
+                  name: gs_sim-${{ matrix.platform }}
+                  path: addons/gs_sim/bin/${{ matrix.platform }}
                   retention-days: 7
 
     # The web side module (docs/web.md): the pinned nightly with rust-src (-Zbuild-std), emsdk 3.1.74, and a
@@ -136,13 +136,13 @@ jobs:
               with:
                   repository: gamespice-platform/ci
                   ref: v1
-                  path: dot-ci
+                  path: gs-ci
             - name: Godot for the API dump
               if: env.SKIP != '1'
               run: |
                   sudo apt-get update -qq
                   sudo apt-get install -y -qq --no-install-recommends libfontconfig1 libx11-6 libxcursor1 libxinerama1 libxrandr2 libxi6
-                  GODOT="$(dot-ci/scripts/fetch-godot.sh --dest ~/.godot-ci/$(dot-ci/scripts/fetch-godot.sh --version))"
+                  GODOT="$(gs-ci/scripts/fetch-godot.sh --dest ~/.godot-ci/$(gs-ci/scripts/fetch-godot.sh --version))"
                   echo "GODOT4_BIN=$GODOT" >> "$GITHUB_ENV"
             - name: Pinned nightly (must match NIGHTLY in ci/web.sh)
               if: env.SKIP != '1'
@@ -166,14 +166,14 @@ jobs:
             - uses: actions/upload-artifact@v4
               if: env.SKIP != '1'
               with:
-                  name: dot_sim-${{ matrix.platform }}
-                  path: project/addons/dot_sim/bin/${{ matrix.platform }}
+                  name: gs_sim-${{ matrix.platform }}
+                  path: project/addons/gs_sim/bin/${{ matrix.platform }}
                   retention-days: 7
 
     # The suites again, with the library loaded: validate above runs them with no library, so
     # only the script fallback. Here every native module is checked against its script twin
-    # (sim_selftest: bots; snapshot_selftest: the snapshot codec against dot-net's, golden
-    # bytes, decode parity, lossy 22/33 Hz runs with interest rings). DOT_SIM_REQUIRE_NATIVE
+    # (sim_selftest: bots; snapshot_selftest: the snapshot codec against gs-net's, golden
+    # bytes, decode parity, lossy 22/33 Hz runs with interest rings). GS_SIM_REQUIRE_NATIVE
     # makes a library that failed to load a failure instead of a skip.
     native-suites:
         needs: matrix-check
@@ -187,20 +187,20 @@ jobs:
               with:
                   repository: gamespice-platform/ci
                   ref: v1
-                  path: dot-ci
+                  path: gs-ci
             - name: Install the runtime's shared libraries
               run: |
                   sudo apt-get update -qq
                   sudo apt-get install -y -qq --no-install-recommends libfontconfig1 libx11-6 libxcursor1 libxinerama1 libxrandr2 libxi6
             - name: Fetch the pinned runtime
               run: |
-                  GODOT="$(dot-ci/scripts/fetch-godot.sh --dest ~/.godot-ci/$(dot-ci/scripts/fetch-godot.sh --version))"
+                  GODOT="$(gs-ci/scripts/fetch-godot.sh --dest ~/.godot-ci/$(gs-ci/scripts/fetch-godot.sh --version))"
                   echo "GODOT=$GODOT" >> "$GITHUB_ENV"
                   "$GODOT" --version
             - name: Resolve the addons this project declares
               env:
-                  DEPS_TOKEN: ${{ secrets.DOT_DEPS_TOKEN }}
-              run: dot-ci/scripts/resolve-deps.sh project
+                  DEPS_TOKEN: ${{ secrets.GS_DEPS_TOKEN }}
+              run: gs-ci/scripts/resolve-deps.sh project
             - uses: dtolnay/rust-toolchain@stable
             - uses: Swatinem/rust-cache@v2
               with:
@@ -210,6 +210,6 @@ jobs:
               run: bash project/ci/install.sh --platform linux-x86_64
             - name: The suites, native loaded
               env:
-                  DOT_SIM_REQUIRE_NATIVE: '1'
+                  GS_SIM_REQUIRE_NATIVE: '1'
                   SUITES: examples/sim_selftest examples/sim_weapon_selftest examples/snapshot_selftest
-              run: dot-ci/scripts/check.sh project
+              run: gs-ci/scripts/check.sh project

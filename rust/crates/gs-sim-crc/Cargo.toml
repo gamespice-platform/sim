@@ -1,0 +1,9 @@
+[package]
+name = "gs-sim-crc"
+description = "CRC-32 (zlib's) for gs-map's VPK reader: slicing-by-8, pure Rust."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]

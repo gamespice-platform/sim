@@ -1,0 +1,10 @@
+[package]
+name = "gs-sim-route"
+description = "Airdrift's route bot: a route of points driven by air-strafing, pure Rust in the script's order and precision over a caller's ray."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gs-sim-math = { path = "../gs-sim-math" }

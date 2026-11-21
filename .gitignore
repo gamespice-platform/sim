@@ -2,30 +2,30 @@
 .godot/
 
 # Sibling addons, linked for the suite (see README):
-#   ln -s ../../dot-core/addons/dot_core addons/dot_core
-#   ln -s ../../dot-bot/addons/dot_bot addons/dot_bot
-/addons/dot_core
-/addons/dot_bot
-# dot-bot's own dependencies:
-/addons/dot_sql
+#   ln -s ../../gs-core/addons/gs_core addons/gs_core
+#   ln -s ../../gs-bot/addons/gs_bot addons/gs_bot
+/addons/gs_core
+/addons/gs_bot
+# gs-bot's own dependencies:
+/addons/gs_sql
 /addons/godot-sqlite
-/addons/dot_bot_record
-# The snapshot suite's (examples/snapshot_selftest): dot-net and its profiler.
-/addons/dot_net
-/addons/dot_profile
-# The arms parity test's script (examples/sim_selftest): dot-player-char's clearance scan.
-#   ln -s ../../../dot-player-char/addons/dot_player_char/nodes/dot_view_arms_clear.gd examples/linked/
+/addons/gs_bot_record
+# The snapshot suite's (examples/snapshot_selftest): gs-net and its profiler.
+/addons/gs_net
+/addons/gs_profile
+# The arms parity test's script (examples/sim_selftest): gs-player-char's clearance scan.
+#   ln -s ../../../gs-player-char/addons/gs_player_char/nodes/gs_view_arms_clear.gd examples/linked/
 /examples/linked/
-# The weapon parity test's addon (examples/sim_selftest): dot-weapon.
-#   ln -s ../../dot-weapon/addons/dot_weapon addons/dot_weapon
-/addons/dot_weapon
-# dot-weapon's own dependency:
-/addons/dot_combat
+# The weapon parity test's addon (examples/sim_selftest): gs-weapon.
+#   ln -s ../../gs-weapon/addons/gs_weapon addons/gs_weapon
+/addons/gs_weapon
+# gs-weapon's own dependency:
+/addons/gs_combat
 
 # The built library and its .gdextension, written by ci/install.sh; never committed.
-/addons/dot_sim/bin/
-/addons/dot_sim/dot_sim.gdextension
-/addons/dot_sim/dot_sim.gdextension.uid
+/addons/gs_sim/bin/
+/addons/gs_sim/gs_sim.gdextension
+/addons/gs_sim/gs_sim.gdextension.uid
 
 # Rust
 rust/target/

@@ -2,8 +2,8 @@
 # Build the native library for one platform and install it where the addon loads it.
 #   ci/install.sh [--platform P] [--profile release|debug] [--no-build] [--gdextension-only]
 # P is a row of ci/targets.tsv (default: this machine's). Writes
-#   addons/dot_sim/bin/<platform>/<library file>
-#   addons/dot_sim/dot_sim.gdextension      (every platform whose library is present)
+#   addons/gs_sim/bin/<platform>/<library file>
+#   addons/gs_sim/gs_sim.gdextension      (every platform whose library is present)
 # Both are gitignored: the build is an artifact, never a commit. Without the library the
 # addon runs its GDScript twins, so a missing or failed build is never fatal to a game.
 # --no-build installs a library already built under rust/target. Cross builds need the rust
@@ -91,13 +91,13 @@ if [ "$INSTALL" = 1 ]; then
     # The threaded side module is built in its own target dir and comes out under the crate's plain name.
     [ "$PLATFORM" != web-wasm32-threads ] || SRC="rust/target/web-threads/$TARGET/$PROFILE/$CRATE.wasm"
     [ -f "$SRC" ] || { echo "install.sh: $SRC not found (build it, or drop --no-build)" >&2; exit 1; }
-    DEST="addons/dot_sim/bin/$PLATFORM"
+    DEST="addons/gs_sim/bin/$PLATFORM"
     mkdir -p "$DEST"
     cp "$SRC" "$DEST/$FILE"
 fi
 
 # Regenerate the .gdextension from what is installed, so a partial install is still valid.
-OUT=addons/dot_sim/dot_sim.gdextension
+OUT=addons/gs_sim/gs_sim.gdextension
 {
     echo "[configuration]"
     echo "entry_symbol = \"gdext_rust_init\""
@@ -107,13 +107,13 @@ OUT=addons/dot_sim/dot_sim.gdextension
     echo "[libraries]"
     awk -F'\t' '$0!~/^#/ && NF>=5 {print $1"\t"$4"\t"$5}' ci/targets.tsv | while IFS=$'\t' read -r plat pat key; do
         f="${pat//\{crate\}/$CRATE}"
-        if [ -f "addons/dot_sim/bin/$plat/$f" ]; then echo "$key = \"res://addons/dot_sim/bin/$plat/$f\""; fi
+        if [ -f "addons/gs_sim/bin/$plat/$f" ]; then echo "$key = \"res://addons/gs_sim/bin/$plat/$f\""; fi
     done
     # A universal library also serves each Apple architecture that has no library of its own.
     uf="lib$CRATE.dylib"
-    if [ -f "addons/dot_sim/bin/macos-universal/$uf" ]; then
+    if [ -f "addons/gs_sim/bin/macos-universal/$uf" ]; then
         for a in arm64 x86_64; do
-            [ -f "addons/dot_sim/bin/macos-$a/$uf" ] || echo "macos.$a = \"res://addons/dot_sim/bin/macos-universal/$uf\""
+            [ -f "addons/gs_sim/bin/macos-$a/$uf" ] || echo "macos.$a = \"res://addons/gs_sim/bin/macos-universal/$uf\""
         done
     fi
 } > "$OUT"

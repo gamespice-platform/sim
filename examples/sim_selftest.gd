@@ -1,9 +1,9 @@
 extends Node
 
-## dot-sim's suite (`godot --headless --path . res://examples/sim_selftest.tscn`): each native module against the script it replaces, same inputs, same answers.
+## gs-sim's suite (`godot --headless --path . res://examples/sim_selftest.tscn`): each native module against the script it replaces, same inputs, same answers.
 ## With no library installed it checks that the script fallback runs and says the native half was skipped; CI's native-suites job installs it and sets , so a missing library fails.
 
-const CHANNEL := "dot.sim.selftest"
+const CHANNEL := "gs.sim.selftest"
 
 ## Random sight scans compared one by one.
 const SCANS := 3000
@@ -28,10 +28,10 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	print("dot-sim self-test")
+	print("gs-sim self-test")
 	var native := GSSim.has(&"bots")
 	print("  native bots module: %s" % ("loaded" if native else "absent (script fallback only)"))
-	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
+	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("GS_SIM_REQUIRE_NATIVE")) == "1":
 		_check(native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	_test_fallback()
 	if native:
@@ -60,7 +60,7 @@ func _check(ok: bool, what: String, detail: String = "") -> void:
 
 ## Random sight rays through GSSimSightRay against the script's PhysicsRayQueryParameters3D ray (same mask, exclusions
 ## and end point), on the main thread and on a worker holding the lock, after a rebind changes the mask, and with a jail
-## cell bound (dot_map's GSMapGlassSight.blocks in front, written out here: glass on its own layer).
+## cell bound (gs_map's GSMapGlassSight.blocks in front, written out here: glass on its own layer).
 func _test_sight_ray_parity() -> void:
 	var root := Node3D.new()
 	add_child(root)
@@ -517,7 +517,7 @@ func _ids(list: Array) -> String:
 
 
 ## GameSpice Player Char's clearance scan, linked for the arms parity test (see README); absent, the test is skipped.
-const ARMS_SCRIPT := "res://examples/linked/dot_view_arms_clear.gd"
+const ARMS_SCRIPT := "res://examples/linked/gs_view_arms_clear.gd"
 
 ## Random arm poses compared one by one.
 const ARM_CASES := 4000

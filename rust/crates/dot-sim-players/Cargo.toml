@@ -1,9 +1,0 @@
-[package]
-name = "dot-sim-players"
-description = "Player body tick state in packed columns: the idle posture row and flinch-settled flag a player's tick_post hands its weapon, pure Rust in the script's order and precision."
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
-
-[dependencies]

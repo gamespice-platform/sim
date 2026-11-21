@@ -1,0 +1,78 @@
+[package]
+name = "gs-sim-gdext"
+description = "The GDExtension: thin engine bindings over the pure crates, one cargo feature per module."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "gs_sim"
+crate-type = ["cdylib"]
+
+[dependencies]
+godot = "0.5.5"
+# The binding's cell, patched (rust/vendor/godot-cell): GSSimCell switches its notify mode.
+godot-cell = "0.5.5"
+gs-sim-bots = { path = "../gs-sim-bots", optional = true }
+gs-sim-brain = { path = "../gs-sim-brain", optional = true }
+gs-sim-snapshot = { path = "../gs-sim-snapshot", optional = true }
+gs-sim-interp = { path = "../gs-sim-interp", optional = true }
+gs-sim-motor = { path = "../gs-sim-motor", optional = true }
+gs-sim-arms = { path = "../gs-sim-arms", optional = true }
+gs-sim-audio = { path = "../gs-sim-audio", optional = true }
+gs-sim-math = { path = "../gs-sim-math", optional = true }
+gs-sim-crowd = { path = "../gs-sim-crowd", optional = true }
+gs-sim-weapon = { path = "../gs-sim-weapon", optional = true }
+gs-sim-senses = { path = "../gs-sim-senses", optional = true }
+gs-sim-zombie = { path = "../gs-sim-zombie", optional = true }
+gs-sim-doors = { path = "../gs-sim-doors", optional = true }
+gs-sim-grid2d = { path = "../gs-sim-grid2d", optional = true }
+gs-sim-witches = { path = "../gs-sim-witches", optional = true }
+gs-sim-doubt = { path = "../gs-sim-doubt", optional = true }
+gs-sim-hazards = { path = "../gs-sim-hazards", optional = true }
+gs-sim-road = { path = "../gs-sim-road", optional = true }
+gs-sim-pvs = { path = "../gs-sim-pvs", optional = true }
+gs-sim-route = { path = "../gs-sim-route", optional = true }
+gs-sim-seek = { path = "../gs-sim-seek", optional = true }
+gs-sim-crc = { path = "../gs-sim-crc", optional = true }
+gs-sim-interest = { path = "../gs-sim-interest", optional = true }
+gs-sim-trace = { path = "../gs-sim-trace", optional = true }
+gs-sim-players = { path = "../gs-sim-players", optional = true }
+
+# Native brains, aims and motors run on game worker threads (FC bot_threads): without this the
+# binding panics off the main thread. Not on the web: its builds are single-threaded.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+godot = { version = "0.5.5", features = ["experimental-threads"] }
+
+[features]
+default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players"]
+bots = ["dep:gs-sim-bots"]
+brain = ["dep:gs-sim-brain", "bots"]
+snapshot = ["dep:gs-sim-snapshot"]
+interp = ["dep:gs-sim-interp"]
+motor = ["dep:gs-sim-motor"]
+arms = ["dep:gs-sim-arms"]
+audio = ["dep:gs-sim-audio"]
+ragdoll = ["dep:gs-sim-math"]
+killview = ["dep:gs-sim-math"]
+crowd = ["dep:gs-sim-crowd", "dep:gs-sim-math"]
+weapon = ["dep:gs-sim-weapon"]
+senses = ["dep:gs-sim-senses", "dep:gs-sim-math"]
+zombie = ["dep:gs-sim-zombie", "dep:gs-sim-math", "crowd"]
+doors = ["dep:gs-sim-doors", "dep:gs-sim-math"]
+grid2d = ["dep:gs-sim-grid2d"]
+witches = ["dep:gs-sim-witches", "dep:gs-sim-math"]
+doubt = ["dep:gs-sim-doubt", "dep:gs-sim-math"]
+seek = ["dep:gs-sim-seek", "dep:gs-sim-math", "brain"]
+hazards = ["dep:gs-sim-hazards", "dep:gs-sim-math"]
+road = ["dep:gs-sim-road", "dep:gs-sim-math"]
+pvs = ["dep:gs-sim-pvs"]
+crc = ["dep:gs-sim-crc"]
+interest = ["dep:gs-sim-interest"]
+route = ["dep:gs-sim-route", "dep:gs-sim-math"]
+trace = ["dep:gs-sim-trace"]
+players = ["dep:gs-sim-players"]
+# A web side module (wasm32-unknown-emscripten, nightly, -Zbuild-std); see docs/web.md.
+web = ["godot/api-custom", "godot/experimental-wasm", "godot/lazy-function-tables"]
+web-nothreads = ["web", "godot/experimental-wasm-nothreads"]

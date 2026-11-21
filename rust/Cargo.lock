@@ -12,185 +12,185 @@ dependencies = [
 ]
 
 [[package]]
-name = "dot-sim-arms"
+name = "gs-sim-arms"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-audio"
+name = "gs-sim-audio"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-bots"
+name = "gs-sim-bots"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-brain"
+name = "gs-sim-brain"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-crc"
+name = "gs-sim-crc"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-crowd"
+name = "gs-sim-crowd"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-doors"
+name = "gs-sim-doors"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-doubt"
+name = "gs-sim-doubt"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-gdext"
+name = "gs-sim-gdext"
 version = "0.1.0"
 dependencies = [
- "dot-sim-arms",
- "dot-sim-audio",
- "dot-sim-bots",
- "dot-sim-brain",
- "dot-sim-crc",
- "dot-sim-crowd",
- "dot-sim-doors",
- "dot-sim-doubt",
- "dot-sim-grid2d",
- "dot-sim-hazards",
- "dot-sim-interest",
- "dot-sim-interp",
- "dot-sim-math",
- "dot-sim-motor",
- "dot-sim-players",
- "dot-sim-pvs",
- "dot-sim-road",
- "dot-sim-route",
- "dot-sim-seek",
- "dot-sim-senses",
- "dot-sim-snapshot",
- "dot-sim-trace",
- "dot-sim-weapon",
- "dot-sim-witches",
- "dot-sim-zombie",
+ "gs-sim-arms",
+ "gs-sim-audio",
+ "gs-sim-bots",
+ "gs-sim-brain",
+ "gs-sim-crc",
+ "gs-sim-crowd",
+ "gs-sim-doors",
+ "gs-sim-doubt",
+ "gs-sim-grid2d",
+ "gs-sim-hazards",
+ "gs-sim-interest",
+ "gs-sim-interp",
+ "gs-sim-math",
+ "gs-sim-motor",
+ "gs-sim-players",
+ "gs-sim-pvs",
+ "gs-sim-road",
+ "gs-sim-route",
+ "gs-sim-seek",
+ "gs-sim-senses",
+ "gs-sim-snapshot",
+ "gs-sim-trace",
+ "gs-sim-weapon",
+ "gs-sim-witches",
+ "gs-sim-zombie",
  "godot",
  "godot-cell",
 ]
 
 [[package]]
-name = "dot-sim-grid2d"
+name = "gs-sim-grid2d"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-hazards"
+name = "gs-sim-hazards"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-interest"
+name = "gs-sim-interest"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-interp"
+name = "gs-sim-interp"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-math"
+name = "gs-sim-math"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-motor"
+name = "gs-sim-motor"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-players"
+name = "gs-sim-players"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-pvs"
+name = "gs-sim-pvs"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-road"
+name = "gs-sim-road"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-route"
+name = "gs-sim-route"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-seek"
+name = "gs-sim-seek"
 version = "0.1.0"
 dependencies = [
- "dot-sim-doubt",
- "dot-sim-math",
+ "gs-sim-doubt",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-senses"
+name = "gs-sim-senses"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-snapshot"
+name = "gs-sim-snapshot"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-trace"
+name = "gs-sim-trace"
 version = "0.1.0"
 
 [[package]]
-name = "dot-sim-weapon"
+name = "gs-sim-weapon"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-witches"
+name = "gs-sim-witches"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]
-name = "dot-sim-zombie"
+name = "gs-sim-zombie"
 version = "0.1.0"
 dependencies = [
- "dot-sim-math",
+ "gs-sim-math",
 ]
 
 [[package]]

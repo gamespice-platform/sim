@@ -1,6 +1,6 @@
 extends Node
 
-## dot-sim's weapon parity suite (`godot --headless --path . res://examples/sim_weapon_selftest.tscn`): GSSimWeaponSpread against dot-weapon's script tick, same inputs, same answers.
+## gs-sim's weapon parity suite (`godot --headless --path . res://examples/sim_weapon_selftest.tscn`): GSSimWeaponSpread against gs-weapon's script tick, same inputs, same answers.
 ## Needs GameSpice Weapon linked and the library installed; without either it says so and passes.
 
 var _passed := 0
@@ -13,9 +13,9 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	print("dot-sim weapon self-test")
+	print("gs-sim weapon self-test")
 	var native := GSSim.has(&"weapon")
-	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
+	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("GS_SIM_REQUIRE_NATIVE")) == "1":
 		_check(native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	if native:
 		_test_weapon_parity()
@@ -35,7 +35,7 @@ func _check(ok: bool, what: String, detail: String = "") -> void:
 
 ## GameSpice Weapon's addon, linked for the weapon parity test (see README); absent, the test is skipped. Loaded by path, so
 ## this file parses without it.
-const WEAPON_DIR := "res://addons/dot_weapon/"
+const WEAPON_DIR := "res://addons/gs_weapon/"
 
 ## Random weapons (tuning, tick rate, rules) and context ticks per weapon.
 const WEAPON_CASES := 300
@@ -52,11 +52,11 @@ class WeaponArsenal:
 
 func _test_weapon_parity() -> void:
 	print("weapon")
-	if not ResourceLoader.exists(WEAPON_DIR + "behaviour/dot_weapon_hitscan.gd"):
+	if not ResourceLoader.exists(WEAPON_DIR + "behaviour/gs_weapon_hitscan.gd"):
 		print("  skip  %s not linked" % WEAPON_DIR)
 		return
 	# The script side is the GDScript tick: with GameSpice Sim loaded the behaviour would otherwise run the native twin itself.
-	var hitscan: Script = load(WEAPON_DIR + "behaviour/dot_weapon_hitscan.gd")
+	var hitscan: Script = load(WEAPON_DIR + "behaviour/gs_weapon_hitscan.gd")
 	var was_native: bool = hitscan.get(&"native_tick")
 	hitscan.set(&"native_tick", false)
 	var rng := RandomNumberGenerator.new()
@@ -73,7 +73,7 @@ func _test_weapon_parity() -> void:
 		var w := _weapon_case(rng)
 		var h: Object = w[0]
 		var native: Object = w[1]
-		var ctx: Object = load(WEAPON_DIR + "core/dot_weapon_context.gd").new()
+		var ctx: Object = load(WEAPON_DIR + "core/gs_weapon_context.gd").new()
 		var mirror := {}
 		var hold := 0
 		for t: int in WEAPON_TICKS:
@@ -146,7 +146,7 @@ func _test_weapon_idle_parity(rng: RandomNumberGenerator) -> void:
 		var h: Object = w[0]
 		var native: Object = w[1]
 		var arsenal: Object = w[2]
-		var ctx: Object = load(WEAPON_DIR + "core/dot_weapon_context.gd").new()
+		var ctx: Object = load(WEAPON_DIR + "core/gs_weapon_context.gd").new()
 		var mirror := {}
 		var hold := 0
 		var cone: bool = arsenal.spread_rules != null and arsenal.crosshair_cone
@@ -216,7 +216,7 @@ func _weapon_still(ctx: Object, arsenal: Object) -> bool:
 ## One random weapon: a hitscan behaviour on a def with random ballistics (fields or class presets), on an arsenal with
 ## a random tick rate, rules (none, off or on) and crosshair setting, and the native twin set from the same numbers.
 func _weapon_case(rng: RandomNumberGenerator) -> Array:
-	var b: Object = load(WEAPON_DIR + "tuning/dot_weapon_ballistics.gd").new()
+	var b: Object = load(WEAPON_DIR + "tuning/gs_weapon_ballistics.gd").new()
 	b.spread = rng.randf_range(0.0, 3.0)
 	b.spread_moving = rng.randf_range(0.0, 8.0)
 	b.spread_speed_ref = [0.1, 3.0, 6.0, rng.randf_range(0.5, 12.0)][rng.randi_range(0, 3)]
@@ -230,7 +230,7 @@ func _weapon_case(rng: RandomNumberGenerator) -> Array:
 	b.settle_ticks = -1 if rng.randf() < 0.5 else rng.randi_range(0, 12)
 	for f: StringName in [&"spread_aim", &"spread_hip", &"spread_sprint", &"spread_slide", &"spread_flinch", &"bloom_crouch"]:
 		b.set(f, -1.0 if rng.randf() < 0.5 else rng.randf_range(0.0, 2.0))
-	var def: Object = load(WEAPON_DIR + "core/dot_weapon_def.gd").new()
+	var def: Object = load(WEAPON_DIR + "core/gs_weapon_def.gd").new()
 	def.id = StringName(["ak", "mp5", "awp", "deagle", "m3", "x"][rng.randi_range(0, 5)])
 	def.tuning = b
 	def.authored_tick_rate = [0, 64, 128][rng.randi_range(0, 2)]
@@ -240,7 +240,7 @@ func _weapon_case(rng: RandomNumberGenerator) -> Array:
 	arsenal.crosshair_cone = rng.randf() < 0.5
 	var pick := rng.randi_range(0, 2)
 	if pick > 0:
-		var r: Object = load(WEAPON_DIR + "math/dot_weapon_spread_rules.gd").new()
+		var r: Object = load(WEAPON_DIR + "math/gs_weapon_spread_rules.gd").new()
 		r.enabled = pick == 2
 		r.scale = rng.randf_range(0.5, 2.0)
 		for f: StringName in [&"mult_hip", &"mult_aim", &"mult_stand", &"mult_walk", &"mult_run", &"mult_air", &"mult_sprint", &"mult_slide", &"mult_crouch"]:
@@ -250,7 +250,7 @@ func _weapon_case(rng: RandomNumberGenerator) -> Array:
 		r.recovery = 0.0 if rng.randf() < 0.1 else rng.randf_range(0.5, 12.0)
 		r.max_spread = 0.0 if rng.randf() < 0.2 else rng.randf_range(2.0, 20.0)
 		arsenal.spread_rules = r
-	var h: Object = load(WEAPON_DIR + "behaviour/dot_weapon_hitscan.gd").new()
+	var h: Object = load(WEAPON_DIR + "behaviour/gs_weapon_hitscan.gd").new()
 	h.setup(def, arsenal)
 	var native: Object = ClassDB.instantiate(&"GSSimWeaponSpread")
 	var ok: bool = native.set_tuning(_weapon_tuning(h, b))
@@ -325,7 +325,7 @@ func _bench_weapon(rng: RandomNumberGenerator) -> void:
 	var w := _weapon_case(rng)
 	var h: Object = w[0]
 	var native: Object = w[1]
-	var ctx: Object = load(WEAPON_DIR + "core/dot_weapon_context.gd").new()
+	var ctx: Object = load(WEAPON_DIR + "core/gs_weapon_context.gd").new()
 	var mirror := {}
 	const N := 20000
 	var t0 := Time.get_ticks_usec()

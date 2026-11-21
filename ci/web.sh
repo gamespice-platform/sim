@@ -1,10 +1,10 @@
 #!/bin/bash
 # Build the web side module (docs/web.md) and install it where a dlink web export loads it.
 #   ci/web.sh [--threads] [--no-build]   then: ci/package.sh --version X --platform web-wasm32[-threads]
-# Default: the single-threaded module, addons/dot_sim/bin/web-wasm32/dot_sim.wasm, `web.wasm32` in the
+# Default: the single-threaded module, addons/gs_sim/bin/web-wasm32/gs_sim.wasm, `web.wasm32` in the
 # .gdextension, for the dlink nothreads template (Extensions Support on, Thread Support off).
 # --threads: the pthread module (atomics, shared memory) for the dlink threads template,
-# addons/dot_sim/bin/web-wasm32-threads/dot_sim.threads.wasm, `web.threads.wasm32`. The file name differs
+# addons/gs_sim/bin/web-wasm32-threads/gs_sim.threads.wasm, `web.threads.wasm32`. The file name differs
 # because the engine dlopens a side module by its base name. Both may be installed at once: the threaded
 # engine picks the `threads` line (more feature tags matched), the single-threaded one the plain line.
 # All of it is gitignored. The plain web template refuses to start with any .gdextension in the pack.
@@ -37,15 +37,15 @@ if [ "$BUILD" = 1 ]; then
     if [ "$THREADS" = 1 ]; then
         # Its own target dir (std is rebuilt with atomics, so the two must not share one). The extra rustflags
         # add to the side-module ones in rust/.cargo/config.toml; -pthread makes the module import shared memory.
-        (cd rust && CARGO_TARGET_DIR=target/web-threads cargo "+$NIGHTLY" build --locked --release -p dot-sim-gdext \
+        (cd rust && CARGO_TARGET_DIR=target/web-threads cargo "+$NIGHTLY" build --locked --release -p gs-sim-gdext \
             --features web -Zbuild-std --target "$TARGET" \
             --config 'target.wasm32-unknown-emscripten.rustflags=["-C","target-feature=+atomics,+bulk-memory,+mutable-globals","-C","link-args=-pthread"]')
     else
-        (cd rust && cargo "+$NIGHTLY" build --locked --release -p dot-sim-gdext --features web-nothreads \
+        (cd rust && cargo "+$NIGHTLY" build --locked --release -p gs-sim-gdext --features web-nothreads \
             -Zbuild-std --target "$TARGET")
     fi
 fi
-# The web rows of ci/targets.tsv: install.sh copies the built dot_sim.wasm into addons/dot_sim/bin/<platform>/
+# The web rows of ci/targets.tsv: install.sh copies the built gs_sim.wasm into addons/gs_sim/bin/<platform>/
 # under the row's file name and lists it in the .gdextension with whatever else is installed.
 if [ "$THREADS" = 1 ]; then
     bash ci/install.sh --platform web-wasm32-threads --no-build

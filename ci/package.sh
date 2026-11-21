@@ -1,9 +1,9 @@
 #!/bin/bash
 # Pack what ci/install.sh laid out for ONE platform into dist/ for the release:
-#   dist/dot_sim-<version>-<platform>.zip   addons/dot_sim/bin/<platform>/* + the .gdextension
+#   dist/gs_sim-<version>-<platform>.zip   addons/gs_sim/bin/<platform>/* + the .gdextension
 #   dist/SHA256SUMS                          (appended)
 #   dist/natives.json                        {version, files:{platform:{file,sha256}}} (merged)
-# The zip unpacks at a project root, like the GDScript addon zip dot-ci attaches.
+# The zip unpacks at a project root, like the GDScript addon zip gs-ci attaches.
 #   ci/package.sh --version 0.1.0 --platform linux-x86_64
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; cd "$ROOT"
@@ -18,12 +18,12 @@ done
 VERSION="${VERSION#v}"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || { echo "package.sh: --version must be semver" >&2; exit 2; }
 awk -F'\t' -v p="$PLATFORM" '$0!~/^#/ && $1==p {f=1} END{exit !f}' ci/targets.tsv || { echo "package.sh: '$PLATFORM' not in ci/targets.tsv" >&2; exit 2; }
-DIR="addons/dot_sim/bin/$PLATFORM"
+DIR="addons/gs_sim/bin/$PLATFORM"
 { [ -d "$DIR" ] && [ -n "$(ls -A "$DIR")" ]; } || { echo "package.sh: $DIR is empty (run ci/install.sh first)" >&2; exit 1; }
 mkdir -p dist
-ZIP="dist/dot_sim-$VERSION-$PLATFORM.zip"
+ZIP="dist/gs_sim-$VERSION-$PLATFORM.zip"
 rm -f "$ZIP"
-python3 -I - "$ZIP" "$DIR" addons/dot_sim/dot_sim.gdextension <<'PY'
+python3 -I - "$ZIP" "$DIR" addons/gs_sim/gs_sim.gdextension <<'PY'
 import sys, os, zipfile
 zip_path, d, ext = sys.argv[1:4]
 def add(z, path, mode):

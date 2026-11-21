@@ -1,7 +1,0 @@
-[package]
-name = "dot-sim-interp"
-description = "Snapshot interpolation for remote entities, bit-identical to dot-net's GSNetInterpolator."
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-rust-version.workspace = true

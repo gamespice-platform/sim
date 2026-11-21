@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/dot-sim-math", "crates/dot-sim-arms", "crates/dot-sim-bots", "crates/dot-sim-brain", "crates/dot-sim-snapshot", "crates/dot-sim-interp", "crates/dot-sim-motor", "crates/dot-sim-audio", "crates/dot-sim-crowd", "crates/dot-sim-weapon", "crates/dot-sim-senses", "crates/dot-sim-zombie", "crates/dot-sim-doors", "crates/dot-sim-grid2d", "crates/dot-sim-witches", "crates/dot-sim-doubt", "crates/dot-sim-seek", "crates/dot-sim-hazards", "crates/dot-sim-road", "crates/dot-sim-pvs", "crates/dot-sim-crc", "crates/dot-sim-interest", "crates/dot-sim-route", "crates/dot-sim-trace", "crates/dot-sim-players", "crates/dot-sim-gdext"]
+members = ["crates/gs-sim-math", "crates/gs-sim-arms", "crates/gs-sim-bots", "crates/gs-sim-brain", "crates/gs-sim-snapshot", "crates/gs-sim-interp", "crates/gs-sim-motor", "crates/gs-sim-audio", "crates/gs-sim-crowd", "crates/gs-sim-weapon", "crates/gs-sim-senses", "crates/gs-sim-zombie", "crates/gs-sim-doors", "crates/gs-sim-grid2d", "crates/gs-sim-witches", "crates/gs-sim-doubt", "crates/gs-sim-seek", "crates/gs-sim-hazards", "crates/gs-sim-road", "crates/gs-sim-pvs", "crates/gs-sim-crc", "crates/gs-sim-interest", "crates/gs-sim-route", "crates/gs-sim-trace", "crates/gs-sim-players", "crates/gs-sim-gdext"]
 
 exclude = ["vendor/godot-cell"]
 
@@ -15,7 +15,7 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 
-# godot-cell 0.5.5 with one change (see vendor/godot-cell/README.dot-sim.md): a bind under experimental-threads no
+# godot-cell 0.5.5 with one change (see vendor/godot-cell/README.gs-sim.md): a bind under experimental-threads no
 # longer wakes condvars nobody waits on, which cost a futex syscall (~2 us on a VM) on every #[func] call.
 [patch.crates-io]
 godot-cell = { path = "vendor/godot-cell" }
