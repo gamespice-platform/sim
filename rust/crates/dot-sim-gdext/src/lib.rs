@@ -41,6 +41,8 @@ mod killview;
 mod motor;
 #[cfg(feature = "zombie")]
 mod pace;
+#[cfg(feature = "players")]
+mod players;
 #[cfg(feature = "pvs")]
 mod pvs;
 #[cfg(feature = "ragdoll")]

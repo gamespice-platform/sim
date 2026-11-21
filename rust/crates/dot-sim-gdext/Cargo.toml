@@ -38,6 +38,7 @@ dot-sim-seek = { path = "../dot-sim-seek", optional = true }
 dot-sim-crc = { path = "../dot-sim-crc", optional = true }
 dot-sim-interest = { path = "../dot-sim-interest", optional = true }
 dot-sim-trace = { path = "../dot-sim-trace", optional = true }
+dot-sim-players = { path = "../dot-sim-players", optional = true }
 
 # Native brains, aims and motors run on game worker threads (FC bot_threads): without this the
 # binding panics off the main thread. Not on the web: its builds are single-threaded.
@@ -45,7 +46,7 @@ dot-sim-trace = { path = "../dot-sim-trace", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace"]
+default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players"]
 bots = ["dep:dot-sim-bots"]
 brain = ["dep:dot-sim-brain", "bots"]
 snapshot = ["dep:dot-sim-snapshot"]
@@ -71,6 +72,7 @@ crc = ["dep:dot-sim-crc"]
 interest = ["dep:dot-sim-interest"]
 route = ["dep:dot-sim-route", "dep:dot-sim-math"]
 trace = ["dep:dot-sim-trace"]
+players = ["dep:dot-sim-players"]
 # A web side module (wasm32-unknown-emscripten, nightly, -Zbuild-std); see docs/web.md.
 web = ["godot/api-custom", "godot/experimental-wasm", "godot/lazy-function-tables"]
 web-nothreads = ["web", "godot/experimental-wasm-nothreads"]

@@ -34,6 +34,7 @@ const MODULES := {
 	&"crc": &"DotSimCrc",
 	&"interest": &"DotSimInterestGrid",
 	&"trace": &"DotSimFlatTrace",
+	&"players": &"DotSimPlayerPost",
 }
 
 
