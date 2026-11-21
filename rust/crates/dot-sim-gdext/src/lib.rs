@@ -29,6 +29,8 @@ mod grid2d;
 mod hazards;
 #[cfg(feature = "motor")]
 mod hulls;
+#[cfg(feature = "interest")]
+mod interest;
 #[cfg(feature = "interp")]
 mod interp;
 #[cfg(feature = "killview")]

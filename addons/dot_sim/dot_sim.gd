@@ -32,6 +32,7 @@ const MODULES := {
 	&"pvs": &"DotSimPvs",
 	&"route": &"DotSimRouteBots",
 	&"crc": &"DotSimCrc",
+	&"interest": &"DotSimInterestGrid",
 }
 
 

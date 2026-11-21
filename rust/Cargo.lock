@@ -78,6 +78,7 @@ dependencies = [
  "dot-sim-doubt",
  "dot-sim-grid2d",
  "dot-sim-hazards",
+ "dot-sim-interest",
  "dot-sim-interp",
  "dot-sim-math",
  "dot-sim-motor",
@@ -104,6 +105,10 @@ version = "0.1.0"
 dependencies = [
  "dot-sim-math",
 ]
+
+[[package]]
+name = "dot-sim-interest"
+version = "0.1.0"
 
 [[package]]
 name = "dot-sim-interp"
