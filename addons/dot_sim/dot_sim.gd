@@ -33,6 +33,7 @@ const MODULES := {
 	&"route": &"DotSimRouteBots",
 	&"crc": &"DotSimCrc",
 	&"interest": &"DotSimInterestGrid",
+	&"trace": &"DotSimFlatTrace",
 }
 
 

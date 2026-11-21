@@ -23,6 +23,8 @@ mod crowd;
 mod doors;
 #[cfg(feature = "doubt")]
 mod doubt;
+#[cfg(feature = "trace")]
+mod flat_trace;
 #[cfg(feature = "grid2d")]
 mod grid2d;
 #[cfg(feature = "hazards")]
