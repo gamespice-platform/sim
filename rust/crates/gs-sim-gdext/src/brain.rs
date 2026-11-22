@@ -138,7 +138,7 @@ impl IRefCounted for GSSimBotMind {
 
 #[godot_api]
 impl GSSimBotMind {
-    /// The aim's stream key (`stream(&"gs_bot_aim")`) and the brain's (`stream(&"gs_bot")`).
+    /// The aim's stream key (`stream(&"dot_bot_aim")`) and the brain's (`stream(&"dot_bot")`).
     #[func]
     fn set_keys(&mut self, aim_key: i64, brain_key: i64) {
         self.aim.rng.key = aim_key;

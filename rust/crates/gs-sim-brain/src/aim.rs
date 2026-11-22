@@ -85,7 +85,7 @@ pub fn direction(yaw: f64, pitch: f64) -> Vec3 {
 }
 
 impl Aim {
-    /// A fresh aim whose stream has `key` (the script's `stream(&"gs_bot_aim")`).
+    /// A fresh aim whose stream has `key` (the script's `stream(&"dot_bot_aim")`).
     pub fn new(key: i64) -> Self {
         Self {
             err_mag0: 0.0,
