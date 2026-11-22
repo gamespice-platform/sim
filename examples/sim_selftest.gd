@@ -31,7 +31,7 @@ func _run() -> void:
 	print("gs-sim self-test")
 	var native := GSSim.has(&"bots")
 	print("  native bots module: %s" % ("loaded" if native else "absent (script fallback only)"))
-	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("GS_SIM_REQUIRE_NATIVE")) == "1":
+	if OS.get_environment("GS_SIM_REQUIRE_NATIVE") == "1":
 		_check(native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	_test_fallback()
 	if native:

@@ -15,7 +15,7 @@ func _ready() -> void:
 func _run() -> void:
 	print("gs-sim weapon self-test")
 	var native := GSSim.has(&"weapon")
-	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("GS_SIM_REQUIRE_NATIVE")) == "1":
+	if OS.get_environment("GS_SIM_REQUIRE_NATIVE") == "1":
 		_check(native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	if native:
 		_test_weapon_parity()

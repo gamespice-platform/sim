@@ -184,7 +184,7 @@ func _run() -> void:
 	print("gs-sim snapshot self-test")
 	_native = GSSim.has(&"snapshot")
 	print("  native snapshot module: %s" % ("loaded" if _native else "absent (script codec only)"))
-	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("GS_SIM_REQUIRE_NATIVE")) == "1":
+	if OS.get_environment("GS_SIM_REQUIRE_NATIVE") == "1":
 		_check(_native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	# Not the defaults: the spec must carry the config's grid, speed and rotation widths.
 	_config.world_extent = 1000.0

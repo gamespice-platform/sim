@@ -1,7 +1,0 @@
-[configuration]
-entry_symbol = "gdext_rust_init"
-compatibility_minimum = 4.1
-reloadable = false
-
-[libraries]
-linux.x86_64 = "res://addons/gs_sim/bin/linux-x86_64/libgs_sim.so"

@@ -78,7 +78,7 @@ func _run() -> void:
 	print("gs-sim interp self-test")
 	_native = GSSim.has(&"interp")
 	print("  native interp module: %s" % ("loaded" if _native else "absent (script interpolator only)"))
-	if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("GS_SIM_REQUIRE_NATIVE")) == "1":
+	if OS.get_environment("GS_SIM_REQUIRE_NATIVE") == "1":
 		_check(_native, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 	_test_fallback()
 	if _native:
