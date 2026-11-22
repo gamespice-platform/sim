@@ -275,7 +275,7 @@ func _test_brain_parity() -> void:
 	_test_sight_lod_parity()
 
 
-## The same fight with the sight LOD on (far 20 m, hold 0.15 s): every intent equal, script against native, and fewer rays than without it.
+## The same fight with the sight LOD on (far 20 m, hold 0.15 s): every intent equal, script against native, and the same ray count; the saving is checked on a crowd.
 func _test_sight_lod_parity() -> void:
 	print("sight LOD: native against script")
 	GSBotWorld.native_enabled = false
@@ -294,7 +294,12 @@ func _test_sight_lod_parity() -> void:
 	_check(first < 0, "%d bots x %d ticks with sight_far on: every intent the same" % [BOTS, TICKS], "" if first < 0 else "tick %d: %s vs %s" % [first, script_run[first], native_run[first]])
 	print("  rays over the run: script plain %d, script LOD %d, native LOD %d" % [rays_script_plain, rays_script_lod, rays_lod])
 	_check(rays_lod == rays_script_lod, "native and script trace the same number of rays under the LOD", "%d vs %d" % [rays_lod, rays_script_lod])
-	_check(rays_script_lod < rays_script_plain, "the LOD traces fewer rays than plain reuse", "%d vs %d" % [rays_script_lod, rays_script_plain])
+	# The two fights above play different games once the LOD changes what a bot sees, so their ray totals are not a like-for-like
+	# count (it can go either way); the saving is measured on the crowd: here in script, in the bench below native.
+	_play(0.0, 0.15, 3, 80)
+	var crowd_plain := _rays
+	_play(20.0, 0.15, 3, 80)
+	_check(_rays < crowd_plain, "the script LOD traces fewer rays than plain reuse for a crowd thinking every third tick", "%d vs %d" % [_rays, crowd_plain])
 	_bench_sight_lod()
 	_check(plain.size() == TICKS, "the plain run still plays every tick")
 
