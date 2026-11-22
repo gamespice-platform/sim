@@ -41,8 +41,8 @@ pub mod panicking {
     pub use crate::guards::{InaccessibleGuard, MutGuard, RefGuard};
 }
 
-/// dot-sim patch: true makes every blocking guard's drop notify its condvars as upstream does, even with nobody waiting
-/// (an in-process A/B switch and fallback; see README.dot-sim.md). False, the default, notifies only waiters.
+/// gs-sim patch: true makes every blocking guard's drop notify its condvars as upstream does, even with nobody waiting
+/// (an in-process A/B switch and fallback; see README.gs-sim.md). False, the default, notifies only waiters.
 pub static NOTIFY_ALWAYS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn notify_always() -> bool {

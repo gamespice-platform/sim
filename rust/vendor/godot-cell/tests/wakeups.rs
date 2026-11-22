@@ -1,5 +1,5 @@
 /*
- * dot-sim patch test (see README.dot-sim.md): the guards' drops notify only when someone waits, so a thread blocked on
+ * gs-sim patch test (see README.gs-sim.md): the guards' drops notify only when someone waits, so a thread blocked on
  * the cell must still wake when the borrow it waits on ends, with the patch and with NOTIFY_ALWAYS (upstream behaviour).
  */
 

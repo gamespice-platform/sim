@@ -191,7 +191,7 @@ pub(crate) struct ThreadTracker {
     /// Shared reference count per thread.
     shared_counts: HashMap<thread::ThreadId, usize>,
 
-    /// dot-sim patch: threads waiting on `mut_condition` / `immut_condition`. Only changed and read under the tracker's
+    /// gs-sim patch: threads waiting on `mut_condition` / `immut_condition`. Only changed and read under the tracker's
     /// lock, as the waits and the guards' drops are, so a drop with nobody waiting skips the notify (a futex syscall
     /// on every bind otherwise) and no wakeup is lost.
     pub(crate) mut_waiters: usize,
