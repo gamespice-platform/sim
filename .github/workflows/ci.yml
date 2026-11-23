@@ -16,7 +16,7 @@ on:
 
 jobs:
     validate:
-        uses: gamespice-platform/ci/.github/workflows/validate.yml@v1
+        uses: gamespice-platform/ci/.github/workflows/validate.yml@v1.4.0
         with:
             efficiency: true
             hygiene: true
@@ -135,7 +135,7 @@ jobs:
               if: env.SKIP != '1'
               with:
                   repository: gamespice-platform/ci
-                  ref: v1
+                  ref: v1.4.0
                   path: gs-ci
             - name: Godot for the API dump
               if: env.SKIP != '1'
@@ -186,7 +186,7 @@ jobs:
             - uses: actions/checkout@v4
               with:
                   repository: gamespice-platform/ci
-                  ref: v1
+                  ref: v1.4.0
                   path: gs-ci
             - name: Install the runtime's shared libraries
               run: |
