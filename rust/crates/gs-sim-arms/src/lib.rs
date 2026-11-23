@@ -180,6 +180,22 @@ pub fn depth_in(bounds: &Aabb, q: Vec3) -> f64 {
     )
 }
 
+/// `GSViewArmsClear.depth_in_hull`: how far `q` is inside the convex solid `planes` (`nx, ny, nz, d` each, inside is `n.q <= d`)
+/// from its nearest face, or 0 outside. Doubles, left to right, as the script computes it.
+#[inline]
+pub fn depth_in_hull(planes: &[f32], q: Vec3) -> f64 {
+    let (qx, qy, qz) = (q.x as f64, q.y as f64, q.z as f64);
+    let mut deepest = f64::INFINITY;
+    for p in planes.chunks_exact(4) {
+        let gap = p[3] as f64 - (p[0] as f64 * qx + p[1] as f64 * qy + p[2] as f64 * qz);
+        if gap < 0.0 {
+            return 0.0;
+        }
+        deepest = minf(deepest, gap);
+    }
+    if deepest == f64::INFINITY { 0.0 } else { deepest }
+}
+
 /// `GSViewArmsClear.arm_depth`: how deep the upper arm and the forearm (all but its hand end) go into `bounds`.
 pub fn arm_depth(
     to_anchor: &Xform,
@@ -187,6 +203,7 @@ pub fn arm_depth(
     shoulder: Vec3,
     elbow: Vec3,
     target: Vec3,
+    planes: &[f32],
 ) -> f64 {
     let s = to_anchor.xform(shoulder);
     let e = to_anchor.xform(elbow);
@@ -197,13 +214,13 @@ pub fn arm_depth(
     let mut deepest = 0.0;
     for i in 0..9 {
         let t = i as f64 / 8.0;
-        deepest = maxf(
-            deepest,
-            maxf(
-                depth_in(bounds, lerp(s, e, t)),
-                depth_in(bounds, lerp(e, h, t)),
-            ),
-        );
+        let (a, b) = (lerp(s, e, t), lerp(e, h, t));
+        let (da, db) = if planes.is_empty() {
+            (depth_in(bounds, a), depth_in(bounds, b))
+        } else {
+            (depth_in_hull(planes, a), depth_in_hull(planes, b))
+        };
+        deepest = maxf(deepest, maxf(da, db));
     }
     deepest
 }
@@ -229,6 +246,7 @@ pub fn scan(
     bounds: &Aabb,
     up: Vec3,
     prev_turn: f64,
+    planes: &[f32],
 ) -> Clear {
     let mut best = 0.0;
     let mut best_score = f64::INFINITY;
@@ -246,7 +264,7 @@ pub fn scan(
             0.0
         };
         let score =
-            arm_depth(to_anchor, bounds, shoulder, elbow, target) + angle.abs() * 0.00005 + raised;
+            arm_depth(to_anchor, bounds, shoulder, elbow, target, planes) + angle.abs() * 0.00005 + raised;
         if score < best_score - 0.002 {
             best_score = score;
             best = angle;
@@ -260,6 +278,7 @@ pub fn scan(
         shoulder,
         elbow_for(shoulder, target, la, lb, turned),
         target,
+        planes,
     );
     Clear {
         turned,
@@ -337,10 +356,10 @@ mod tests {
     fn a_buried_arm_turns_out_and_eases() {
         let (shoulder, target, dir, pole, ident, bounds, up) = arm_case();
         let first = scan(
-            shoulder, target, 0.3, 0.28, pole, dir, &ident, &bounds, up, 0.0,
+            shoulder, target, 0.3, 0.28, pole, dir, &ident, &bounds, up, 0.0, &[],
         );
         let again = scan(
-            shoulder, target, 0.3, 0.28, pole, dir, &ident, &bounds, up, first.turn,
+            shoulder, target, 0.3, 0.28, pole, dir, &ident, &bounds, up, first.turn, &[],
         );
         // Eased: each frame moves 35% of the remaining way toward the same best angle.
         let best = first.turn / EASE;
@@ -357,10 +376,27 @@ mod tests {
             size: Vec3::new(0.1, 0.1, 0.1),
         };
         let c = scan(
-            shoulder, target, 0.3, 0.28, pole, dir, &ident, &far, up, 0.0,
+            shoulder, target, 0.3, 0.28, pole, dir, &ident, &far, up, 0.0, &[],
         );
         assert_eq!(c.turn, 0.0);
         assert_eq!(c.depth, 0.0);
         assert_eq!(c.turned, rotated(pole, dir, 0.0));
+    }
+
+    #[test]
+    fn a_hull_inside_the_box_is_shallower_than_the_box() {
+        // A diamond (octahedron) in the unit box: the corners of the box are empty.
+        let mut planes = Vec::new();
+        for (x, y, z) in [(1.0, 1.0, 1.0), (-1.0, 1.0, 1.0), (1.0, -1.0, 1.0), (-1.0, -1.0, 1.0),
+                          (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0), (1.0, -1.0, -1.0), (-1.0, -1.0, -1.0)] {
+            let n = 1.0 / 3.0f32.sqrt();
+            planes.extend_from_slice(&[x * n, y * n, z * n, 0.5 * n]);
+        }
+        let b = Aabb { position: Vec3::new(-0.5, -0.5, -0.5), size: Vec3::new(1.0, 1.0, 1.0) };
+        assert_eq!(depth_in_hull(&planes, Vec3::new(0.9, 0.9, 0.9)), 0.0);
+        assert!(depth_in(&b, Vec3::new(0.4, 0.4, 0.4)) > 0.0);
+        assert_eq!(depth_in_hull(&planes, Vec3::new(0.4, 0.4, 0.4)), 0.0);
+        assert!(depth_in_hull(&planes, Vec3::new(0.0, 0.0, 0.0)) > 0.28);
+        assert_eq!(depth_in_hull(&[], Vec3::new(0.0, 0.0, 0.0)), 0.0);
     }
 }

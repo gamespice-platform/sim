@@ -561,7 +561,37 @@ func _test_arms_parity() -> void:
 		var c := _arm_case(rng)
 		native.clear_pole(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8])
 	var t2 := Time.get_ticks_usec()
+	_test_arms_hull_parity(clear, native, rng)
 	print("  bench 2000 scans (with case setup): script %d us, native %d us" % [t1 - t0, t2 - t1])
+
+
+## The same comparison with the weapon's convex fit (GSViewArmsClear.dop_planes of a random point cloud), through clear_pole_hull.
+func _test_arms_hull_parity(clear: Script, native: Object, rng: RandomNumberGenerator) -> void:
+	if not native.has_method(&"clear_pole_hull"):
+		_check(false, "the native arms class has clear_pole_hull")
+		return
+	var same := 0
+	var shallower := 0
+	var first_miss := ""
+	for i: int in ARM_CASES:
+		var c := _arm_case(rng)
+		var box: AABB = c[6]
+		var pts := PackedVector3Array()
+		for k in 12:
+			pts.append(box.position + box.size * Vector3(rng.randf(), rng.randf(), rng.randf()))
+		var planes: PackedFloat32Array = clear.grown(clear.dop_planes(pts), rng.randf_range(0.0, 0.05))
+		c[6] = box.grow(0.05)
+		var want: PackedFloat64Array = clear.scan(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], planes)
+		var got: PackedFloat64Array = native.clear_pole_hull(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], planes)
+		if got == want:
+			same += 1
+		elif first_miss == "":
+			first_miss = "case %d: script %s native %s" % [i, want, got]
+		var boxed: PackedFloat64Array = clear.scan(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8])
+		if want[4] < boxed[4]:
+			shallower += 1
+	_check(same == ARM_CASES, "%d random arm poses against a convex fit: the native scan matches the script to the bit" % ARM_CASES, first_miss)
+	_check(shallower > 0, "the convex fit is shallower than the box on some poses (%d of %d)" % [shallower, ARM_CASES])
 
 
 ## One random arm: shoulder, hand target, bone lengths, pole, unit shoulder-to-hand axis, a rigid

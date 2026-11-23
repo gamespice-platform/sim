@@ -31,35 +31,71 @@ impl GSSimViewArms {
         up: Vector3,
         prev_turn: f64,
     ) -> PackedFloat64Array {
-        let rows = to_anchor.basis.rows;
-        let xf = Xform {
-            rows: [v3(rows[0]), v3(rows[1]), v3(rows[2])],
-            origin: v3(to_anchor.origin),
-        };
-        let b = Box3 {
-            position: v3(bounds.position),
-            size: v3(bounds.size),
-        };
-        let c = scan(
-            v3(shoulder),
-            v3(target),
-            lengths.x,
-            lengths.y,
-            v3(pole),
-            v3(dir),
-            &xf,
-            &b,
-            v3(up),
-            prev_turn,
-        );
-        PackedFloat64Array::from(
-            &[
-                c.turned.x as f64,
-                c.turned.y as f64,
-                c.turned.z as f64,
-                c.turn,
-                c.depth,
-            ][..],
-        )
+        run(shoulder, target, lengths, pole, dir, to_anchor, bounds, up, prev_turn, &[])
     }
+
+    /// `GSViewArmsClear.scan` with its `planes` (the weapon's convex fit, `nx, ny, nz, d` each).
+    #[allow(clippy::too_many_arguments)]
+    #[func]
+    fn clear_pole_hull(
+        &self,
+        shoulder: Vector3,
+        target: Vector3,
+        lengths: Vector2,
+        pole: Vector3,
+        dir: Vector3,
+        to_anchor: Transform3D,
+        bounds: Aabb,
+        up: Vector3,
+        prev_turn: f64,
+        planes: PackedFloat32Array,
+    ) -> PackedFloat64Array {
+        run(shoulder, target, lengths, pole, dir, to_anchor, bounds, up, prev_turn, planes.as_slice())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run(
+    shoulder: Vector3,
+    target: Vector3,
+    lengths: Vector2,
+    pole: Vector3,
+    dir: Vector3,
+    to_anchor: Transform3D,
+    bounds: Aabb,
+    up: Vector3,
+    prev_turn: f64,
+    planes: &[f32],
+) -> PackedFloat64Array {
+    let rows = to_anchor.basis.rows;
+    let xf = Xform {
+        rows: [v3(rows[0]), v3(rows[1]), v3(rows[2])],
+        origin: v3(to_anchor.origin),
+    };
+    let b = Box3 {
+        position: v3(bounds.position),
+        size: v3(bounds.size),
+    };
+    let c = scan(
+        v3(shoulder),
+        v3(target),
+        lengths.x,
+        lengths.y,
+        v3(pole),
+        v3(dir),
+        &xf,
+        &b,
+        v3(up),
+        prev_turn,
+        planes,
+    );
+    PackedFloat64Array::from(
+        &[
+            c.turned.x as f64,
+            c.turned.y as f64,
+            c.turned.z as f64,
+            c.turn,
+            c.depth,
+        ][..],
+    )
 }
