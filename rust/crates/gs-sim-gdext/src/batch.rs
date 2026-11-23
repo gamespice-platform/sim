@@ -8,8 +8,8 @@
 
 use crate::hulls::GSSimHullWorld;
 use crate::motor::{GSSimFpsBody, TICK_IN_LEN, TICK_OUT_LEN};
-use gs_sim_motor::Vec3 as V3;
 use godot::prelude::*;
+use gs_sim_motor::Vec3 as V3;
 
 /// Per row in [`GSSimMotorBatch::run`]'s `meta`: hulls mode (0 or 3), collision mask, pass-out
 /// mask; [`GSSimMotorBatch::run_rows`] adds the row's timers flags (`tick_into`'s `timers`).

@@ -1,8 +1,8 @@
 //! `GSSimViewArms`: the view arms' elbow clearance scan (gs-player-char `GSViewArmsClear.scan`),
 //! bit for bit the script's. Presentation only: it never feeds the simulation.
 
-use gs_sim_arms::{Aabb as Box3, Vec3 as V3, Xform, scan};
 use godot::prelude::*;
+use gs_sim_arms::{Aabb as Box3, Vec3 as V3, Xform, scan};
 
 #[inline]
 fn v3(v: Vector3) -> V3 {

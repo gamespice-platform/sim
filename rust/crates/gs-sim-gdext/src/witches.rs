@@ -9,10 +9,10 @@
 
 use std::collections::HashMap;
 
-use gs_sim_math::Vec3;
-use gs_sim_witches::{self as witches, Config, Gaze, Level, Loop, Player, Watched};
 use godot::classes::{PhysicsDirectSpaceState3D, PhysicsRayQueryParameters3D};
 use godot::prelude::*;
+use gs_sim_math::Vec3;
+use gs_sim_witches::{self as witches, Config, Gaze, Level, Loop, Player, Watched};
 
 /// Floats in `watch`'s `config`.
 const CONFIG_F: usize = 25;

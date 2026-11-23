@@ -5,12 +5,12 @@
 //! The script packs what it already reads per NPC and per candidate, calls [`GSSimSenses::perceive`] and
 //! writes the answers back; it keeps every NPC's state, so the script pass and this one see one state.
 
-use gs_sim_math::Vec3;
-use gs_sim_senses::{self as senses, Blocker, Cands, Npc, Outcome, Target, Tuning};
 use godot::classes::{
     CollisionObject3D, Node3D, PhysicsDirectSpaceState3D, PhysicsRayQueryParameters3D,
 };
 use godot::prelude::*;
+use gs_sim_math::Vec3;
+use gs_sim_senses::{self as senses, Blocker, Cands, Npc, Outcome, Target, Tuning};
 
 /// Floats per NPC in `perceive`'s `npc_f`.
 const NPC_F: usize = 13;

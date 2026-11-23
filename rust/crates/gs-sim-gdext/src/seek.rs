@@ -9,9 +9,9 @@
 //! Every line of sight is the script's `_clear_between` ray, asked natively.
 
 use crate::sight::{GSSimSightRay, SightQuery};
+use godot::prelude::*;
 use gs_sim_math::Vec3;
 use gs_sim_seek::{Hunter, Piece, Prop, Rules, Search, Seek, Sensed, Taunt};
-use godot::prelude::*;
 
 /// Prop flag bits in `set_props`.
 const ALIVE: i32 = 1;

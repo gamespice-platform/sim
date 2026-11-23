@@ -7,9 +7,9 @@
 //! squared distance in `f32`, as `Vector3.distance_squared_to`), a dead one and a pair the
 //! pair callable lets pass; each box `AABB(feet - Vector3(r, 0, r), Vector3(r * 2, h, r * 2))`.
 
+use godot::prelude::*;
 use gs_sim_motor::Vec3 as V3;
 use gs_sim_motor::slide::Aabb as SlideBox;
-use godot::prelude::*;
 
 /// Per slot in [`GSSimHullWorld::begin`]'s data: x, y, z, radius, stand height, flags.
 const SLOT_LEN: usize = 6;

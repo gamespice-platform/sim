@@ -9,10 +9,10 @@
 //! defaults: every layer, bodies, no areas), cast bot after bot in the script's order. The game's
 //! `headless_native_route` and its `route_verify` hold the two together.
 
-use gs_sim_math::Vec3;
-use gs_sim_route::{Bot, Hit, Point, Route, STATE_LEN, Space, Tunables};
 use godot::classes::{PhysicsDirectSpaceState3D, PhysicsRayQueryParameters3D};
 use godot::prelude::*;
+use gs_sim_math::Vec3;
+use gs_sim_route::{Bot, Hit, Point, Route, STATE_LEN, Space, Tunables};
 
 /// Flag bits of `add_route`'s `flags`, one int per point.
 const WALK: i32 = 1;

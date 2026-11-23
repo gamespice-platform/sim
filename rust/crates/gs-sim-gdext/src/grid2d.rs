@@ -9,8 +9,8 @@
 //! runs `HungryBot._judge` over those pieces in the same call, reading each one's `owner_id` and
 //! `state.mass` from the world's pieces, so no piece crosses back to the script.
 
-use gs_sim_grid2d::{ForageRules, Grid, Rect, judge};
 use godot::prelude::*;
+use gs_sim_grid2d::{ForageRules, Grid, Rect, judge};
 
 /// A script grid's ids, cells and positions, with a worth per id, and the bot forage over them.
 #[derive(GodotClass)]

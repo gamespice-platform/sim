@@ -1,8 +1,8 @@
 //! `GSSimThinkPacer`: gs-npc's think pacing (`GSNpcPacer`) held natively, one batch per tick.
 //! See [`gs_sim_zombie::pace`] for the steps; this class only moves packed arrays across.
 
-use gs_sim_zombie::pace::{Counters, Pacer};
 use godot::prelude::*;
+use gs_sim_zombie::pace::{Counters, Pacer};
 
 fn counters(c: Option<Counters>) -> PackedFloat64Array {
     match c {

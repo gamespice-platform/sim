@@ -7,9 +7,9 @@
 //! script to the bit (`gs_sim_hazards`; the game's `headless_native_knock` and its
 //! `knock_verify` hold the two together). Bots ask it; the players' own knock stays in script.
 
+use godot::prelude::*;
 use gs_sim_hazards::{Hazard, Hazards, Kind};
 use gs_sim_math::{Vec3, Xform};
-use godot::prelude::*;
 
 /// A course's hazards and the knock asks over them.
 #[derive(GodotClass)]

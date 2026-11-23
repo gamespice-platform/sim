@@ -8,13 +8,13 @@
 //! the think's two other questions of the horde off the same tick's tables.
 
 use crate::crowd::GSSimCrowdGrid;
+use godot::classes::Node3D;
+use godot::prelude::*;
 use gs_sim_math::Vec3;
 use gs_sim_zombie::decide::{self, Barricade, Barricades};
 use gs_sim_zombie::steer::{self, SteerIn, SteerOut, Turn, TurnProfile, Watch};
 use gs_sim_zombie::walk::{self, PathGoal, PathState, Repath};
 use gs_sim_zombie::{self as zombie, Chaser, Rules, Survivor, Who};
-use godot::classes::Node3D;
-use godot::prelude::*;
 use std::collections::HashMap;
 
 /// `set_survivors` flag bits.

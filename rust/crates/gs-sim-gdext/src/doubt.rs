@@ -6,9 +6,9 @@
 //! reads. The pieces kept are the script's to the bit and in its order (`gs_sim_doubt`; the
 //! game's `headless_native_doubt` and its `doubt_verify` hold the two together).
 
+use godot::prelude::*;
 use gs_sim_doubt::{Piece, scan};
 use gs_sim_math::Vec3;
-use godot::prelude::*;
 
 /// A map's pieces (middle and broken flag) and the doubt scan over them.
 #[derive(GodotClass)]

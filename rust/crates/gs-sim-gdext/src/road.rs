@@ -8,9 +8,9 @@
 //! (`gs_sim_road`; the game's `headless_native_traffic` and its `traffic_verify` hold the two
 //! together).
 
+use godot::prelude::*;
 use gs_sim_math::Vec3;
 use gs_sim_road::{Road, Yield};
-use godot::prelude::*;
 
 /// One route's centreline and the asks over it.
 #[derive(GodotClass)]

@@ -5,6 +5,7 @@
 
 use crate::bots::{GSSimBotSenses, Packed};
 use crate::sight::{GSSimSightRay, SightQuery};
+use godot::prelude::*;
 use gs_sim_bots::{Found, Query, candidates};
 use gs_sim_brain::aim::direction;
 use gs_sim_brain::fight::FirstShot;
@@ -12,7 +13,6 @@ use gs_sim_brain::num::rad_to_deg;
 use gs_sim_brain::{
     Aim, AimProfile, FightIn, FightProfile, Strafe, Stream, Vec2 as V2, Vec3 as V3, View, fight,
 };
-use godot::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 

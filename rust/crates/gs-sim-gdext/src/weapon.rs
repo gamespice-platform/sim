@@ -3,11 +3,11 @@
 //! dictionary in place. The caller keeps one per weapon behaviour: the weapon's numbers are set once
 //! ([method set_tuning]) and again only when they change, so a tick marshals the posture row and nothing else.
 
+use godot::prelude::*;
 use gs_sim_weapon::{
     Frame, Posture, Rules, State, Tuning, WROTE_BLOOM, WROTE_FACTOR, WROTE_MOTION, WROTE_NOW,
     WROTE_SINCE, rest, rests, spread_with, tick,
 };
-use godot::prelude::*;
 
 /// The behaviour's state keys (`GSWeaponHitscan._SINCE` and the rest), as dictionary keys.
 struct Keys {

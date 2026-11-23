@@ -8,9 +8,9 @@
 //! is the script's `_clear_between` ray, asked natively.
 
 use crate::sight::{GSSimSightRay, SightQuery};
+use godot::prelude::*;
 use gs_sim_math::Vec3;
 use gs_sim_seek::body::{Body, BodyRules, Look, body_sees, nearest_seen};
-use godot::prelude::*;
 
 /// Body flag bits in `set_bodies`.
 const ALIVE: i32 = 1;

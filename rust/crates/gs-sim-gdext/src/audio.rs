@@ -6,12 +6,12 @@
 //! same entries the script does and hands back what is left for the script (the steps to play, the slides
 //! to advance), so a script `advance()` between passes and the script's own suites see one state.
 
-use gs_sim_audio::{self as audio, SeenCache, SlideGate, StepState, StepTun, Vec3};
 use godot::classes::{
     CharacterBody3D, CollisionObject3D, Engine, Node3D, PhysicsDirectSpaceState3D,
     PhysicsRayQueryParameters3D,
 };
 use godot::prelude::*;
+use gs_sim_audio::{self as audio, SeenCache, SlideGate, StepState, StepTun, Vec3};
 
 #[inline]
 fn v3(v: Vector3) -> Vec3 {

@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 
-use gs_sim_interp::{Config, Counts, Interp, Other, Value, Values};
 use godot::prelude::*;
+use gs_sim_interp::{Config, Counts, Interp, Other, Value, Values};
 
 /// A value the crate leaves opaque. A quaternion slerps and a colour lerps in the engine itself,
 /// so they match the script's to the bit; everything else switches at the midpoint.

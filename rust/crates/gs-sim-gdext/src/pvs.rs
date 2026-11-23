@@ -7,8 +7,8 @@
 //! seeded points on the converted maps, and its `fc_bot_pvs_verify` checks every live ask).
 //! Read-only between loads, so worker threads may ask at once.
 
-use gs_sim_pvs::{Pvs, bounds_of};
 use godot::prelude::*;
+use gs_sim_pvs::{Pvs, bounds_of};
 
 /// A map's PVS, loaded from `GSNetVisibility.native_dict()`.
 #[derive(GodotClass)]

@@ -7,9 +7,9 @@
 //! carry one bone the later part's wins, as the script's dictionary keeps the last write. So every
 //! bone pose is the script's to the bit; only the script's dictionary and variant math go.
 
-use gs_sim_math::{Vec3, Xform};
 use godot::classes::{Node3D, Skeleton3D};
 use godot::prelude::*;
+use gs_sim_math::{Vec3, Xform};
 
 /// One bone write: the bone, the part (an index into the bodies) and the bone's offset in it.
 struct Write {

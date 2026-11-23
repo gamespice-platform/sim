@@ -4,8 +4,8 @@
 //! runs both over seeded states). `GSSim.has(&"players")` switches it; the script stays the
 //! fallback on the web and wherever the library is absent.
 
-use gs_sim_players::{Config, OUT, POSTURE, PostIn, idle_row, run_rows};
 use godot::prelude::*;
+use gs_sim_players::{Config, OUT, POSTURE, PostIn, idle_row, run_rows};
 
 /// A player's post-motor posture (stage 1 of the native player table).
 #[derive(GodotClass)]

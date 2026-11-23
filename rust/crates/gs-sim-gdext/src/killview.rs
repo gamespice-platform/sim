@@ -7,8 +7,8 @@
 //! overwritten when full. So every row is the script's to the bit; only the script's array
 //! building and per-float copies go.
 
-use gs_sim_math::{Vec3, orthonormalized, rotation_quaternion};
 use godot::prelude::*;
+use gs_sim_math::{Vec3, orthonormalized, rotation_quaternion};
 
 /// Floats per row, as `GSKillViewRing.STRIDE`.
 const STRIDE: usize = 23;

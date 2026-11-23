@@ -1,9 +1,9 @@
 //! `GSSimSnapshotCodec`: one behaviour's state encode and decode, byte for byte the script's.
 
+use godot::prelude::*;
 use gs_sim_snapshot::{
     Decl, Decoded, Kind, Reader, Stop, Value, Writer, decode_state, encode_state, to_int,
 };
-use godot::prelude::*;
 
 /// One behaviour class's declarations (`GSNetBehaviour._native_spec()` rows) and scratch.
 #[derive(GodotClass)]

@@ -1,9 +1,9 @@
 //! `GSSimCrowdGrid`: gs-npc-ai's `GSNpcAiCrowdGrid` with the same methods and the same
 //! answers to the bit (`gs_sim_crowd::Grid`), plus `fill` to add a whole tick's crowd in one call.
 
+use godot::prelude::*;
 use gs_sim_crowd::Grid;
 use gs_sim_math::Vec3;
-use godot::prelude::*;
 
 #[inline]
 fn v3(v: Vector3) -> Vec3 {

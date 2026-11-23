@@ -1,9 +1,9 @@
 //! `GSSimThinkTier`: gs-bot's think-rate tiers (`GSBotThinkTier`) for one tick, natively.
 //! The script keeps the settings and hands them over with [`GSSimThinkTier::configure`].
 
+use godot::prelude::*;
 use gs_sim_bots::Vec3 as V3;
 use gs_sim_bots::tier::{Tier, TierConfig};
-use godot::prelude::*;
 
 fn v3(p: &Vector3) -> V3 {
     V3::new(p.x, p.y, p.z)

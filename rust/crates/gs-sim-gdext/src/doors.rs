@@ -6,9 +6,9 @@
 //! index as the script to the bit (`gs_sim_doors`; the game's `headless_native_doors` and its
 //! `reach_verify` hold the two together).
 
+use godot::prelude::*;
 use gs_sim_doors::{Panel, Spot, door_for, near_swing};
 use gs_sim_math::{Vec3, Xform};
-use godot::prelude::*;
 
 /// A map's door panels where they were last posed, and the reach ask over them.
 #[derive(GodotClass)]

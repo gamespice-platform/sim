@@ -1,7 +1,7 @@
 //! `GSSimBotSenses`: the sight scan of a bot's think, over one packed table per tick.
 
-use gs_sim_bots::{Contacts, Found, Query, Vec3 as V3, candidates};
 use godot::prelude::*;
+use gs_sim_bots::{Contacts, Found, Query, Vec3 as V3, candidates};
 use std::sync::Arc;
 
 /// One tick's packed bodies. Shared by `Arc`: a mind takes a handle on the main thread

@@ -2,8 +2,8 @@
 //! this takes their positions once a tick (`build`) and answers each observer's slots (`query`), in the script's order.
 //! The script original stays the specification and the fallback.
 
-use gs_sim_interest::InterestGrid;
 use godot::prelude::*;
+use gs_sim_interest::InterestGrid;
 
 /// The cell index of one interest grid.
 #[derive(GodotClass)]
