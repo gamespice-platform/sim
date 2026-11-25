@@ -228,6 +228,24 @@ impl GSSimInterpolator {
         }
         true
     }
+
+    /// Shared by the `push` func and `GSSimSnapshotBatch`.
+    pub(crate) fn push_values(&mut self, net_id: i64, tick: i64, values: &VarDictionary) {
+        let mut out: Values<Var> = Vec::with_capacity(values.len());
+        for (k, v) in values.iter_shared() {
+            // A dictionary finds a `String` key by the `StringName` the script looks up with.
+            let name = match k.get_type() {
+                VariantType::STRING_NAME => k.to::<StringName>(),
+                VariantType::STRING => StringName::from(&k.to::<GString>()),
+                _ => continue,
+            };
+            out.push((self.key(name), to_value(&v)));
+        }
+        self.interp.push(net_id, tick, out);
+        if let Some(plan) = self.interp.plan_mut(net_id) {
+            plan.last = None;
+        }
+    }
 }
 
 /// The script's dictionary `==`: the same properties with the same values, in any order (a
@@ -250,20 +268,7 @@ impl GSSimInterpolator {
     /// `GSNetInterpolator.push`'s track half: a snapshot's values for an entity.
     #[func]
     fn push(&mut self, net_id: i64, tick: i64, values: VarDictionary) {
-        let mut out: Values<Var> = Vec::with_capacity(values.len());
-        for (k, v) in values.iter_shared() {
-            // A dictionary finds a `String` key by the `StringName` the script looks up with.
-            let name = match k.get_type() {
-                VariantType::STRING_NAME => k.to::<StringName>(),
-                VariantType::STRING => StringName::from(&k.to::<GString>()),
-                _ => continue,
-            };
-            out.push((self.key(name), to_value(&v)));
-        }
-        self.interp.push(net_id, tick, out);
-        if let Some(plan) = self.interp.plan_mut(net_id) {
-            plan.last = None;
-        }
+        self.push_values(net_id, tick, &values);
     }
 
     /// `GSNetInterpolator.push_repeat_batch`'s library half: for each id a sample at `tick`

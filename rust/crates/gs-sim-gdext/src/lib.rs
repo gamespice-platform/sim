@@ -63,6 +63,8 @@ mod senses;
 mod sight;
 #[cfg(feature = "snapshot")]
 mod snapshot;
+#[cfg(feature = "snapshot_batch")]
+mod snapshot_batch;
 #[cfg(feature = "bots")]
 mod tier;
 #[cfg(feature = "weapon")]

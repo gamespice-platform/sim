@@ -70,7 +70,7 @@ fn to_value(d: &Decl, v: &Variant) -> Option<Value> {
     })
 }
 
-fn to_variant(v: &Value) -> Variant {
+pub(crate) fn to_variant(v: &Value) -> Variant {
     match v {
         Value::Bool(b) => b.to_variant(),
         Value::Int(i) => i.to_variant(),
@@ -79,6 +79,14 @@ fn to_variant(v: &Value) -> Variant {
         Value::Quat(q) => Quaternion::new(q[0], q[1], q[2], q[3]).to_variant(),
         Value::Bytes(b) => PackedByteArray::from(b.as_slice()).to_variant(),
         Value::F32s(f) => PackedFloat32Array::from(f.as_slice()).to_variant(),
+    }
+}
+
+impl GSSimSnapshotCodec {
+    /// The declarations `set_spec` resolved, for `GSSimSnapshotBatch`.
+    #[cfg(feature = "snapshot_batch")]
+    pub(crate) fn decls(&self) -> &[Decl] {
+        &self.decls
     }
 }
 
