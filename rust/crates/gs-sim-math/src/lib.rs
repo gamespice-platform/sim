@@ -289,6 +289,47 @@ impl Vec3 {
     }
 }
 
+/// `Quaternion.normalized()`: each component times `1 / length`, as the engine's `operator/=`.
+pub fn quat_normalized(q: Quat) -> Quat {
+    let len = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();
+    let inv = 1.0 / len;
+    [q[0] * inv, q[1] * inv, q[2] * inv, q[3] * inv]
+}
+
+/// `Quaternion.slerp` of two normalized quaternions in the engine's order and rounding (the
+/// platform's own `acos` and `sin`, as the engine calls them).
+pub fn quat_slerp(a: Quat, b: Quat, weight: f32) -> Quat {
+    let mut cosom = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+    let to = if cosom < 0.0 {
+        cosom = -cosom;
+        [-b[0], -b[1], -b[2], -b[3]]
+    } else {
+        b
+    };
+    let (scale0, scale1) = if (1.0 - cosom) > 0.00001 {
+        let omega = cosom.acos();
+        let sinom = omega.sin();
+        (
+            ((1.0 - weight) * omega).sin() / sinom,
+            (weight * omega).sin() / sinom,
+        )
+    } else {
+        (1.0 - weight, weight)
+    };
+    [
+        scale0 * a[0] + scale1 * to[0],
+        scale0 * a[1] + scale1 * to[1],
+        scale0 * a[2] + scale1 * to[2],
+        scale0 * a[3] + scale1 * to[3],
+    ]
+}
+
+/// `Vector3.lerp` per component: `from + weight * (to - from)`.
+#[inline]
+pub fn lerp_f32(from: f32, to: f32, weight: f32) -> f32 {
+    from + weight * (to - from)
+}
+
 /// A basis's column `i`, as `Basis::get_column`.
 #[inline]
 fn column(rows: &[Vec3; 3], i: usize) -> Vec3 {
@@ -371,6 +412,32 @@ pub fn rotation_quaternion(rows: &[Vec3; 3]) -> Quat {
 
 #[cfg(test)]
 mod tests {
+    use super::{quat_normalized, quat_slerp};
+
+    #[test]
+    fn slerp_ends_and_midpoint() {
+        let a = [0.0, 0.0, 0.0, 1.0];
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        let b = quat_normalized([0.0, h, 0.0, h]);
+        assert_eq!(quat_slerp(a, b, 0.0), a);
+        let end = quat_slerp(a, b, 1.0);
+        for k in 0..4 {
+            assert!((end[k] - b[k]).abs() < 1e-6);
+        }
+        // Half way between identity and a quarter turn is an eighth turn about y.
+        let mid = quat_slerp(a, b, 0.5);
+        let (s, c) = (
+            std::f32::consts::FRAC_PI_8.sin(),
+            std::f32::consts::FRAC_PI_8.cos(),
+        );
+        assert!((mid[1] - s).abs() < 1e-6 && (mid[3] - c).abs() < 1e-6);
+        // The short way round: the negated end is the same rotation.
+        let neg = quat_slerp(a, [-b[0], -b[1], -b[2], -b[3]], 0.5);
+        assert!((neg[1] - mid[1]).abs() < 1e-6 && (neg[3] - mid[3]).abs() < 1e-6);
+        // Nearly equal quaternions lerp.
+        assert_eq!(quat_slerp(a, a, 0.3), a);
+    }
+
     use super::*;
 
     #[test]

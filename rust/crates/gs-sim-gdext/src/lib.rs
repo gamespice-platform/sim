@@ -45,6 +45,8 @@ mod pace;
 mod players;
 #[cfg(feature = "present")]
 mod present;
+#[cfg(feature = "pose")]
+mod pose;
 #[cfg(feature = "pvs")]
 mod pvs;
 #[cfg(feature = "ragdoll")]

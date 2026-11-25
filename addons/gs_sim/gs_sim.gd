@@ -36,6 +36,7 @@ const MODULES := {
 	&"trace": &"GSSimFlatTrace",
 	&"players": &"GSSimPlayerPost",
 	&"present": &"GSSimPresentLod",
+	&"pose": &"GSSimPoseBlend",
 }
 
 

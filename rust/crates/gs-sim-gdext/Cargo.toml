@@ -47,7 +47,7 @@ gs-sim-present = { path = "../gs-sim-present", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present"]
+default = ["bots", "brain", "snapshot", "interp", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose"]
 bots = ["dep:gs-sim-bots"]
 brain = ["dep:gs-sim-brain", "bots"]
 snapshot = ["dep:gs-sim-snapshot"]
@@ -75,6 +75,7 @@ route = ["dep:gs-sim-route", "dep:gs-sim-math"]
 trace = ["dep:gs-sim-trace"]
 players = ["dep:gs-sim-players"]
 present = ["dep:gs-sim-present", "dep:gs-sim-math"]
+pose = ["dep:gs-sim-math"]
 # A web side module (wasm32-unknown-emscripten, nightly, -Zbuild-std); see docs/web.md.
 web = ["godot/api-custom", "godot/experimental-wasm", "godot/lazy-function-tables"]
 web-nothreads = ["web", "godot/experimental-wasm-nothreads"]
