@@ -266,6 +266,24 @@ impl GSSimInterpolator {
         }
     }
 
+    /// `GSNetInterpolator.push_repeat_batch`'s library half: for each id a sample at `tick`
+    /// with its newest sample's values. Returns the ids it could not repeat (no track, or one
+    /// already at `tick` or later), which the script pushes the values of.
+    #[func]
+    fn push_repeat(&mut self, net_ids: PackedInt64Array, tick: i64) -> PackedInt64Array {
+        let mut missed = Vec::new();
+        for &id in net_ids.as_slice() {
+            if self.interp.push_repeat(id, tick) {
+                if let Some(plan) = self.interp.plan_mut(id) {
+                    plan.last = None;
+                }
+            } else {
+                missed.push(id);
+            }
+        }
+        PackedInt64Array::from(missed.as_slice())
+    }
+
     /// `GSNetInterpolator.apply` past its predicted check: samples at `render` (the script's
     /// `server_tick - delay_ticks()`), eases a resume, and writes each behaviour's interpolated
     /// properties, then calls its `_net_interpolated(int(server_tick))`. Config is passed per

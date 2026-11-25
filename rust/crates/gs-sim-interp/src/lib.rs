@@ -106,6 +106,29 @@ impl<O, P: Default> Track<O, P> {
     }
 }
 
+impl<O: Clone, P> Track<O, P> {
+    /// `Track.push_repeat`: a sample at `tick` with the newest one's values. False, nothing
+    /// done, when there is no sample or the newest is at `tick` or later.
+    fn push_repeat(&mut self, tick: i64) -> bool {
+        let Some(newest) = self.samples.back() else {
+            return false;
+        };
+        let values = {
+            let n = newest.borrow();
+            if n.tick >= tick {
+                return false;
+            }
+            n.values.clone()
+        };
+        self.samples
+            .push_back(Rc::new(RefCell::new(Sample { tick, values })));
+        while self.samples.len() > TRACK_CAPACITY {
+            self.samples.pop_front();
+        }
+        true
+    }
+}
+
 impl<O, P> Track<O, P> {
     /// `Track.push`: in tick order, a duplicate tick merged into the stored sample.
     fn push(&mut self, tick: i64, values: Values<O>) {
@@ -414,6 +437,14 @@ impl<O: Other, P: Default> Interp<O, P> {
             .entry(net_id)
             .or_insert_with(Track::new)
             .push(tick, values);
+    }
+
+    /// A sample at `tick` for an entity whose state did not change: the newest one's values,
+    /// copied. False when the track cannot (see `Track::push_repeat`).
+    pub fn push_repeat(&mut self, net_id: i64, tick: i64) -> bool {
+        self.tracks
+            .get_mut(&net_id)
+            .is_some_and(|t| t.push_repeat(tick))
     }
 
     /// `sample(net_id, server_tick)` with `render = server_tick - delay_ticks()`: empty when

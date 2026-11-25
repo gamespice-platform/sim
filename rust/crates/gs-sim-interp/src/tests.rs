@@ -229,3 +229,31 @@ fn forget_clear_and_prune() {
     interp.clear();
     assert_eq!(interp.track_count(), 0);
 }
+
+/// A repeat is a push of the newest sample's own values, so the two draw the same.
+#[test]
+fn push_repeat_equals_pushing_the_newest_values() {
+    let mut a = I::default();
+    let mut b = I::default();
+    for interp in [&mut a, &mut b] {
+        interp.push(1, 10, pos(1.0));
+        interp.push(1, 14, pos(3.0));
+    }
+    assert!(a.push_repeat(1, 18));
+    b.push(1, 18, pos(3.0));
+    assert_eq!(ticks(&a, 1), ticks(&b, 1));
+    for render in [11.0, 14.0, 16.5, 18.0, 20.0] {
+        assert_eq!(a.sample(1, render, &CFG), b.sample(1, render, &CFG));
+    }
+
+    // Nothing to repeat: no track, or the newest is at that tick or later.
+    assert!(!a.push_repeat(2, 18));
+    assert!(!a.push_repeat(1, 18));
+    assert!(!a.push_repeat(1, 12));
+    assert_eq!(ticks(&a, 1), vec![10, 14, 18]);
+
+    for t in 19..60 {
+        assert!(a.push_repeat(1, t));
+    }
+    assert_eq!(a.track(1).unwrap().len(), TRACK_CAPACITY);
+}
