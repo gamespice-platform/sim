@@ -9,6 +9,7 @@
 pub use gs_sim_math::Vec3;
 use gs_sim_math::{clampf, maxf, minf};
 
+pub mod flat;
 pub mod full;
 pub mod memo;
 pub mod site;
@@ -125,6 +126,8 @@ pub struct Body {
     pub flipped_normals: i64,
     /// Rest queries answered from the in-tick memo.
     pub rest_memo_hits: i64,
+    /// A `GSFpsFlatBody`'s world: every query is answered from it and no space is asked.
+    flat: Option<flat::FlatWorld>,
 }
 
 impl Default for Body {
@@ -153,12 +156,19 @@ impl Default for Body {
             query_count: 0,
             flipped_normals: 0,
             rest_memo_hits: 0,
+            flat: None,
         }
     }
 }
 
 impl Body {
     /// Opens a motor tick: the rest memo is live until [`Body::end_tick`].
+    /// The flat world every query is answered from (see [`flat`]); `None` goes back to the space.
+    pub fn set_flat(&mut self, world: Option<flat::FlatWorld>) {
+        self.flat = world;
+        self.invalidate();
+    }
+
     pub fn begin_tick(&mut self) {
         self.in_tick = true;
         self.rm_valid = false;
@@ -218,6 +228,9 @@ impl Body {
         let mut result = Hit::MISS;
         if (motion.length_squared() as f64) <= 0.0 {
             return result;
+        }
+        if let Some(f) = &self.flat {
+            return f.sweep(from, motion, height, radius);
         }
         self.configure(s, height, radius, m);
         self.query_count += 1;
@@ -410,6 +423,9 @@ impl Body {
         radius: f64,
         m: Masks,
     ) -> Hit {
+        if let Some(f) = &self.flat {
+            return f.rest_contact(at, height, radius);
+        }
         site::step(site::REST_CONTACT);
         let Some(mut result) = self.raw_rest_or_none(s, at, height, radius, m) else {
             return Hit::MISS;
@@ -546,6 +562,9 @@ impl Body {
         radius: f64,
         m: Masks,
     ) -> bool {
+        if let Some(f) = &self.flat {
+            return f.overlaps(at, height, radius);
+        }
         self.configure(s, height, radius, m);
         self.query_count += 1;
         site::step(site::OVERLAPS);

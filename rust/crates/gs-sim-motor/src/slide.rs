@@ -37,7 +37,7 @@ pub struct Aabb {
 impl Aabb {
     /// `AABB.intersects`, strict on every face.
     #[inline]
-    fn intersects(&self, o: &Aabb) -> bool {
+    pub(crate) fn intersects(&self, o: &Aabb) -> bool {
         !(self.pos.x >= o.pos.x + o.size.x
             || self.pos.x + self.size.x <= o.pos.x
             || self.pos.y >= o.pos.y + o.size.y
@@ -74,7 +74,7 @@ const PLANE_DUPLICATE: i32 = 1;
 const PLANE_FULL: i32 = 2;
 
 #[inline]
-fn signf(v: f64) -> f64 {
+pub(crate) fn signf(v: f64) -> f64 {
     if v > 0.0 {
         1.0
     } else if v < 0.0 {
@@ -103,7 +103,7 @@ fn vmax(a: Vec3, b: Vec3) -> Vec3 {
 }
 
 #[inline]
-fn comp(v: Vec3, i: usize) -> f32 {
+pub(crate) fn comp(v: Vec3, i: usize) -> f32 {
     match i {
         0 => v.x,
         1 => v.y,
@@ -164,22 +164,20 @@ fn slab_sweep(start: &Aabb, motion: Vec3, b: &Aabb) -> Option<(f64, usize)> {
     Some((entry as f32 as f64, axis as usize))
 }
 
-/// `GSFpsFlatBody.sweep` over boxes only (no floor, no planes, broad phase on): the hull body's `_near`.
-fn boxes_sweep(
+/// The box loop of `GSFpsFlatBody.sweep` (broad phase on): folds every box the capsule's swept
+/// bounds can touch into `best`, `normal` and `index` as the script's loop does. True when one hit.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn fold_boxes(
     from: Vec3,
     motion: Vec3,
     height: f64,
     radius: f64,
     boxes: &[Aabb],
-) -> Option<(Hit, usize)> {
-    if (motion.length_squared() as f64) <= 0.0 {
-        return None;
-    }
-    let mut best = 1.0f64;
-    let mut best_normal = UP;
-    let mut best_index = 0usize;
+    best: &mut f64,
+    normal: &mut Vec3,
+    index: &mut usize,
+) -> bool {
     let mut found = false;
-
     let half = Vec3::new(radius as f32, (height * 0.5) as f32, radius as f32);
     let start = Aabb {
         pos: from - half,
@@ -196,7 +194,7 @@ fn boxes_sweep(
     let hi_y = maxf(s_max.y as f64, e_max.y as f64) + SWEEP_REJECT_MARGIN;
     let hi_z = maxf(s_max.z as f64, e_max.z as f64) + SWEEP_REJECT_MARGIN;
 
-    for (index, b) in boxes.iter().enumerate() {
+    for (i, b) in boxes.iter().enumerate() {
         let c_min = b.pos;
         let c_max = c_min + b.size;
         if (c_max.x as f64) < lo_x
@@ -211,27 +209,66 @@ fn boxes_sweep(
         let Some((t, axis)) = slab_sweep(&start, motion, b) else {
             continue;
         };
-        if t < 0.0 || t >= best {
+        if t < 0.0 || t >= *best {
             continue;
         }
-        best = t;
+        *best = t;
         let mut n = [0.0f32; 3];
         n[axis] = -signf(comp(motion, axis) as f64) as f32;
-        best_normal = Vec3::new(n[0], n[1], n[2]);
-        best_index = index;
+        *normal = Vec3::new(n[0], n[1], n[2]);
+        *index = i;
         found = true;
     }
-    if !found {
-        return None;
-    }
+    found
+}
+
+/// `GSFpsFlatBody.sweep`'s closing: the fraction, and the contact point as the box's support point.
+pub(crate) fn flat_point(
+    from: Vec3,
+    motion: Vec3,
+    height: f64,
+    radius: f64,
+    best: f64,
+    normal: Vec3,
+) -> (f64, Vec3) {
     let fraction = clampf(best, 0.0, 1.0);
     let centre = from + motion.scale(fraction);
     let point = centre
         - Vec3::new(
-            (signf(best_normal.x as f64) * radius) as f32,
-            (signf(best_normal.y as f64) * height * 0.5) as f32,
-            (signf(best_normal.z as f64) * radius) as f32,
+            (signf(normal.x as f64) * radius) as f32,
+            (signf(normal.y as f64) * height * 0.5) as f32,
+            (signf(normal.z as f64) * radius) as f32,
         );
+    (fraction, point)
+}
+
+/// `GSFpsFlatBody.sweep` over boxes only (no floor, no planes, broad phase on): the hull body's `_near`.
+fn boxes_sweep(
+    from: Vec3,
+    motion: Vec3,
+    height: f64,
+    radius: f64,
+    boxes: &[Aabb],
+) -> Option<(Hit, usize)> {
+    if (motion.length_squared() as f64) <= 0.0 {
+        return None;
+    }
+    let mut best = 1.0f64;
+    let mut best_normal = UP;
+    let mut best_index = 0usize;
+    if !fold_boxes(
+        from,
+        motion,
+        height,
+        radius,
+        boxes,
+        &mut best,
+        &mut best_normal,
+        &mut best_index,
+    ) {
+        return None;
+    }
+    let (fraction, point) = flat_point(from, motion, height, radius, best, best_normal);
     Some((
         Hit {
             hit: true,

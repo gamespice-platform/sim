@@ -11,6 +11,7 @@ use godot::classes::{
     PhysicsShapeQueryParameters3D,
 };
 use godot::prelude::*;
+use gs_sim_motor::flat::{FlatWorld, Plane as FlatPlane};
 use gs_sim_motor::full::{self, FullIn, FullTun, MoveCounters, Moves};
 use gs_sim_motor::memo::MemoSpace;
 use gs_sim_motor::slide::{Aabb as SlideBox, Mover, Tun};
@@ -590,6 +591,50 @@ impl GSSimFpsBody {
         self.space.inner.ray.set_exclude(&exclude);
         self.space.forget();
         self.body.invalidate();
+    }
+
+    /// The world of a `GSFpsFlatBody` in place of a physics space: `boxes` is 6 floats a box
+    /// (position, size), `planes` 4 a plane (normal, d), `floor_y` negative infinity for none.
+    /// Every sweep, rest query and overlap is then answered from it ([`gs_sim_motor::flat`]) and
+    /// `set_space` is not needed. An empty `boxes` and `planes` with `floor_y` set is a flat
+    /// floor; `clear_flat_world` goes back to the physics space.
+    #[func]
+    fn set_flat_world(
+        &mut self,
+        floor_y: f64,
+        boxes: PackedFloat32Array,
+        planes: PackedFloat32Array,
+    ) {
+        let b = boxes.as_slice();
+        let p = planes.as_slice();
+        let world = FlatWorld {
+            floor_y,
+            boxes: b
+                .as_chunks::<6>()
+                .0
+                .iter()
+                .map(|c| SlideBox {
+                    pos: V3::new(c[0], c[1], c[2]),
+                    size: V3::new(c[3], c[4], c[5]),
+                })
+                .collect(),
+            planes: p
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| FlatPlane {
+                    normal: V3::new(c[0], c[1], c[2]),
+                    d: c[3],
+                })
+                .collect(),
+        };
+        self.body.set_flat(Some(world));
+    }
+
+    /// Back to the physics space after [`GSSimFpsBody::set_flat_world`].
+    #[func]
+    fn clear_flat_world(&mut self) {
+        self.body.set_flat(None);
     }
 
     /// Whether a motor tick may answer a repeated rest query from memory (`GSFpsBody.perf_caches`).
