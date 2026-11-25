@@ -35,6 +35,7 @@ const MODULES := {
 	&"interest": &"GSSimInterestGrid",
 	&"trace": &"GSSimFlatTrace",
 	&"players": &"GSSimPlayerPost",
+	&"present": &"GSSimPresentLod",
 }
 
 

@@ -43,6 +43,8 @@ mod motor;
 mod pace;
 #[cfg(feature = "players")]
 mod players;
+#[cfg(feature = "present")]
+mod present;
 #[cfg(feature = "pvs")]
 mod pvs;
 #[cfg(feature = "ragdoll")]
