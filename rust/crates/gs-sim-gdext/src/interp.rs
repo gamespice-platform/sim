@@ -229,6 +229,18 @@ impl GSSimInterpolator {
         true
     }
 
+    /// `GSSimSnapshotBatch`'s push: decoded values in wire order, no dictionary between.
+    pub(crate) fn push_list(&mut self, net_id: i64, tick: i64, values: Vec<(StringName, Variant)>) {
+        let mut out: Values<Var> = Vec::with_capacity(values.len());
+        for (name, v) in values {
+            out.push((self.key(name), to_value(&v)));
+        }
+        self.interp.push(net_id, tick, out);
+        if let Some(plan) = self.interp.plan_mut(net_id) {
+            plan.last = None;
+        }
+    }
+
     /// Shared by the `push` func and `GSSimSnapshotBatch`.
     pub(crate) fn push_values(&mut self, net_id: i64, tick: i64, values: &VarDictionary) {
         let mut out: Values<Var> = Vec::with_capacity(values.len());
@@ -391,6 +403,74 @@ impl GSSimInterpolator {
     #[func]
     fn settled_count(&self) -> i64 {
         self.settled
+    }
+
+    /// `GSNetInterpolator.value_at`: `property` drawn at `render` between the bracketing
+    /// samples, the newest past the end, null when unknown or older than the buffer, or with
+    /// `cut` > 0 past a teleport. Counts nothing.
+    #[func]
+    fn value_at(&self, net_id: i64, property: StringName, render: f64, cut: f64) -> Variant {
+        let Some(&key) = self.keys.get(&property) else {
+            return Variant::nil();
+        };
+        self.interp
+            .value_at(net_id, key, render, cut)
+            .map_or_else(Variant::nil, |v| to_variant(&v))
+    }
+
+    /// `GSNetInterpolator.value_between`: `property` between the samples at exactly
+    /// `older_tick` and `newer_tick`, at `render` (clamped). Counts nothing.
+    #[func]
+    fn value_between(
+        &self,
+        net_id: i64,
+        property: StringName,
+        older_tick: i64,
+        newer_tick: i64,
+        render: f64,
+        cut: f64,
+    ) -> Variant {
+        let Some(&key) = self.keys.get(&property) else {
+            return Variant::nil();
+        };
+        self.interp
+            .value_between(net_id, key, older_tick, newer_tick, render, cut)
+            .map_or_else(Variant::nil, |v| to_variant(&v))
+    }
+
+    /// `GSNetInterpTrack.samples` for `net_id`, oldest first: `{tick, values}` dictionaries, the
+    /// values keyed by property name in the order the track holds them. Empty without a track.
+    #[func]
+    fn samples(&self, net_id: i64) -> VarArray {
+        let mut out = VarArray::new();
+        if let Some(track) = self.interp.track(net_id) {
+            track.for_each_sample(|tick, values| {
+                let mut dict = VarDictionary::new();
+                for (k, v) in values {
+                    dict.set(&self.names[*k as usize], &to_variant(v));
+                }
+                let mut sample = VarDictionary::new();
+                sample.set("tick", tick);
+                sample.set("values", &dict);
+                out.push(&sample.to_variant());
+            });
+        }
+        out
+    }
+
+    /// Samples held for `net_id` (0 when there is no track).
+    #[func]
+    fn track_len(&self, net_id: i64) -> i64 {
+        self.interp.track(net_id).map_or(0, |t| t.len() as i64)
+    }
+
+    /// The newest sample's tick for `net_id`, -1 when it has none.
+    #[func]
+    fn newest_tick(&self, net_id: i64) -> i64 {
+        self.interp
+            .track(net_id)
+            .and_then(|t| t.newest_tick())
+            .unwrap_or(-1)
     }
 
     /// `GSNetInterpolator.sample` at `render`, counted as it counts: for a suite.

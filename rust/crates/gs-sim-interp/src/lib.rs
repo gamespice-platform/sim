@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
+mod read;
 #[cfg(test)]
 mod tests;
 
@@ -159,6 +160,19 @@ impl<O, P> Track<O, P> {
 
     pub fn is_empty(&self) -> bool {
         self.samples.is_empty()
+    }
+
+    /// The newest sample's tick: `GSNetInterpTrack.newest_tick`, `None` for an empty track.
+    pub fn newest_tick(&self) -> Option<i64> {
+        self.samples.back().map(|s| s.borrow().tick)
+    }
+
+    /// Each sample oldest first, as `GSNetInterpTrack.samples` holds them: tick and values in key order.
+    pub fn for_each_sample(&self, mut f: impl FnMut(i64, &Values<O>)) {
+        for s in &self.samples {
+            let s = s.borrow();
+            f(s.tick, &s.values);
+        }
     }
 }
 

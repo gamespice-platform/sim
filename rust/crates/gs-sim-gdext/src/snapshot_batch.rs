@@ -34,8 +34,9 @@ struct Part {
 
 struct Entry {
     parts: Vec<Part>,
-    /// The interpolator's script track for this entity: `push(tick, values)`.
-    track: Gd<Object>,
+    /// The interpolator's script track for this entity (`push(tick, values)`); none when the
+    /// interpolator keeps its samples natively only.
+    track: Option<Gd<Object>>,
 }
 
 #[derive(GodotClass)]
@@ -52,10 +53,11 @@ impl GSSimSnapshotBatch {
     /// behaviour in `parts` (`behaviour` a `GSNetBehaviour`; `codec` its `GSSimSnapshotCodec`, or
     /// null for one with no declarations; `props` an `Array` of property names by declaration
     /// index; `interpolated` a `PackedByteArray`, 1 for an interpolated declaration; `hooked`
-    /// whether it overrides `_net_state_applied`), and the entity's script track. Returns
+    /// whether it overrides `_net_state_applied`), and the entity's script track (null when
+    /// `GSSimInterpolator` holds the samples alone). Returns
     /// false, holding nothing, if anything is not as described.
     #[func]
-    fn register(&self, net_id: i64, parts: VarArray, track: Gd<Object>) -> bool {
+    fn register(&self, net_id: i64, parts: VarArray, track: Option<Gd<Object>>) -> bool {
         let mut held = Vec::with_capacity(parts.len());
         for row in parts.iter_shared() {
             let Ok(row) = row.try_to::<VarArray>() else {
@@ -176,7 +178,9 @@ impl GSSimSnapshotBatch {
                 break;
             }
 
-            let mut values = VarDictionary::new();
+            // The interpolated values in the script dictionary's order: parts, then declarations,
+            // a name seen again keeping its first place and taking the later value.
+            let mut values: Vec<(StringName, Variant)> = Vec::new();
             let mut at = 0;
             for (p, part) in entry.parts.iter().take(n).enumerate() {
                 if !part.object.is_instance_valid() {
@@ -203,16 +207,24 @@ impl GSSimSnapshotBatch {
                     if part.interpolated[index]
                         && let Some(v) = baseline.get(prop)
                     {
-                        values.set(prop, &v);
+                        match values.iter_mut().find(|(k, _)| k == prop) {
+                            Some(slot) => slot.1 = v,
+                            None => values.push((prop.clone(), v)),
+                        }
                     }
                 }
             }
             if !values.is_empty() {
-                entry
-                    .track
-                    .clone()
-                    .call("push", &[tick_v.clone(), values.to_variant()]);
-                interp.bind_mut().push_values(net_id, tick, &values);
+                if let Some(track) = &entry.track {
+                    let mut dict = VarDictionary::new();
+                    for (k, v) in &values {
+                        dict.set(k, v);
+                    }
+                    track
+                        .clone()
+                        .call("push", &[tick_v.clone(), dict.to_variant()]);
+                }
+                interp.bind_mut().push_list(net_id, tick, values);
             }
             left -= 1;
         }
