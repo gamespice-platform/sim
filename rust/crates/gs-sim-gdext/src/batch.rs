@@ -122,8 +122,9 @@ impl GSSimMotorBatch {
     /// the row's rest ok and rest position come from its state's rest stamp, `extra[13]` holding
     /// only the script's part (`gs_sim_motor::state::ROW_SCRIPT_OK`, `ROW_REUSE`), and a ticked
     /// row stamps its state's rest where the end check settled (else drops it); a row taken back
-    /// gets its stamp back. An answer whose counters are not all zero has flag 32. A row without
-    /// a state ends the run.
+    /// gets its stamp back. An answer whose counters are not all zero has flag 32. A row with bit 4
+    /// in `extra[13]` (`ROW_CONSTS`, gs-player-controller 40) takes its values 23..38 from its
+    /// state's kept ones (`GSSimMotorState.set_consts`). A row without a state ends the run.
     #[func]
     #[allow(clippy::too_many_arguments)]
     fn run_states(
@@ -302,7 +303,10 @@ impl GSSimMotorBatch {
                 else {
                     break;
                 };
-                state.bind().rest.fill_row(c.as_slice(), e, r);
+                let st = state.bind();
+                st.rest.fill_row(c.as_slice(), e, r);
+                mstate::fill_consts(st.consts.as_ref(), e, r);
+                drop(st);
                 held_states.push(state);
             }
             held.push(c);

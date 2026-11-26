@@ -20,6 +20,12 @@ pub const REST_LEN: usize = REST_VALS + 2;
 pub const ROW_SCRIPT_OK: i64 = 1;
 /// In `extra[1]`: a settled end may be stamped (gs-player-controller's `reuse_settled_ground`).
 pub const ROW_REUSE: i64 = 2;
+/// In `extra[1]`: the row's effect and tunable values (row 23..38) are the motor state's kept ones
+/// ([`fill_consts`]), so the script did not write them into `extra` this tick.
+pub const ROW_CONSTS: i64 = 4;
+/// Row values a motor state's kept effect and tunable values cover, and where they start.
+pub const CONSTS_LEN: usize = 16;
+pub const ROW_CONSTS_AT: usize = 23;
 /// Flag a batch adds to a row's answer when any counter in it (the collision counters, 13..19,
 /// and the move counters, 40..44) is not zero, so the script reads them only then.
 pub const OUT_COUNTED: i64 = 32;
@@ -93,12 +99,24 @@ impl Rest {
     }
 }
 
+/// Writes the kept effect and tunable values `consts` into the row (`row` 55 values, `extra` its
+/// 27) where the script asked for them ([`ROW_CONSTS`]); else the row keeps `extra`'s.
+pub fn fill_consts(consts: Option<&[f64; CONSTS_LEN]>, extra: &[f64], row: &mut [f64]) {
+    if extra[1] as i64 & ROW_CONSTS == 0 {
+        return;
+    }
+    if let Some(c) = consts {
+        row[ROW_CONSTS_AT..ROW_CONSTS_AT + CONSTS_LEN].copy_from_slice(c);
+    }
+}
+
 /// Whether a row's answer `out` counts anything ([`OUT_COUNTED`]).
 pub fn counted(out: &[f64]) -> bool {
     out[13..20].iter().chain(&out[40..45]).any(|&v| v != 0.0)
 }
 
 const _: () = assert!(cols::STRIDE > 12 && cols::ROW_OUT == 45);
+const _: () = assert!(ROW_CONSTS_AT + CONSTS_LEN == 12 + cols::EXTRA_LEN);
 
 #[cfg(test)]
 mod tests {
@@ -188,6 +206,24 @@ mod tests {
         out[12] = 3.0;
         r.after(&c, &extra(ROW_REUSE), &out);
         assert!(!r.valid);
+    }
+
+    #[test]
+    fn fill_consts_only_where_asked_and_kept() {
+        let c: [f64; CONSTS_LEN] = std::array::from_fn(|i| 50.0 + i as f64);
+        let mut row = vec![9.0; cols::ROW_IN];
+        fill_consts(Some(&c), &extra(ROW_SCRIPT_OK | ROW_REUSE), &mut row);
+        assert!(row.iter().all(|&v| v == 9.0));
+        fill_consts(None, &extra(ROW_CONSTS), &mut row);
+        assert!(row.iter().all(|&v| v == 9.0));
+        fill_consts(Some(&c), &extra(ROW_CONSTS | ROW_SCRIPT_OK), &mut row);
+        assert_eq!(&row[23..39], &c[..]);
+        assert_eq!(row[22], 9.0);
+        assert_eq!(row[39], 9.0);
+        // The rest bits still read as before beside the consts bit.
+        let r = Rest::default();
+        r.fill_row(&columns(), &extra(ROW_CONSTS), &mut row);
+        assert_eq!(row[13], 0.0);
     }
 
     #[test]
