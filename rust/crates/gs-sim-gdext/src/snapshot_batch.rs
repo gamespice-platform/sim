@@ -7,11 +7,15 @@
 //! entity the batch does not hold, or anything it cannot do the script's way (a script-read
 //! declaration, a truncated or mismatched body), is left to the script, with the reader back at
 //! that entity's start and nothing of it applied: the script's errors and logs stay the script's.
+//!
+//! With `set_skip_unchanged_hooks(true)` a behaviour's hook runs only when a value it decoded
+//! differs from its baseline (type and value), as `GSNetBehaviour._finish_read` does with
+//! `GSNetConfig.skip_unchanged_state_applied`; `last_changed` lists the entities that moved.
 
 use godot::classes::Object;
 use godot::prelude::*;
 use gs_sim_snapshot::{Decl, Decoded, Reader, Stop, Value, decode_state};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -30,6 +34,8 @@ struct Part {
     read_now: VarDictionary,
     /// Whether `_net_state_applied` is overridden (the base one does nothing).
     hooked: bool,
+    /// Whether the hook runs on every snapshot even when nothing it decoded changed.
+    always: bool,
 }
 
 struct Entry {
@@ -45,15 +51,22 @@ pub struct GSSimSnapshotBatch {
     entries: RefCell<HashMap<i64, Rc<Entry>>>,
     /// Decode scratch, all parts of the entity in turn: `(part, index, value)`.
     scratch: RefCell<Vec<(usize, usize, Value)>>,
+    /// Skip a hook whose behaviour decoded no changed value (`set_skip_unchanged_hooks`).
+    skip_unchanged: Cell<bool>,
+    /// The entities of the last `apply` with at least one changed value, in wire order.
+    changed: RefCell<Vec<i64>>,
+    /// Hooks not called because nothing changed, since the batch was made.
+    hooks_skipped: Cell<i64>,
 }
 
 #[godot_api]
 impl GSSimSnapshotBatch {
-    /// Holds entity `net_id`: one `[behaviour, codec, props, interpolated, hooked]` array per
-    /// behaviour in `parts` (`behaviour` a `GSNetBehaviour`; `codec` its `GSSimSnapshotCodec`, or
+    /// Holds entity `net_id`: one `[behaviour, codec, props, interpolated, hooked, always]` array
+    /// per behaviour in `parts` (`behaviour` a `GSNetBehaviour`; `codec` its `GSSimSnapshotCodec`, or
     /// null for one with no declarations; `props` an `Array` of property names by declaration
     /// index; `interpolated` a `PackedByteArray`, 1 for an interpolated declaration; `hooked`
-    /// whether it overrides `_net_state_applied`), and the entity's script track (null when
+    /// whether it overrides `_net_state_applied`; `always`, optional (false), whether its hook
+    /// runs on unchanged snapshots too), and the entity's script track (null when
     /// `GSSimInterpolator` holds the samples alone). Returns
     /// false, holding nothing, if anything is not as described.
     #[func]
@@ -63,7 +76,7 @@ impl GSSimSnapshotBatch {
             let Ok(row) = row.try_to::<VarArray>() else {
                 return false;
             };
-            if row.len() != 5 {
+            if row.len() != 5 && row.len() != 6 {
                 return false;
             }
             let Ok(object) = row.at(0).try_to::<Gd<Object>>() else {
@@ -99,6 +112,7 @@ impl GSSimSnapshotBatch {
                 baseline,
                 read_now,
                 hooked: row.at(4).try_to::<bool>().unwrap_or(false),
+                always: row.len() == 6 && row.at(5).try_to::<bool>().unwrap_or(false),
             });
         }
         self.entries
@@ -127,6 +141,25 @@ impl GSSimSnapshotBatch {
         self.entries.borrow().len() as i64
     }
 
+    /// Off (the default): every hooked behaviour's `_net_state_applied` runs on each snapshot.
+    /// On: only one that decoded a value differing from its baseline, or registered `always`.
+    #[func]
+    fn set_skip_unchanged_hooks(&self, on: bool) {
+        self.skip_unchanged.set(on);
+    }
+
+    /// The net ids of the last `apply` whose decoded values changed anything, in wire order.
+    #[func]
+    fn last_changed(&self) -> PackedInt64Array {
+        PackedInt64Array::from(self.changed.borrow().as_slice())
+    }
+
+    /// How many hook calls `set_skip_unchanged_hooks` has saved since the batch was made.
+    #[func]
+    fn hooks_skipped(&self) -> i64 {
+        self.hooks_skipped.get()
+    }
+
     /// Applies up to `args[2]` entities from bit `args[0]` of `bytes` (ending at bit `args[1]`,
     /// negative: the buffer's end), at tick `args[4]`; each is a net id (`args[3]` bits), a behaviour count (6) and the
     /// behaviours' states. Stops before the first entity it cannot do. Returns
@@ -148,6 +181,10 @@ impl GSSimSnapshotBatch {
         let mut decoded = Decoded::default();
         let mut flat = std::mem::take(&mut *self.scratch.borrow_mut());
         let tick_v = tick.to_variant();
+        let skip_unchanged = self.skip_unchanged.get();
+        let mut changed_ids = std::mem::take(&mut *self.changed.borrow_mut());
+        changed_ids.clear();
+        let mut skipped = 0i64;
 
         while left > 0 {
             let start = r.bit_pos;
@@ -182,6 +219,7 @@ impl GSSimSnapshotBatch {
             // a name seen again keeping its first place and taking the later value.
             let mut values: Vec<(StringName, Variant)> = Vec::new();
             let mut at = 0;
+            let mut entity_changed = false;
             for (p, part) in entry.parts.iter().take(n).enumerate() {
                 if !part.object.is_instance_valid() {
                     at = ends[p];
@@ -191,17 +229,28 @@ impl GSSimSnapshotBatch {
                 let mut read_now = part.read_now.clone();
                 let mut baseline = part.baseline.clone();
                 read_now.clear();
+                let mut part_changed = false;
                 for (_, index, value) in &flat[at..ends[p]] {
                     let variant = to_variant(value);
                     let prop = &part.props[*index];
+                    // What GSNetBehaviour._apply_read counts as a change: absent, another type, or unequal.
+                    part_changed = part_changed
+                        || baseline.get(prop).is_none_or(|old| {
+                            old.get_type() != variant.get_type() || old != variant
+                        });
                     object.set(prop, &variant);
                     baseline.set(prop, &variant);
                     read_now.set(prop, true);
                 }
                 at = ends[p];
                 object.set("_read_tick", &tick_v);
+                entity_changed |= part_changed;
                 if part.hooked {
-                    object.call("_net_state_applied", std::slice::from_ref(&tick_v));
+                    if !skip_unchanged || part.always || part_changed {
+                        object.call("_net_state_applied", std::slice::from_ref(&tick_v));
+                    } else {
+                        skipped += 1;
+                    }
                 }
                 for (index, prop) in part.props.iter().enumerate() {
                     if part.interpolated[index]
@@ -226,10 +275,15 @@ impl GSSimSnapshotBatch {
                 }
                 interp.bind_mut().push_list(net_id, tick, values);
             }
+            if entity_changed {
+                changed_ids.push(net_id);
+            }
             left -= 1;
         }
 
         *self.scratch.borrow_mut() = flat;
+        *self.changed.borrow_mut() = changed_ids;
+        self.hooks_skipped.set(self.hooks_skipped.get() + skipped);
         let mut out = PackedInt64Array::new();
         out.push(r.bit_pos);
         out.push(left);
