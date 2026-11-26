@@ -46,7 +46,7 @@ impl GSSimFigureBatch {
     #[func]
     fn restore(&self, calls: VarArray) {
         let c: Vec<Variant> = calls.iter_shared().collect();
-        for f in c.chunks_exact(RESTORE_STRIDE) {
+        for f in c.as_chunks::<RESTORE_STRIDE>().0 {
             let Some(mut legs) = obj::<GSSimLegs>(f.first()) else {
                 continue;
             };
@@ -66,7 +66,7 @@ impl GSSimFigureBatch {
         let c: Vec<Variant> = calls.iter_shared().collect();
         let none = Vector3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
         let mut grips = PackedVector3Array::new();
-        for f in c.chunks_exact(UPPER_STRIDE) {
+        for f in c.as_chunks::<UPPER_STRIDE>().0 {
             let grip = match obj::<GSSimFigurePose>(f.first()) {
                 Some(mut pose) => pose.bind_mut().upper(
                     obj::<Skeleton3D>(f.get(1)),
@@ -93,7 +93,7 @@ impl GSSimFigureBatch {
     fn lower(&self, calls: VarArray) -> PackedByteArray {
         let c: Vec<Variant> = calls.iter_shared().collect();
         let mut held = PackedByteArray::new();
-        for f in c.chunks_exact(LOWER_STRIDE) {
+        for f in c.as_chunks::<LOWER_STRIDE>().0 {
             let holding = match obj::<GSSimLegs>(f.first()) {
                 Some(mut legs) => legs.bind_mut().lower(
                     obj::<Skeleton3D>(f.get(1)),
