@@ -49,6 +49,7 @@ const MODULES := {
 	&"spawn": &"GSSimSpawnPick",
 	&"contacts": &"GSSimBotContacts",
 	&"volumes": &"GSSimVolumes",
+	&"unlag": &"GSSimUnlagRing",
 }
 
 
