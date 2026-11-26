@@ -43,6 +43,8 @@ mod interp;
 mod killview;
 #[cfg(feature = "motor")]
 mod motor;
+#[cfg(feature = "motor")]
+mod motor_state;
 #[cfg(feature = "zombie")]
 mod pace;
 #[cfg(feature = "players")]

@@ -8,9 +8,11 @@
 
 use crate::hulls::GSSimHullWorld;
 use crate::motor::{GSSimFpsBody, TICK_IN_LEN, TICK_OUT_LEN};
+use crate::motor_state::GSSimMotorState;
 use godot::prelude::*;
 use gs_sim_motor::Vec3 as V3;
 use gs_sim_motor::cols;
+use gs_sim_motor::state::{self as mstate, Rest};
 
 const _: () = assert!(TICK_IN_LEN == cols::ROW_IN && TICK_OUT_LEN == cols::ROW_OUT);
 
@@ -27,6 +29,8 @@ pub struct GSSimMotorBatch {
     out: Vec<f64>,
     /// [`Self::run_cols`]'s input rows, kept between calls.
     cols_in: Vec<f64>,
+    /// Row, state and the rest stamp it held before [`Self::run_states`] ticked the row.
+    rests: Vec<(usize, Gd<GSSimMotorState>, Rest)>,
     rows: i64,
     runs: i64,
 }
@@ -37,6 +41,7 @@ impl GSSimMotorBatch {
     #[func]
     fn begin(&mut self) {
         self.moved.clear();
+        self.rests.clear();
     }
 
     /// Ticks rows `from` to `to` (exclusive) in order: `bodies` the `GSSimFpsBody` per row,
@@ -61,7 +66,8 @@ impl GSSimMotorBatch {
             input.as_slice(),
             from,
             to,
-        )
+        );
+        PackedFloat64Array::from(&self.out[..])
     }
 
     /// [`Self::run`] with four values per row in `meta`, the fourth `tick_into`'s `timers`: a row
@@ -84,7 +90,8 @@ impl GSSimMotorBatch {
             input.as_slice(),
             from,
             to,
-        )
+        );
+        PackedFloat64Array::from(&self.out[..])
     }
 
     /// [`Self::run_rows`] over gs-player-controller 36's packed states: `cols` holds each row's
@@ -103,60 +110,46 @@ impl GSSimMotorBatch {
         meta: PackedInt64Array,
         cols: VarArray,
         extra: PackedFloat64Array,
-        mut into: VarArray,
+        into: VarArray,
         from: i64,
         to: i64,
     ) -> PackedFloat64Array {
-        let ep = extra.as_slice();
-        let first = usize::try_from(from).unwrap_or(0);
-        let last = usize::try_from(to)
-            .unwrap_or(0)
-            .min(cols.len())
-            .min(into.len())
-            .min(ep.len() / cols::EXTRA_LEN);
-        // The rows' columns, kept for the answer; a row without them ends the run there.
-        let mut held = Vec::with_capacity(last.saturating_sub(first));
-        let mut input = std::mem::take(&mut self.cols_in);
-        input.clear();
-        input.resize(last.max(first) * TICK_IN_LEN, 0.0);
-        for row in first..last {
-            let Some(c) = cols
-                .get(row)
-                .and_then(|v| v.try_to::<PackedFloat64Array>().ok())
-                .filter(|c| c.len() >= cols::STRIDE)
-            else {
-                break;
-            };
-            let e = &ep[row * cols::EXTRA_LEN..(row + 1) * cols::EXTRA_LEN];
-            cols::fill_row(
-                c.as_slice(),
-                e,
-                &mut input[row * TICK_IN_LEN..(row + 1) * TICK_IN_LEN],
-            );
-            held.push(c);
-        }
-        let end = first + held.len();
-        let answer = self.ticks(
+        self.cols_run(&bodies, &tuns, &meta, &cols, &extra, into, None, from, to);
+        PackedFloat64Array::from(&self.out[..])
+    }
+
+    /// [`Self::run_cols`] with each row's `GSSimMotorState` in `states` (gs-player-controller 38):
+    /// the row's rest ok and rest position come from its state's rest stamp, `extra[13]` holding
+    /// only the script's part (`gs_sim_motor::state::ROW_SCRIPT_OK`, `ROW_REUSE`), and a ticked
+    /// row stamps its state's rest where the end check settled (else drops it); a row taken back
+    /// gets its stamp back. An answer whose counters are not all zero has flag 32. A row without
+    /// a state ends the run.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn run_states(
+        &mut self,
+        bodies: VarArray,
+        tuns: VarArray,
+        meta: PackedInt64Array,
+        cols: VarArray,
+        extra: PackedFloat64Array,
+        into: VarArray,
+        states: VarArray,
+        from: i64,
+        to: i64,
+    ) -> PackedFloat64Array {
+        self.cols_run(
             &bodies,
             &tuns,
-            meta.as_slice(),
-            ROWS_META_LEN,
-            &input,
+            &meta,
+            &cols,
+            &extra,
+            into,
+            Some(&states),
             from,
-            end as i64,
+            to,
         );
-        self.cols_in = input;
-        let mut new = Vec::new();
-        for (i, c) in held.iter().enumerate().take(self.out.len() / TICK_OUT_LEN) {
-            let row = first + i;
-            let e = &ep[row * cols::EXTRA_LEN..(row + 1) * cols::EXTRA_LEN];
-            let o = &self.out[i * TICK_OUT_LEN..(i + 1) * TICK_OUT_LEN];
-            new.clear();
-            new.resize(c.len(), 0.0);
-            cols::apply_out(c.as_slice(), e, o, &mut new);
-            into.set(row, &PackedFloat64Array::from(&new[..]).to_variant());
-        }
-        answer
+        PackedFloat64Array::from(&self.out[..])
     }
 
     /// Takes rows `from` and later back: the hull world holds again the feet it held before
@@ -169,6 +162,14 @@ impl GSSimMotorBatch {
             }
             if let Some((_, mut world, slot, old)) = self.moved.pop() {
                 world.bind_mut().set_feet(slot, old);
+            }
+        }
+        while let Some((row, _, _)) = self.rests.last() {
+            if (*row as i64) < from {
+                break;
+            }
+            if let Some((_, mut state, old)) = self.rests.pop() {
+                state.bind_mut().rest = old;
             }
         }
     }
@@ -197,7 +198,7 @@ impl GSSimMotorBatch {
         ip: &[f64],
         from: i64,
         to: i64,
-    ) -> PackedFloat64Array {
+    ) {
         let hulls = VarArray::new();
         self.out.clear();
         self.runs += 1;
@@ -251,6 +252,89 @@ impl GSSimMotorBatch {
                 self.moved.push((row, world, slot, old));
             }
         }
-        PackedFloat64Array::from(&self.out[..])
+    }
+
+    /// [`Self::run_cols`] and [`Self::run_states`] (`states` given): fills [`Self::out`].
+    #[allow(clippy::too_many_arguments)]
+    fn cols_run(
+        &mut self,
+        bodies: &VarArray,
+        tuns: &VarArray,
+        meta: &PackedInt64Array,
+        cols: &VarArray,
+        extra: &PackedFloat64Array,
+        mut into: VarArray,
+        states: Option<&VarArray>,
+        from: i64,
+        to: i64,
+    ) {
+        let ep = extra.as_slice();
+        let first = usize::try_from(from).unwrap_or(0);
+        let mut last = usize::try_from(to)
+            .unwrap_or(0)
+            .min(cols.len())
+            .min(into.len())
+            .min(ep.len() / cols::EXTRA_LEN);
+        if let Some(st) = states {
+            last = last.min(st.len());
+        }
+        // The rows' columns (and states), kept for the answer; a row without them ends the run.
+        let mut held = Vec::with_capacity(last.saturating_sub(first));
+        let mut held_states = Vec::new();
+        let mut input = std::mem::take(&mut self.cols_in);
+        input.clear();
+        input.resize(last.max(first) * TICK_IN_LEN, 0.0);
+        for row in first..last {
+            let Some(c) = cols
+                .get(row)
+                .and_then(|v| v.try_to::<PackedFloat64Array>().ok())
+                .filter(|c| c.len() >= cols::STRIDE)
+            else {
+                break;
+            };
+            let e = &ep[row * cols::EXTRA_LEN..(row + 1) * cols::EXTRA_LEN];
+            let r = &mut input[row * TICK_IN_LEN..(row + 1) * TICK_IN_LEN];
+            cols::fill_row(c.as_slice(), e, r);
+            if let Some(st) = states {
+                let Some(state) = st
+                    .get(row)
+                    .and_then(|v| v.try_to::<Gd<GSSimMotorState>>().ok())
+                else {
+                    break;
+                };
+                state.bind().rest.fill_row(c.as_slice(), e, r);
+                held_states.push(state);
+            }
+            held.push(c);
+        }
+        let end = first + held.len();
+        self.ticks(
+            bodies,
+            tuns,
+            meta.as_slice(),
+            ROWS_META_LEN,
+            &input,
+            from,
+            end as i64,
+        );
+        self.cols_in = input;
+        let mut new = Vec::new();
+        for (i, c) in held.iter().enumerate().take(self.out.len() / TICK_OUT_LEN) {
+            let row = first + i;
+            let e = &ep[row * cols::EXTRA_LEN..(row + 1) * cols::EXTRA_LEN];
+            let o = &mut self.out[i * TICK_OUT_LEN..(i + 1) * TICK_OUT_LEN];
+            new.clear();
+            new.resize(c.len(), 0.0);
+            cols::apply_out(c.as_slice(), e, o, &mut new);
+            if let Some(state) = held_states.get_mut(i) {
+                let old = state.bind().rest;
+                state.bind_mut().rest.after(&new, e, o);
+                self.rests.push((row, state.clone(), old));
+                if mstate::counted(o) {
+                    o[12] = (o[12] as i64 | mstate::OUT_COUNTED) as f64;
+                }
+            }
+            into.set(row, &PackedFloat64Array::from(&new[..]).to_variant());
+        }
     }
 }
