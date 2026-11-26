@@ -407,6 +407,18 @@ impl GSSimBotMind {
         )
     }
 
+    /// One `GSBotTricks.apply` over the row `io` (layout `gs_sim_brain::tricks::io`, length
+    /// 52) on the brain's stream; returns the row stepped, or an empty array for a short row.
+    /// Stage 1 out asks the caller for the wall probe and a call with stage 2 to finish.
+    #[func]
+    fn tricks(&self, io: PackedFloat64Array) -> PackedFloat64Array {
+        let mut row = io.to_vec();
+        if !gs_sim_brain::tricks::tricks(&mut row, self.brain_key) {
+            return PackedFloat64Array::new();
+        }
+        PackedFloat64Array::from(&row[..])
+    }
+
     /// The brain's sight cache: 1 or 0 for a good cached answer about `id`, -1 when sight must be asked.
     #[func]
     fn sight_cached(&self, id: i64, now: f64, stamp: i64) -> i64 {
