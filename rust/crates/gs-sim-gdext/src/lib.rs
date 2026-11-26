@@ -79,6 +79,8 @@ mod snapshot_batch;
 mod spawn;
 #[cfg(feature = "threat")]
 mod threat;
+#[cfg(feature = "zombie")]
+mod think;
 #[cfg(feature = "bots")]
 mod tier;
 #[cfg(feature = "timer")]

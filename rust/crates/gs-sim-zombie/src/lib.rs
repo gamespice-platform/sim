@@ -9,8 +9,10 @@
 use gs_sim_math::{Vec3, minf};
 
 pub mod decide;
+pub mod kind;
 pub mod pace;
 pub mod steer;
+pub mod think;
 pub mod walk;
 
 #[cfg(test)]
