@@ -242,6 +242,28 @@ impl Bvh {
         best.map(|i| (i, best_t))
     }
 
+    /// `GSTraceFlat.line_of_sight` (its native branch) to the bit: whether nothing blocks `from` to
+    /// `to`. The offset, its length and the direction are `f32` as engine Vector3 math has them; a
+    /// line of 0.0001 or less is clear; the ground at `floor_y` (none when not above negative
+    /// infinity) is met in `f64` as script computes it; then the first box within the length.
+    pub fn line_of_sight(&self, floor_y: f64, from: [f32; 3], to: [f32; 3]) -> bool {
+        let o = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+        let distance = (o[0] * o[0] + o[1] * o[1] + o[2] * o[2]).sqrt();
+        let limit = f64::from(distance);
+        if limit <= 0.0001 {
+            return true;
+        }
+        let dir = [o[0] / distance, o[1] / distance, o[2] / distance];
+        let dy = f64::from(dir[1]);
+        if floor_y > f64::NEG_INFINITY && dy < -0.000001 {
+            let t = (floor_y - f64::from(from[1])) / dy;
+            if t >= 0.0 && t <= limit {
+                return false;
+            }
+        }
+        self.nearest(from, dir, limit).is_none()
+    }
+
     /// The whole world ray of the script's `_world_ray`: the ground plane at `floor_y` (none when
     /// it is not above negative infinity) first, then the boxes within what the ground left.
     pub fn world_ray(&self, floor_y: f64, from: [f32; 3], dir: [f32; 3], limit: f64) -> Found {
@@ -268,6 +290,33 @@ mod tests {
 
     fn unit_box(at: [f32; 3]) -> [[f32; 3]; 2] {
         [at, [at[0] + 1.0, at[1] + 1.0, at[2] + 1.0]]
+    }
+
+    #[test]
+    fn line_of_sight_boxes_ground_and_short_lines() {
+        let c: Vec<[f32; 3]> = unit_box([2.0, 0.0, 0.0]).to_vec();
+        let bvh = Bvh::new(&c);
+        // Through the box, beside it, stopping short of it.
+        assert!(!bvh.line_of_sight(f64::NEG_INFINITY, [0.0, 0.5, 0.5], [5.0, 0.5, 0.5]));
+        assert!(bvh.line_of_sight(f64::NEG_INFINITY, [0.0, 2.5, 0.5], [5.0, 2.5, 0.5]));
+        assert!(bvh.line_of_sight(f64::NEG_INFINITY, [0.0, 0.5, 0.5], [1.5, 0.5, 0.5]));
+        // Down through the ground at y = 1 (beside the box), and the same with no ground.
+        assert!(!bvh.line_of_sight(1.0, [0.0, 2.0, 5.0], [4.0, 0.0, 5.0]));
+        assert!(bvh.line_of_sight(f64::NEG_INFINITY, [0.0, 2.0, 5.0], [4.0, 0.0, 5.0]));
+        // Upward lines never meet the ground; a line of 0.0001 or less is clear even inside a box.
+        assert!(bvh.line_of_sight(1.0, [0.0, 0.0, 5.0], [4.0, 2.0, 5.0]));
+        assert!(bvh.line_of_sight(f64::NEG_INFINITY, [2.5, 0.5, 0.5], [2.50003, 0.5, 0.50004]));
+        // It agrees with world_ray finding nothing.
+        for (f, t) in [
+            ([0.0, 0.5, 0.5], [5.0, 0.7, 0.2]),
+            ([0.0, 3.0, 0.5], [4.0, 0.2, 0.5]),
+        ] {
+            let d = [t[0] - f[0], t[1] - f[1], t[2] - f[2]];
+            let n: f32 = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            let dir = [d[0] / n, d[1] / n, d[2] / n];
+            let miss = matches!(bvh.world_ray(0.0, f, dir, f64::from(n)), Found::Miss);
+            assert_eq!(bvh.line_of_sight(0.0, f, t), miss);
+        }
     }
 
     #[test]

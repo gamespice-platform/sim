@@ -53,7 +53,7 @@ godot = { version = "0.5.5", features = ["experimental-threads"] }
 [features]
 default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin"]
 bots = ["dep:gs-sim-bots"]
-brain = ["dep:gs-sim-brain", "bots"]
+brain = ["dep:gs-sim-brain", "bots", "trace"]
 snapshot = ["dep:gs-sim-snapshot"]
 interp = ["dep:gs-sim-interp"]
 snapshot_batch = ["snapshot", "interp"]

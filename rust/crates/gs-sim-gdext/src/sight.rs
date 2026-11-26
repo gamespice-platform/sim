@@ -5,12 +5,17 @@
 //! point (`from + offset / distance * distance` in `f32`), mask, exclusions and flags. A bound jail
 //! cell adds gs_map's `GSMapGlassSight.blocks` in front: a ray starting inside the cell asks the
 //! glass layer first and is blocked by glass that lies within the cell's reach.
+//!
+//! A box world (GameSpice Combat's `GSTraceFlat`, a game's built-in maps) binds with `bind_flat`
+//! instead: the ray walks the trace's own [`crate::flat_trace::GSSimFlatBvh`] and ground plane,
+//! `GSTraceFlat.line_of_sight` to the bit, with no physics space, no lock and no call into script.
 
 // The Arc is shared by the brains thinking on worker threads: godot-rust (experimental-threads)
 // leaves `Gd` neither Send nor Sync, but the space's queries are thread-safe under the game's lock,
 // the config is read-only once bound, and `bind` only runs on the main thread between ticks.
 #![allow(clippy::arc_with_non_send_sync)]
 
+use crate::flat_trace::GSSimFlatBvh;
 use godot::classes::{PhysicsDirectSpaceState3D, PhysicsRayQueryParameters3D};
 use godot::prelude::*;
 use std::sync::Arc;
@@ -33,6 +38,22 @@ pub struct SightConf {
     epoch: u64,
     /// The jail cell's glass rule, when one is in force.
     cell: Option<Cell>,
+    /// A box world's hierarchy and ground plane (`bind_flat`): asked in place of the space.
+    flat: Option<Flat>,
+}
+
+/// `GSTraceFlat` as bound: its box hierarchy and `floor_y` (negative infinity: no ground).
+struct Flat {
+    bvh: Arc<gs_sim_trace::Bvh>,
+    floor_y: f64,
+}
+
+impl Flat {
+    /// `GSTraceFlat.line_of_sight` to the bit ([`gs_sim_trace::Bvh::line_of_sight`]).
+    fn clear(&self, from: Vector3, to: Vector3) -> bool {
+        self.bvh
+            .line_of_sight(self.floor_y, [from.x, from.y, from.z], [to.x, to.y, to.z])
+    }
 }
 
 /// `GSMapGlassSight` as bound: a ray from within `radius` of `centre` that meets `glass_mask`
@@ -54,6 +75,9 @@ fn dist(a: Vector3, b: Vector3) -> f32 {
 impl SightConf {
     /// Whether nothing blocks `from` to `to`: true for a ray of 0.0001 m or less, or with no space.
     pub fn clear(&self, query: &mut SightQuery, from: Vector3, to: Vector3) -> bool {
+        if let Some(flat) = &self.flat {
+            return flat.clear(from, to);
+        }
         if let Some(cell) = &self.cell
             && (dist(from, cell.centre) as f64) < cell.radius
             && self.glass_blocks(cell, query, from, to)
@@ -71,7 +95,11 @@ impl SightConf {
     /// Whether nothing blocks `from` to `to` as given: script's
     /// `intersect_ray(PhysicsRayQueryParameters3D.create(from, to)).is_empty()` with the bound mask
     /// and exclusions, to the bit (no short-ray answer, no recomputed end point). True with no space.
+    /// Bound flat, the box world's `line_of_sight` (it has no other ray).
     pub fn clear_to(&self, query: &mut SightQuery, from: Vector3, to: Vector3) -> bool {
+        if let Some(flat) = &self.flat {
+            return flat.clear(from, to);
+        }
         if let Some(cell) = &self.cell
             && (dist(from, cell.centre) as f64) < cell.radius
             && self.glass_blocks(cell, query, from, to)
@@ -174,6 +202,7 @@ impl IRefCounted for GSSimSightRay {
                 lock: None,
                 epoch: 0,
                 cell: None,
+                flat: None,
             }),
             query: std::sync::Mutex::new(SightQuery::default()),
         }
@@ -215,7 +244,51 @@ impl GSSimSightRay {
             lock,
             epoch,
             cell,
+            flat: None,
         });
+    }
+
+    /// Binds the ray to a box world: [param bvh] (the `GSTraceFlat`'s built `GSSimFlatBvh`, shared,
+    /// not copied) and its ground at [param floor_y] (`-INF`: none). Every ray then answers as that
+    /// trace's `line_of_sight`, with no lock. False (and unbound) when the hierarchy is not built.
+    #[func]
+    fn bind_flat(&mut self, bvh: Gd<GSSimFlatBvh>, floor_y: f64) -> bool {
+        let Some(shared) = bvh.bind().shared() else {
+            return false;
+        };
+        self.conf = Arc::new(SightConf {
+            space: None,
+            mask: 0,
+            exclude: Array::new(),
+            lock: None,
+            epoch: EPOCH.fetch_add(1, Ordering::Relaxed),
+            cell: None,
+            flat: Some(Flat {
+                bvh: shared,
+                floor_y,
+            }),
+        });
+        true
+    }
+
+    /// [method clear] for many lines in one call: line `k` from `froms[k]` to `tos[k]`; 1 clear, 0
+    /// blocked, parallel to the shorter array.
+    #[func]
+    fn clear_many(&self, froms: PackedVector3Array, tos: PackedVector3Array) -> PackedByteArray {
+        let mut query = self.query.lock().unwrap_or_else(|e| e.into_inner());
+        let out: Vec<u8> = froms
+            .as_slice()
+            .iter()
+            .zip(tos.as_slice())
+            .map(|(f, t)| u8::from(self.conf.clear(&mut query, *f, *t)))
+            .collect();
+        PackedByteArray::from(out.as_slice())
+    }
+
+    /// Whether the ray is bound to a box world ([method bind_flat]).
+    #[func]
+    fn is_flat(&self) -> bool {
+        self.conf.flat.is_some()
     }
 
     /// Whether nothing blocks the line from `from` to `to` (the world's `line_of_sight`).

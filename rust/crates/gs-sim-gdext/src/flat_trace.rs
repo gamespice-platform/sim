@@ -2,6 +2,7 @@
 //! come in each call as a packed array the script keeps), so brains on worker threads may share it.
 
 use godot::prelude::*;
+use std::sync::Arc;
 
 fn arr(v: Vector3) -> [f32; 3] {
     [v.x, v.y, v.z]
@@ -42,7 +43,8 @@ impl GSSimFlatTrace {
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
 pub struct GSSimFlatBvh {
-    bvh: Option<gs_sim_trace::Bvh>,
+    /// Shared with a [`crate::sight::GSSimSightRay`] bound to it (read-only once built).
+    bvh: Option<Arc<gs_sim_trace::Bvh>>,
 }
 
 #[godot_api]
@@ -51,7 +53,7 @@ impl GSSimFlatBvh {
     #[func]
     fn build(&mut self, corners: PackedVector3Array) {
         let c: Vec<[f32; 3]> = corners.as_slice().iter().map(|v| arr(*v)).collect();
-        self.bvh = Some(gs_sim_trace::Bvh::new(&c));
+        self.bvh = Some(Arc::new(gs_sim_trace::Bvh::new(&c)));
     }
 
     /// How many boxes it was built over.
@@ -110,5 +112,12 @@ impl GSSimFlatBvh {
         );
         out.set("t", &PackedFloat64Array::from(t.as_slice()).to_variant());
         out
+    }
+}
+
+impl GSSimFlatBvh {
+    /// The built hierarchy, for a sight ray that walks it with no call into script; none before [method build].
+    pub fn shared(&self) -> Option<Arc<gs_sim_trace::Bvh>> {
+        self.bvh.clone()
     }
 }
