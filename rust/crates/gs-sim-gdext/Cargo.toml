@@ -42,6 +42,7 @@ gs-sim-players = { path = "../gs-sim-players", optional = true }
 gs-sim-present = { path = "../gs-sim-present", optional = true }
 gs-sim-clips = { path = "../gs-sim-clips", optional = true }
 gs-sim-spawn = { path = "../gs-sim-spawn", optional = true }
+gs-sim-volumes = { path = "../gs-sim-volumes", optional = true }
 gs-sim-contacts = { path = "../gs-sim-contacts", optional = true }
 gs-sim-timer = { path = "../gs-sim-timer", optional = true }
 gs-sim-figure = { path = "../gs-sim-figure", optional = true }
@@ -53,7 +54,7 @@ gs-sim-navjoin = { path = "../gs-sim-navjoin", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "threat", "spawn", "contacts"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "threat", "spawn", "contacts", "volumes"]
 bots = ["dep:gs-sim-bots"]
 brain = ["dep:gs-sim-brain", "bots"]
 snapshot = ["dep:gs-sim-snapshot"]
@@ -88,6 +89,7 @@ pose = ["dep:gs-sim-math"]
 clips = ["dep:gs-sim-clips", "dep:gs-sim-math"]
 timer = ["dep:gs-sim-timer"]
 spawn = ["dep:gs-sim-spawn"]
+volumes = ["dep:gs-sim-volumes"]
 contacts = ["dep:gs-sim-contacts"]
 figure = ["dep:gs-sim-figure", "dep:gs-sim-math"]
 navjoin = ["dep:gs-sim-navjoin"]

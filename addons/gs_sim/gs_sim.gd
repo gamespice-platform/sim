@@ -45,6 +45,7 @@ const MODULES := {
 	&"threat": &"GSSimBotThreat",
 	&"spawn": &"GSSimSpawnPick",
 	&"contacts": &"GSSimBotContacts",
+	&"volumes": &"GSSimVolumes",
 }
 
 

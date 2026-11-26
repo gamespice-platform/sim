@@ -203,6 +203,7 @@ dependencies = [
  "gs-sim-spawn",
  "gs-sim-timer",
  "gs-sim-trace",
+ "gs-sim-volumes",
  "gs-sim-weapon",
  "gs-sim-witches",
  "gs-sim-zombie",
@@ -300,6 +301,10 @@ version = "0.1.0"
 
 [[package]]
 name = "gs-sim-trace"
+version = "0.1.0"
+
+[[package]]
+name = "gs-sim-volumes"
 version = "0.1.0"
 
 [[package]]

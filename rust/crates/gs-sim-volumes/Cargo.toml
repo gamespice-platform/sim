@@ -1,0 +1,9 @@
+[package]
+name = "gs-sim-volumes"
+description = "A map's static volume boxes and which points stand clear of all of them: a per-tick prefilter, pure."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
