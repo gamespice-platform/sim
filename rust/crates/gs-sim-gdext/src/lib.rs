@@ -69,6 +69,8 @@ mod snapshot;
 mod snapshot_batch;
 #[cfg(feature = "bots")]
 mod tier;
+#[cfg(feature = "timer")]
+mod timer;
 #[cfg(feature = "weapon")]
 mod weapon;
 #[cfg(feature = "witches")]

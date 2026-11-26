@@ -44,9 +44,33 @@ func _run() -> void:
 	if GSSim.has(&"sight"):
 		await _test_sight_ray_parity()
 		await _test_sight_clear_to_parity()
+	if GSSim.has(&"timer"):
+		_test_timer()
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+
+## GSSimTimer: never short, on time where the OS allows (not the 15.6 ms Windows tick), and the resolution only on Windows.
+func _test_timer() -> void:
+	var t: Object = ClassDB.instantiate(&"GSSimTimer")
+	var kind := str(t.call(&"sleep_kind"))
+	_check(not kind.is_empty(), "the timer names its sleep", kind)
+	var worst := 0
+	for usec: int in [300, 1000, 2500]:
+		var t0 := Time.get_ticks_usec()
+		t.call(&"sleep_usec", usec)
+		var took := Time.get_ticks_usec() - t0
+		_check(took >= usec, "a %d us timer sleep is never short" % usec, str(took))
+		worst = maxi(worst, took - usec)
+	# Loose: a loaded build box may be late, but never a whole Windows tick on a precise sleep.
+	if bool(t.call(&"is_precise")):
+		_check(worst < 12000, "a precise timer sleep wakes well inside the 15.6 ms Windows tick", "%d us late" % worst)
+	var raised := bool(t.call(&"request_resolution_ms", 1))
+	_check(raised == (OS.get_name() == "Windows"), "the timer resolution is raised on Windows only", str(raised))
+	_check(int(t.call(&"resolution_ms")) == (1 if raised else 0), "the held resolution reads back")
+	t.call(&"release_resolution")
+	_check(int(t.call(&"resolution_ms")) == 0, "release gives the resolution back")
 
 
 func _check(ok: bool, what: String, detail: String = "") -> void:

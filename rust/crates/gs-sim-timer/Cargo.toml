@@ -1,0 +1,9 @@
+[package]
+name = "gs-sim-timer"
+description = "A precise thread sleep and the OS timer resolution for a self-paced loop: Windows' high-resolution waitable timer and timeBeginPeriod, a futex wait elsewhere."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
