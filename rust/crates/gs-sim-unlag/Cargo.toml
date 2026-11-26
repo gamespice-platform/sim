@@ -1,0 +1,9 @@
+[package]
+name = "gs-sim-unlag"
+description = "Lag compensation's per-player position history (FC's rewind ring), pure Rust."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
