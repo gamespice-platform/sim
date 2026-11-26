@@ -43,6 +43,7 @@ const MODULES := {
 	&"npc_ai_senses": &"GSSimNpcAiSenses",
 	&"figure": &"GSSimLegs",
 	&"net_pack": &"GSSimFpsNetPack",
+	&"weapon_net": &"GSSimFpsWeaponNet",
 	&"threat": &"GSSimBotThreat",
 	&"spawn": &"GSSimSpawnPick",
 	&"contacts": &"GSSimBotContacts",

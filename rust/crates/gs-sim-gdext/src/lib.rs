@@ -93,6 +93,8 @@ mod tier;
 mod timer;
 #[cfg(feature = "weapon")]
 mod weapon;
+#[cfg(feature = "weapon_net")]
+mod weapon_net;
 #[cfg(feature = "witches")]
 mod witches;
 #[cfg(feature = "zombie")]
