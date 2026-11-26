@@ -41,6 +41,7 @@ const MODULES := {
 	&"timer": &"GSSimTimer",
 	&"navjoin": &"GSSimNavJoin",
 	&"figure": &"GSSimLegs",
+	&"net_pack": &"GSSimFpsNetPack",
 }
 
 

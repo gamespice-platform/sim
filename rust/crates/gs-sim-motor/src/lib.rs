@@ -13,6 +13,7 @@ pub mod cols;
 pub mod flat;
 pub mod full;
 pub mod memo;
+pub mod net_pack;
 pub mod site;
 pub mod slide;
 pub mod state;
