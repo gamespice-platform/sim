@@ -73,6 +73,8 @@ mod sight;
 mod snapshot;
 #[cfg(feature = "snapshot_batch")]
 mod snapshot_batch;
+#[cfg(feature = "trace")]
+mod solid_trace;
 #[cfg(feature = "bots")]
 mod tier;
 #[cfg(feature = "timer")]

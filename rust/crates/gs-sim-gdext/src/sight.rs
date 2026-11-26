@@ -9,6 +9,11 @@
 //! A box world (GameSpice Combat's `GSTraceFlat`, a game's built-in maps) binds with `bind_flat`
 //! instead: the ray walks the trace's own [`crate::flat_trace::GSSimFlatBvh`] and ground plane,
 //! `GSTraceFlat.line_of_sight` to the bit, with no physics space, no lock and no call into script.
+//!
+//! An imported map adds `bind_solid` after `bind`: the ray asks the map's built
+//! [`crate::solid_trace::GSSimSolid`] (its brushes and terrain) instead of the space, with no lock,
+//! and asks the space only when the solid finds the line clear but it crosses a mover's bounds
+//! (a door, a lift: bodies on the mask that are not in the solid). The jail cell rule stays in front.
 
 // The Arc is shared by the brains thinking on worker threads: godot-rust (experimental-threads)
 // leaves `Gd` neither Send nor Sync, but the space's queries are thread-safe under the game's lock,
@@ -16,6 +21,7 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
 use crate::flat_trace::GSSimFlatBvh;
+use crate::solid_trace::GSSimSolid;
 use godot::classes::{PhysicsDirectSpaceState3D, PhysicsRayQueryParameters3D};
 use godot::prelude::*;
 use std::sync::Arc;
@@ -26,6 +32,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static EPOCH: AtomicU64 = AtomicU64::new(1);
 
 /// What the ray asks of, as bound for the tick. Shared by every mind asking this tick.
+#[derive(Clone)]
 pub struct SightConf {
     space: Option<Gd<PhysicsDirectSpaceState3D>>,
     mask: u32,
@@ -40,9 +47,37 @@ pub struct SightConf {
     cell: Option<Cell>,
     /// A box world's hierarchy and ground plane (`bind_flat`): asked in place of the space.
     flat: Option<Flat>,
+    /// An imported map's static solid (`bind_solid`): asked in place of the space.
+    solid: Option<Solid>,
+}
+
+/// `GSSimSolid` as bound, with the bounds (low, high) of the movers on the mask this tick.
+#[derive(Clone)]
+struct Solid {
+    solid: Arc<gs_sim_trace::solid::Solid>,
+    movers: Arc<Vec<[f32; 3]>>,
+}
+
+impl Solid {
+    /// Whether the segment meets a mover's bounds (so the space must answer).
+    fn near_mover(&self, from: Vector3, to: Vector3) -> bool {
+        let line = to - from;
+        let len = line.length();
+        if len <= 0.0 {
+            return false;
+        }
+        let dir = [line.x / len, line.y / len, line.z / len];
+        let from = [from.x, from.y, from.z];
+        self.movers
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .any(|m| gs_sim_trace::ray_box(from, dir, m[0], m[1], f64::from(len)) >= 0.0)
+    }
 }
 
 /// `GSTraceFlat` as bound: its box hierarchy and `floor_y` (negative infinity: no ground).
+#[derive(Clone)]
 struct Flat {
     bvh: Arc<gs_sim_trace::Bvh>,
     floor_y: f64,
@@ -59,6 +94,7 @@ impl Flat {
 /// `GSMapGlassSight` as bound: a ray from within `radius` of `centre` that meets `glass_mask`
 /// within `reach` (radius plus margin) of the centre is blocked. The radii stay `f64`, as script
 /// compares an `f32` distance to them.
+#[derive(Clone)]
 struct Cell {
     space: Gd<PhysicsDirectSpaceState3D>,
     glass_mask: u32,
@@ -111,6 +147,17 @@ impl SightConf {
 
     /// The bound ray from `from` to `to`, on the reused query.
     fn ray(&self, query: &mut SightQuery, from: Vector3, to: Vector3) -> bool {
+        if let Some(solid) = &self.solid {
+            if !solid
+                .solid
+                .clear([from.x, from.y, from.z], [to.x, to.y, to.z])
+            {
+                return false;
+            }
+            if !solid.near_mover(from, to) {
+                return true;
+            }
+        }
         let Some(space) = &self.space else {
             return true;
         };
@@ -203,6 +250,7 @@ impl IRefCounted for GSSimSightRay {
                 epoch: 0,
                 cell: None,
                 flat: None,
+                solid: None,
             }),
             query: std::sync::Mutex::new(SightQuery::default()),
         }
@@ -245,6 +293,7 @@ impl GSSimSightRay {
             epoch,
             cell,
             flat: None,
+            solid: None,
         });
     }
 
@@ -267,8 +316,37 @@ impl GSSimSightRay {
                 bvh: shared,
                 floor_y,
             }),
+            solid: None,
         });
         true
+    }
+
+    /// Adds an imported map's built static solid to the space bound by [method bind] (call it after
+    /// `bind`, the same tick): a ray then asks [param solid] instead of the space, and the space only
+    /// when the solid finds it clear and it crosses one of [param movers] (low then high corner per
+    /// body on the mask that is not in the solid). False (bind unchanged) when unbuilt or nothing is bound.
+    #[func]
+    fn bind_solid(&mut self, solid: Gd<GSSimSolid>, movers: PackedVector3Array) -> bool {
+        let Some(shared) = solid.bind().shared() else {
+            return false;
+        };
+        if self.conf.space.is_none() || self.conf.flat.is_some() {
+            return false;
+        }
+        let mut conf = (*self.conf).clone();
+        conf.epoch = EPOCH.fetch_add(1, Ordering::Relaxed);
+        conf.solid = Some(Solid {
+            solid: shared,
+            movers: Arc::new(movers.as_slice().iter().map(|v| [v.x, v.y, v.z]).collect()),
+        });
+        self.conf = Arc::new(conf);
+        true
+    }
+
+    /// Whether the ray asks a bound static solid ([method bind_solid]).
+    #[func]
+    fn is_solid(&self) -> bool {
+        self.conf.solid.is_some()
     }
 
     /// [method clear] for many lines in one call: line `k` from `froms[k]` to `tos[k]`; 1 clear, 0

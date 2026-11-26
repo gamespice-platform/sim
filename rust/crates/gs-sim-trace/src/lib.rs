@@ -1,8 +1,11 @@
-//! GameSpice Combat's flat world ray: which of many axis-aligned boxes a ray enters first.
+//! GameSpice Combat's flat world ray: which of many axis-aligned boxes a ray enters first; and
+//! ([`solid`]) an imported map's brushes and terrain as a physics ray sees them.
 //!
 //! The script original is `GSTraceFlat._world_ray` and `_ray_aabb` (gs-combat). Box corners are
 //! the engine's `f32`; the slab arithmetic is the script's `f64`, in its order, with Godot's
 //! `maxf`/`minf` (`a > b ? a : b`, `a < b ? a : b`), so the chosen box is the script's to the bit.
+
+pub mod solid;
 
 /// Directions shorter than this on an axis are parallel to that axis's slabs (the script's literal).
 pub const PARALLEL: f64 = 0.000001;
@@ -240,6 +243,51 @@ impl Bvh {
             top += 2;
         }
         best.map(|i| (i, best_t))
+    }
+
+    /// Whether `hit` answers true for a box the ray meets within `limit`; each such box is asked at
+    /// most once, in no promised order, and the walk stops at the first true.
+    pub fn any(
+        &self,
+        from: [f32; 3],
+        dir: [f32; 3],
+        limit: f64,
+        mut hit: impl FnMut(usize) -> bool,
+    ) -> bool {
+        if self.nodes.is_empty() {
+            return false;
+        }
+        let mut stack = [0u32; 64];
+        let mut top = 1;
+        while top > 0 {
+            top -= 1;
+            let node = self.nodes[stack[top] as usize];
+            if ray_box(from, dir, node.lo, node.hi, limit) < 0.0 {
+                continue;
+            }
+            if node.count > 0 {
+                let start = node.first as usize;
+                for &b in &self.order[start..start + node.count as usize] {
+                    let i = b as usize;
+                    if ray_box(
+                        from,
+                        dir,
+                        self.corners[2 * i],
+                        self.corners[2 * i + 1],
+                        limit,
+                    ) >= 0.0
+                        && hit(i)
+                    {
+                        return true;
+                    }
+                }
+                continue;
+            }
+            stack[top] = node.first;
+            stack[top + 1] = node.first + 1;
+            top += 2;
+        }
+        false
     }
 
     /// `GSTraceFlat.line_of_sight` (its native branch) to the bit: whether nothing blocks `from` to
