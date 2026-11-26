@@ -254,7 +254,7 @@ impl GSSimLegs {
     /// A figure's three restores before its clip in one call, in the script's order: the turn
     /// limit, then the legs, then the stride limit (each undoes what it wrote, newest first).
     #[func]
-    fn restore_with(
+    pub(crate) fn restore_with(
         &mut self,
         skeleton: Option<Gd<Skeleton3D>>,
         turn: Option<Gd<GSSimTurnLimit>>,
@@ -377,7 +377,7 @@ impl GSSimLegs {
     /// lifted again. Returns [method holding] after it all.
     #[func]
     #[allow(clippy::too_many_arguments)]
-    fn lower(
+    pub(crate) fn lower(
         &mut self,
         skeleton: Option<Gd<Skeleton3D>>,
         wall: Plane,
@@ -830,7 +830,7 @@ impl GSSimFigurePose {
     /// target. Returns the carry's grip, `Vector3.INF` for none or no carry.
     #[func]
     #[allow(clippy::too_many_arguments)]
-    fn upper(
+    pub(crate) fn upper(
         &mut self,
         skeleton: Option<Gd<Skeleton3D>>,
         legs: Option<Gd<GSSimLegs>>,

@@ -27,6 +27,8 @@ mod doors;
 mod doubt;
 #[cfg(feature = "figure")]
 mod figure;
+#[cfg(feature = "figure")]
+mod figure_batch;
 #[cfg(feature = "trace")]
 mod flat_trace;
 #[cfg(feature = "grid2d")]
@@ -77,10 +79,10 @@ mod snapshot;
 mod snapshot_batch;
 #[cfg(feature = "spawn")]
 mod spawn;
-#[cfg(feature = "threat")]
-mod threat;
 #[cfg(feature = "zombie")]
 mod think;
+#[cfg(feature = "threat")]
+mod threat;
 #[cfg(feature = "bots")]
 mod tier;
 #[cfg(feature = "timer")]
