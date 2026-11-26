@@ -1,8 +1,9 @@
 //! `GSSimFpsNetPack`: gs-player-controller's `GSFpsNetSync` packers over a state's columns, one
-//! call per pull (the script stays the fallback and the specification). Stateless.
+//! call per pull (the script stays the fallback and the specification), and `pull` adds a carrier's sub-quantum
+//! hold (Fatal Contact's `FcPlayerNet._hold_subquantum`). Stateless.
 
 use godot::prelude::*;
-use gs_sim_motor::net_pack::{Extra, pack};
+use gs_sim_motor::net_pack::{Extra, Held, Wire, pack, pull};
 
 /// A state's replicated integers from its columns.
 #[derive(GodotClass)]
@@ -35,5 +36,52 @@ impl GSSimFpsNetPack {
             stamina_delay_left,
         };
         PackedInt64Array::from(&pack(cols, &extra)[..])
+    }
+
+    /// [method pack] plus the hold: `[net_flags, net_timers, net_timers2, net_stamina, hold]`, where `hold` has
+    /// bit 0 when the carrier should keep [param held_velocity], bit 1 [param held_yaw] and bit 2
+    /// [param held_pitch]: the new value differs but writes the same codes. [param wire] is
+    /// `[max_speed, velocity_bits, yaw_bits, pitch_bits]`; a width outside 1..62 holds nothing for that
+    /// property. Empty when [param cols] is shorter than a state's or [param wire] than four.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn pull(
+        &self,
+        cols: PackedFloat64Array,
+        crouch_held: bool,
+        timer_scale: f64,
+        stamina: f64,
+        stamina_exhausted: bool,
+        stamina_delay_left: f64,
+        pitch: f64,
+        held_velocity: Vector3,
+        held_yaw: f64,
+        held_pitch: f64,
+        wire: PackedFloat64Array,
+    ) -> PackedInt64Array {
+        let cols = cols.as_slice();
+        let wire = wire.as_slice();
+        if cols.len() < gs_sim_motor::cols::STRIDE || wire.len() < 4 {
+            return PackedInt64Array::new();
+        }
+        let extra = Extra {
+            crouch_held,
+            timer_scale,
+            stamina,
+            stamina_exhausted,
+            stamina_delay_left,
+        };
+        let held = Held {
+            velocity: [held_velocity.x, held_velocity.y, held_velocity.z],
+            yaw: held_yaw,
+            pitch: held_pitch,
+        };
+        let wire = Wire {
+            speed: wire[0],
+            velocity_bits: wire[1] as i64,
+            yaw_bits: wire[2] as i64,
+            pitch_bits: wire[3] as i64,
+        };
+        PackedInt64Array::from(&pull(cols, &extra, pitch, &held, &wire)[..])
     }
 }
