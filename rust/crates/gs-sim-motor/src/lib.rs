@@ -9,6 +9,7 @@
 pub use gs_sim_math::Vec3;
 use gs_sim_math::{clampf, maxf, minf};
 
+pub mod cols;
 pub mod flat;
 pub mod full;
 pub mod memo;

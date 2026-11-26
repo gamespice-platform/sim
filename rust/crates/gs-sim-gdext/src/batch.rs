@@ -10,6 +10,9 @@ use crate::hulls::GSSimHullWorld;
 use crate::motor::{GSSimFpsBody, TICK_IN_LEN, TICK_OUT_LEN};
 use godot::prelude::*;
 use gs_sim_motor::Vec3 as V3;
+use gs_sim_motor::cols;
+
+const _: () = assert!(TICK_IN_LEN == cols::ROW_IN && TICK_OUT_LEN == cols::ROW_OUT);
 
 /// Per row in [`GSSimMotorBatch::run`]'s `meta`: hulls mode (0 or 3), collision mask, pass-out
 /// mask; [`GSSimMotorBatch::run_rows`] adds the row's timers flags (`tick_into`'s `timers`).
@@ -22,6 +25,8 @@ pub struct GSSimMotorBatch {
     /// Row, world, slot and the feet the world held before the row ran.
     moved: Vec<(usize, Gd<GSSimHullWorld>, i64, V3)>,
     out: Vec<f64>,
+    /// [`Self::run_cols`]'s input rows, kept between calls.
+    cols_in: Vec<f64>,
     rows: i64,
     runs: i64,
 }
@@ -80,6 +85,78 @@ impl GSSimMotorBatch {
             from,
             to,
         )
+    }
+
+    /// [`Self::run_rows`] over gs-player-controller 36's packed states: `cols` holds each row's
+    /// `GSFpsState` columns (a `PackedFloat64Array`, `GSFpsStateColumns` layout), `extra` 27
+    /// values per row (the row's 12..38: height, rest ok, rest position, delta, buttons,
+    /// previous buttons, move, yaw, the effect and tunable values). Answers the same 45 values
+    /// per row ticked, and puts each ticked row's new columns at its index in `into`, written as
+    /// the script's apply writes the state; `cols` stays as it was, so rows taken back run again
+    /// from it. A row past the end of `cols`, `extra` or `into` ends the run.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn run_cols(
+        &mut self,
+        bodies: VarArray,
+        tuns: VarArray,
+        meta: PackedInt64Array,
+        cols: VarArray,
+        extra: PackedFloat64Array,
+        mut into: VarArray,
+        from: i64,
+        to: i64,
+    ) -> PackedFloat64Array {
+        let ep = extra.as_slice();
+        let first = usize::try_from(from).unwrap_or(0);
+        let last = usize::try_from(to)
+            .unwrap_or(0)
+            .min(cols.len())
+            .min(into.len())
+            .min(ep.len() / cols::EXTRA_LEN);
+        // The rows' columns, kept for the answer; a row without them ends the run there.
+        let mut held = Vec::with_capacity(last.saturating_sub(first));
+        let mut input = std::mem::take(&mut self.cols_in);
+        input.clear();
+        input.resize(last.max(first) * TICK_IN_LEN, 0.0);
+        for row in first..last {
+            let Some(c) = cols
+                .get(row)
+                .and_then(|v| v.try_to::<PackedFloat64Array>().ok())
+                .filter(|c| c.len() >= cols::STRIDE)
+            else {
+                break;
+            };
+            let e = &ep[row * cols::EXTRA_LEN..(row + 1) * cols::EXTRA_LEN];
+            cols::fill_row(
+                c.as_slice(),
+                e,
+                &mut input[row * TICK_IN_LEN..(row + 1) * TICK_IN_LEN],
+            );
+            held.push(c);
+        }
+        let end = first + held.len();
+        let answer = self.ticks(
+            &bodies,
+            &tuns,
+            meta.as_slice(),
+            ROWS_META_LEN,
+            &input,
+            from,
+            end as i64,
+        );
+        self.cols_in = input;
+        let mut new = Vec::new();
+        for (i, c) in held.iter().enumerate().take(self.out.len() / TICK_OUT_LEN) {
+            let row = first + i;
+            let e = &ep[row * cols::EXTRA_LEN..(row + 1) * cols::EXTRA_LEN];
+            let o = &self.out[i * TICK_OUT_LEN..(i + 1) * TICK_OUT_LEN];
+            new.clear();
+            new.resize(c.len(), 0.0);
+            cols::apply_out(c.as_slice(), e, o, &mut new);
+            into.set(row, &PackedFloat64Array::from(&new[..]).to_variant());
+        }
+        answer
     }
 
     /// Takes rows `from` and later back: the hull world holds again the feet it held before
