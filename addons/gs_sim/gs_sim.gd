@@ -44,6 +44,7 @@ const MODULES := {
 	&"net_pack": &"GSSimFpsNetPack",
 	&"threat": &"GSSimBotThreat",
 	&"spawn": &"GSSimSpawnPick",
+	&"contacts": &"GSSimBotContacts",
 }
 
 
