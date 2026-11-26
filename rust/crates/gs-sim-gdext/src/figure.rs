@@ -240,6 +240,24 @@ impl GSSimLegs {
         self.legs.restore(&mut s);
     }
 
+    /// A figure's three restores before its clip in one call, in the script's order: the turn
+    /// limit, then the legs, then the stride limit (each undoes what it wrote, newest first).
+    #[func]
+    fn restore_with(
+        &mut self,
+        skeleton: Option<Gd<Skeleton3D>>,
+        turn: Option<Gd<GSSimTurnLimit>>,
+        stride: Option<Gd<GSSimTurnLimit>>,
+    ) {
+        if let Some(mut turn) = turn {
+            turn.bind_mut().restore(skeleton.clone());
+        }
+        self.restore(skeleton.clone());
+        if let Some(mut stride) = stride {
+            stride.bind_mut().restore(skeleton);
+        }
+    }
+
     /// `GSHumanoidLegs.apply` past its null and zero-twist checks: the root turned by [param twist]
     /// about [param up] (skeleton space), the hips back by as much.
     #[func]
@@ -320,6 +338,28 @@ impl GSSimLegs {
             &mut self.rots,
         );
         gs_sim_figure::on_wall(&mut s, &legs, &wall, v3(up), weight);
+    }
+
+    /// The script's `legs.on_wall` then `_stride_limit.step` in one call. [param weight] 0 (or less)
+    /// skips the wall as the script's check does; the stride limit always steps.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn on_wall_with(
+        &mut self,
+        skeleton: Option<Gd<Skeleton3D>>,
+        plane: Plane,
+        up: Vector3,
+        weight: f64,
+        stride: Option<Gd<GSSimTurnLimit>>,
+        rate: f64,
+        dt: f64,
+    ) {
+        if weight > 0.0 {
+            self.on_wall(skeleton.clone(), plane, up, weight);
+        }
+        if let Some(mut stride) = stride {
+            stride.bind_mut().step(skeleton, rate, dt, -1.0);
+        }
     }
 
     /// `GSHumanoidLegs.hold_feet`.
