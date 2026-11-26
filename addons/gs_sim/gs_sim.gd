@@ -37,6 +37,7 @@ const MODULES := {
 	&"players": &"GSSimPlayerPost",
 	&"present": &"GSSimPresentLod",
 	&"pose": &"GSSimPoseBlend",
+	&"clips": &"GSSimClipPlayer",
 }
 
 

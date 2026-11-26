@@ -1,0 +1,10 @@
+[package]
+name = "gs-sim-clips"
+description = "A figure's skeletal clip playback: AnimationPlayer's play, seek, advance and cross-fade with AnimationMixer's non-deterministic blend, over baked key arrays, in the engine's order and precision."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gs-sim-math = { path = "../gs-sim-math" }

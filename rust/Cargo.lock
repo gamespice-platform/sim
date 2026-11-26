@@ -126,6 +126,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gs-sim-clips"
+version = "0.1.0"
+dependencies = [
+ "gs-sim-math",
+]
+
+[[package]]
 name = "gs-sim-crc"
 version = "0.1.0"
 
@@ -160,6 +167,7 @@ dependencies = [
  "gs-sim-audio",
  "gs-sim-bots",
  "gs-sim-brain",
+ "gs-sim-clips",
  "gs-sim-crc",
  "gs-sim-crowd",
  "gs-sim-doors",

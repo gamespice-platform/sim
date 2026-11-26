@@ -405,7 +405,7 @@ mod tests {
                     0
                 };
                 let mut c = ((seed >> 16) % 6) as i32 | beyond;
-                if (seed >> 9) % 4 == 0 {
+                if (seed >> 9).is_multiple_of(4) {
                     c |= OCCLUSION_CANDIDATE;
                     if (seed >> 11) & 1 == 1 {
                         hidden.push(i as i32);

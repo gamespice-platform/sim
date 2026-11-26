@@ -15,6 +15,8 @@ mod bots;
 #[cfg(feature = "brain")]
 mod brain;
 mod cell;
+#[cfg(feature = "clips")]
+mod clips;
 #[cfg(feature = "crc")]
 mod crc;
 #[cfg(feature = "crowd")]
