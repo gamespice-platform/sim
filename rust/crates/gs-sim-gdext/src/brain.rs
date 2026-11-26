@@ -419,6 +419,19 @@ impl GSSimBotMind {
         PackedFloat64Array::from(&row[..])
     }
 
+    /// One roaming steer (`GSBotBrain._walk`, `_hold` or `_drift` with `_set_move`) over the row
+    /// `io` (layout `gs_sim_brain::act::io`) on this mind's aim and the brain's stream; returns
+    /// the row stepped (view, glance, counter, legs), or an empty array for a short row or an
+    /// unknown mode. No engine calls, so it runs on a worker thread.
+    #[func]
+    fn steer(&mut self, io: PackedFloat64Array) -> PackedFloat64Array {
+        let mut row = io.to_vec();
+        if !gs_sim_brain::act::steer(&mut self.aim, &mut row, self.brain_key) {
+            return PackedFloat64Array::new();
+        }
+        PackedFloat64Array::from(&row[..])
+    }
+
     /// One `GSBotBrain._hear` over GSBotWorld's sound rows (`gs_sim_brain::hear::STRIDE` each,
     /// oldest first) on the brain's stream. A source's team comes from `senses`' bodies or, when
     /// `senses` is null, from the ones [`Self::hold_senses`] kept (so it runs on a worker thread).
