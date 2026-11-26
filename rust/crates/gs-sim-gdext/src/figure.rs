@@ -366,6 +366,76 @@ impl GSSimLegs {
         }
     }
 
+    /// The script's step after the clip and the upper body, in one call: [method on_wall_with]
+    /// (the wall at [code]args[0][/code], the stride limit at rate [code]args[1][/code] over
+    /// [code]args[2][/code]), then the floor: [code]args[3][/code] 1 holds the feet
+    /// ([method hold_feet] with height, settle, reach and release in [code]args[5..9][/code]), 2
+    /// steps them off ([method step_off] with height, seconds and lift in [code]args[5..8][/code]),
+    /// 3 lets go, 0 leaves the hold; [code]args[4][/code] 1 keeps the drawn ankles out of the floor
+    /// raised [code]args[9][/code] ([method on_floor]). Then [param turn] steps at the same rate
+    /// (arm rate [code]args[10][/code]) and, on the floor and turned, the held feet are resettled and
+    /// lifted again. Returns [method holding] after it all.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn lower(
+        &mut self,
+        skeleton: Option<Gd<Skeleton3D>>,
+        wall: Plane,
+        up: Vector3,
+        turn: Option<Gd<GSSimTurnLimit>>,
+        stride: Option<Gd<GSSimTurnLimit>>,
+        to_world: Transform3D,
+        to_figure: Transform3D,
+        floor_y: PackedFloat32Array,
+        args: PackedFloat64Array,
+    ) -> bool {
+        let a = args.as_slice();
+        if a.len() < 11 {
+            return self.legs.holding();
+        }
+        let (rate, dt) = (a[1], a[2]);
+        self.on_wall_with(skeleton.clone(), wall, up, a[0], stride, rate, dt);
+        match a[3] as i64 {
+            1 => self.hold_feet(
+                skeleton.clone(),
+                to_world,
+                to_figure,
+                floor_y.clone(),
+                a[5],
+                a[6],
+                a[7],
+                a[8],
+                dt,
+            ),
+            2 => self.step_off(
+                skeleton.clone(),
+                to_world,
+                to_figure,
+                floor_y.clone(),
+                a[5],
+                a[6],
+                a[7],
+                dt,
+            ),
+            3 => self.let_go(),
+            _ => {}
+        }
+        let grounded = a[4] > 0.0;
+        if grounded {
+            self.on_floor(skeleton.clone(), to_figure, floor_y.clone(), a[9]);
+        }
+        let mut turned = false;
+        if let Some(mut turn) = turn {
+            turn.bind_mut().step(skeleton.clone(), rate, dt, a[10]);
+            turned = turn.bind().turned();
+        }
+        if grounded && turned {
+            self.resettle(skeleton.clone(), to_world);
+            self.on_floor(skeleton, to_figure, floor_y, a[9]);
+        }
+        self.legs.holding()
+    }
+
     /// `GSHumanoidLegs.hold_feet`.
     #[func]
     #[allow(clippy::too_many_arguments)]
