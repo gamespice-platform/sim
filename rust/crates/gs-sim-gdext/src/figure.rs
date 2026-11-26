@@ -675,9 +675,11 @@ impl GSSimFigurePose {
         frame: PackedFloat64Array,
     ) -> Vector3 {
         let none = Vector3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
-        let (Some(mut skeleton), Some(body), Some(style)) =
-            (skeleton, self.carry_body.as_ref(), self.carry_style.as_ref())
-        else {
+        let (Some(mut skeleton), Some(body), Some(style)) = (
+            skeleton,
+            self.carry_body.as_ref(),
+            self.carry_style.as_ref(),
+        ) else {
             return none;
         };
         let (&[a, b, c], Some(f)) = (bones.as_slice(), CarryFrame::from_slice(frame.as_slice()))
