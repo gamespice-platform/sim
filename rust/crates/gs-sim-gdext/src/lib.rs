@@ -17,6 +17,8 @@ mod brain;
 mod cell;
 #[cfg(feature = "clips")]
 mod clips;
+#[cfg(feature = "contacts")]
+mod contacts;
 #[cfg(feature = "crc")]
 mod crc;
 #[cfg(feature = "crowd")]
