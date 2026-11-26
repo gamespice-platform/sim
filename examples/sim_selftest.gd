@@ -39,6 +39,8 @@ func _run() -> void:
 		_test_brain_parity()
 		_test_tier_parity()
 		_bench_scan()
+	if GSSim.has(&"threat"):
+		_test_threat()
 	if GSSim.has(&"arms"):
 		_test_arms_parity()
 	if GSSim.has(&"sight"):
@@ -413,6 +415,30 @@ func _bench_sight_lod() -> void:
 		on_rays = _rays
 	print("  thinking every 3rd tick, 80 pillars of cover, native: rays %d -> %d (%.1f%%), wall %.0f -> %.0f ms per run" % [off_rays, on_rays, 100.0 * (on_rays - off_rays) / maxf(off_rays, 1), off_us / 3000.0, on_us / 3000.0])
 	_check(on_rays < off_rays, "the LOD saves rays for a crowd thinking every third tick", "%d vs %d" % [on_rays, off_rays])
+
+
+## GSSimBotThreat: a special counts twelve metres closer, a sitter is never ranked but still breaks the calm, commons are counted.
+## The seeded script-against-native parity lives in Zombie Zone's `headless_native_threat`.
+func _test_threat() -> void:
+	print("bot threat ranking")
+	var t: Object = ClassDB.instantiate(&"GSSimBotThreat")
+	var grid: Object = ClassDB.instantiate(&"GSSimCrowdGrid")
+	grid.call(&"setup", 4.0)
+	var ids := PackedInt64Array([10, 11, 12, 13])
+	var at := PackedVector3Array([Vector3(0, 0, 5), Vector3(0, 0, 9), Vector3(0, 0, 1), Vector3(0, 0, 30)])
+	grid.call(&"fill", ids, at)
+	var common := ClassDB.class_get_integer_constant(&"GSSimBotThreat", &"COMMON")
+	t.call(&"register", 10, 1.7, common)
+	t.call(&"register", 11, 1.7, ClassDB.class_get_integer_constant(&"GSSimBotThreat", &"SPECIAL"))
+	t.call(&"register", 12, 1.7, common | ClassDB.class_get_integer_constant(&"GSSimBotThreat", &"SITTING"))
+	t.call(&"register", 13, 1.7, common)
+	var top: PackedInt32Array = t.call(&"rank", grid, Vector3.ZERO, Vector3(0, 1.6, 0), 20.0, 2.0)
+	_check(Array(top) == [1, 0], "the special at nine metres outranks the common at five; the sitter and the far one are left", str(top))
+	_check(not bool(t.call(&"calm")), "a sitter a metre away still breaks the calm")
+	_check(int(t.call(&"commons", grid, Vector3.ZERO, 10.0)) == 2, "two commons within ten metres (the sitter is one)")
+	t.call(&"forget", 10)
+	top = t.call(&"rank", grid, Vector3.ZERO, Vector3(0, 1.6, 0), 20.0, 0.5)
+	_check(Array(top) == [1] and bool(t.call(&"calm")), "a forgotten zombie is not ranked, and nobody is within half a metre")
 
 
 ## GameSpice Bot's think tiers (GSSimThinkTier): random settings, people and bots; every schedule, period and body period equal, and the same counts.

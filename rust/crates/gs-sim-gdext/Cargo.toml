@@ -51,7 +51,7 @@ gs-sim-navjoin = { path = "../gs-sim-navjoin", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "threat"]
 bots = ["dep:gs-sim-bots"]
 brain = ["dep:gs-sim-brain", "bots"]
 snapshot = ["dep:gs-sim-snapshot"]
@@ -74,6 +74,7 @@ doubt = ["dep:gs-sim-doubt", "dep:gs-sim-math"]
 seek = ["dep:gs-sim-seek", "dep:gs-sim-math", "brain"]
 hazards = ["dep:gs-sim-hazards", "dep:gs-sim-math"]
 road = ["dep:gs-sim-road", "dep:gs-sim-math"]
+threat = ["bots", "crowd"]
 pvs = ["dep:gs-sim-pvs"]
 crc = ["dep:gs-sim-crc"]
 interest = ["dep:gs-sim-interest"]

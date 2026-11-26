@@ -7,6 +7,7 @@
 pub use gs_sim_math::Vec3;
 use gs_sim_math::rad_to_deg;
 
+pub mod threat;
 pub mod tier;
 
 /// Beyond this many degrees off the view, a body already being fought is no longer tracked.

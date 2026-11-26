@@ -42,6 +42,7 @@ const MODULES := {
 	&"navjoin": &"GSSimNavJoin",
 	&"figure": &"GSSimLegs",
 	&"net_pack": &"GSSimFpsNetPack",
+	&"threat": &"GSSimBotThreat",
 }
 
 
