@@ -182,6 +182,7 @@ dependencies = [
  "gs-sim-figure",
  "gs-sim-grid2d",
  "gs-sim-hazards",
+ "gs-sim-hitbox",
  "gs-sim-interest",
  "gs-sim-interp",
  "gs-sim-math",
@@ -207,6 +208,13 @@ version = "0.1.0"
 
 [[package]]
 name = "gs-sim-hazards"
+version = "0.1.0"
+dependencies = [
+ "gs-sim-math",
+]
+
+[[package]]
+name = "gs-sim-hitbox"
 version = "0.1.0"
 dependencies = [
  "gs-sim-math",

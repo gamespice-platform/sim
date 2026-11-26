@@ -43,6 +43,7 @@ gs-sim-present = { path = "../gs-sim-present", optional = true }
 gs-sim-clips = { path = "../gs-sim-clips", optional = true }
 gs-sim-timer = { path = "../gs-sim-timer", optional = true }
 gs-sim-figure = { path = "../gs-sim-figure", optional = true }
+gs-sim-hitbox = { path = "../gs-sim-hitbox", optional = true }
 
 # Native brains, aims and motors run on game worker threads (FC bot_threads): without this the
 # binding panics off the main thread. Not on the web: its builds are single-threaded.
@@ -50,7 +51,7 @@ gs-sim-figure = { path = "../gs-sim-figure", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "hitbox"]
 bots = ["dep:gs-sim-bots"]
 brain = ["dep:gs-sim-brain", "bots"]
 snapshot = ["dep:gs-sim-snapshot"]
@@ -83,6 +84,7 @@ pose = ["dep:gs-sim-math"]
 clips = ["dep:gs-sim-clips", "dep:gs-sim-math"]
 timer = ["dep:gs-sim-timer"]
 figure = ["dep:gs-sim-figure", "dep:gs-sim-math"]
+hitbox = ["dep:gs-sim-hitbox", "dep:gs-sim-math"]
 # A web side module (wasm32-unknown-emscripten, nightly, -Zbuild-std); see docs/web.md.
 web = ["godot/api-custom", "godot/experimental-wasm", "godot/lazy-function-tables"]
 web-nothreads = ["web", "godot/experimental-wasm-nothreads"]

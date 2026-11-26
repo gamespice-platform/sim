@@ -33,6 +33,8 @@ mod flat_trace;
 mod grid2d;
 #[cfg(feature = "hazards")]
 mod hazards;
+#[cfg(feature = "hitbox")]
+mod hitbox;
 #[cfg(feature = "motor")]
 mod hulls;
 #[cfg(feature = "interest")]

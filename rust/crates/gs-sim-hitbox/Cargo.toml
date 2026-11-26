@@ -1,0 +1,10 @@
+[package]
+name = "gs-sim-hitbox"
+description = "GameSpice Combat's hitbox narrow phase (which hitbox of a set a ray hits first), pure Rust in the script's order and precision."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gs-sim-math = { path = "../gs-sim-math" }
