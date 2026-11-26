@@ -18,6 +18,7 @@ const MODULES := {
 	&"killview": &"GSSimKillViewTrack",
 	&"crowd": &"GSSimCrowdGrid",
 	&"weapon": &"GSSimWeaponSpread",
+	&"weapon_idle": &"GSSimWeaponIdleBatch",
 	&"senses": &"GSSimSenses",
 	&"zombie": &"GSSimZombieBrains",
 	&"doors": &"GSSimDoorReach",

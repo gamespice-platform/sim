@@ -132,6 +132,20 @@ impl GSSimWeaponSpread {
         }
         out.shown.unwrap_or(-1.0)
     }
+
+    /// [method idle]'s body on a posture row slice (its first 9 floats are read).
+    fn idle_on(&self, state: &mut VarDictionary, posture: &[f64], rest_ok: bool) -> f64 {
+        let (Some(t), Some(p)) = (self.tuning.as_ref(), Posture::from_row(posture)) else {
+            return -1.0;
+        };
+        let mut s = self.read(state);
+        if rest_ok && rests(t, &self.frame, &s) {
+            rest(&mut s);
+            state.set(&self.keys.since, s.since.unwrap_or(0));
+            return -2.0;
+        }
+        self.run(t, Some(&p), &mut s, state)
+    }
 }
 
 #[godot_api]
@@ -181,16 +195,7 @@ impl GSSimWeaponSpread {
     /// since the last use moved; the cone was not computed), the cone for a tick, -1 with no tuning or a short row.
     #[func]
     fn idle(&self, mut state: VarDictionary, posture: PackedFloat64Array, rest_ok: bool) -> f64 {
-        let (Some(t), Some(p)) = (self.tuning.as_ref(), Self::posture(&posture)) else {
-            return -1.0;
-        };
-        let mut s = self.read(&state);
-        if rest_ok && rests(t, &self.frame, &s) {
-            rest(&mut s);
-            state.set(&self.keys.since, s.since.unwrap_or(0));
-            return -2.0;
-        }
-        self.run(t, Some(&p), &mut s, &mut state)
+        self.idle_on(&mut state, posture.as_slice(), rest_ok)
     }
 
     /// `_spread_with(b, ctx, _rules())`: the cone for [param posture] over [param state], changing nothing; -1 with
@@ -292,5 +297,100 @@ impl GSSimWeaponSpread {
             out.push(Vector3::new(p.x, p.y, p.z));
         }
         out
+    }
+}
+
+/// Values per [method GSSimWeaponIdleBatch.run] entry: the weapon's [GSSimWeaponSpread], its behaviour's `state`
+/// dictionary, the behaviour (told the result), the posture row index and whether a rest tick may be taken.
+const ENTRY: usize = 5;
+
+/// Many idle weapons' [method GSSimWeaponSpread.idle] in one call: a server with every player idle hands each weapon in
+/// hand and its row here instead of one script call chain per player. Same bits as one [method GSSimWeaponSpread.idle]
+/// per entry, in entry order.
+#[derive(GodotClass)]
+#[class(base = RefCounted)]
+pub struct GSSimWeaponIdleBatch {
+    took: StringName,
+}
+
+#[godot_api]
+impl IRefCounted for GSSimWeaponIdleBatch {
+    fn init(_base: Base<RefCounted>) -> Self {
+        Self {
+            took: StringName::from("idle_native_took"),
+        }
+    }
+}
+
+#[godot_api]
+impl GSSimWeaponIdleBatch {
+    /// Runs every entry of [param entries], flat groups of five: `[spread: GSSimWeaponSpread, state: Dictionary,
+    /// behaviour: Object, k: int, rest_ok: bool]`. Entry k's posture is `rows[k * stride, k * stride + 9)`, its still flag
+    /// `rows[k * stride + 9]` (non-zero: settled), so `stride` is at least 10; the rest tick is tried when `rest_ok` and
+    /// still. A taken tick calls `behaviour.idle_native_took(shown)` with [method GSSimWeaponSpread.idle]'s answer (-2
+    /// rested, else the cone). Returns the entry numbers (0, 1, ...) that declined: -1 from the twin, a malformed
+    /// entry or a row out of range. Those changed nothing and the caller ticks them its own way.
+    #[func]
+    fn run(&self, entries: VarArray, rows: PackedFloat64Array, stride: i64) -> PackedInt32Array {
+        let r = rows.as_slice();
+        let n = entries.len() / ENTRY;
+        let mut declined = PackedInt32Array::new();
+        for e in 0..n {
+            let shown = self.entry(&entries, e * ENTRY, r, stride);
+            if shown == -1.0 {
+                declined.push(e as i32);
+            }
+        }
+        declined
+    }
+}
+
+impl GSSimWeaponIdleBatch {
+    /// One entry at [param at]: the twin's answer, -1 (nothing changed) when it is malformed or declines.
+    fn entry(&self, entries: &VarArray, at: usize, rows: &[f64], stride: i64) -> f64 {
+        let get = |i: usize| entries.get(at + i).unwrap_or_default();
+        let (Ok(spread), Ok(mut state), Ok(mut behaviour)) = (
+            get(0).try_to::<Gd<GSSimWeaponSpread>>(),
+            get(1).try_to::<VarDictionary>(),
+            get(2).try_to::<Gd<Object>>(),
+        ) else {
+            return -1.0;
+        };
+        let Some(row) = row_of(rows, int_of(&get(3)), stride) else {
+            return -1.0;
+        };
+        let rest_ok = get(4).try_to::<bool>().unwrap_or(false) && row[9] != 0.0;
+        let shown = spread.bind().idle_on(&mut state, &row[..9], rest_ok);
+        if shown != -1.0 {
+            behaviour.call(&self.took, &[shown.to_variant()]);
+        }
+        shown
+    }
+}
+
+/// Row [param k] of [param rows] at [param stride] (at least 10: 9 posture floats and the still flag), if whole.
+fn row_of(rows: &[f64], k: Option<i64>, stride: i64) -> Option<&[f64]> {
+    let (k, stride) = (usize::try_from(k?).ok()?, usize::try_from(stride).ok()?);
+    if stride < 10 {
+        return None;
+    }
+    let from = k.checked_mul(stride)?;
+    rows.get(from..from.checked_add(stride)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::row_of;
+
+    #[test]
+    fn rows_are_whole_or_none() {
+        let rows: Vec<f64> = (0..30).map(f64::from).collect();
+        assert_eq!(row_of(&rows, Some(1), 10).map(|r| r[0]), Some(10.0));
+        assert_eq!(row_of(&rows, Some(2), 10).map(|r| r[9]), Some(29.0));
+        assert!(row_of(&rows, Some(3), 10).is_none());
+        assert!(row_of(&rows, Some(-1), 10).is_none());
+        assert!(row_of(&rows, None, 10).is_none());
+        assert!(row_of(&rows, Some(0), 9).is_none());
+        assert!(row_of(&rows, Some(i64::MAX), 10).is_none());
     }
 }

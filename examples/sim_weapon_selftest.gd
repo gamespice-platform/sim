@@ -75,6 +75,7 @@ func _test_weapon_parity() -> void:
 		var native: Object = w[1]
 		var ctx: Object = load(WEAPON_DIR + "core/gs_weapon_context.gd").new()
 		var mirror := {}
+		var batched := {}
 		var hold := 0
 		for t: int in WEAPON_TICKS:
 			if hold <= 0:
@@ -141,6 +142,14 @@ func _test_weapon_idle_parity(rng: RandomNumberGenerator) -> void:
 	var same_shown := 0
 	var rested := [0, 0]  # script rest ticks, native rest ticks agreeing with them
 	var first_miss := ""
+	# The batch runs each tick beside idle(): an untuned twin first (declined, untouched), then the real one at row 1.
+	var batch: Object = ClassDB.instantiate(&"GSSimWeaponIdleBatch") if GSSim.has(&"weapon_idle") else null
+	_check(batch != null, "GSSimWeaponIdleBatch is loaded")
+	var untuned: Object = ClassDB.instantiate(&"GSSimWeaponSpread")
+	var untouched := {&"since_use": 3}
+	var took := _Took.new()
+	var batch_same := 0
+	var batch_declines := 0
 	for i: int in WEAPON_CASES:
 		var w := _weapon_case(rng)
 		var h: Object = w[0]
@@ -148,27 +157,17 @@ func _test_weapon_idle_parity(rng: RandomNumberGenerator) -> void:
 		var arsenal: Object = w[2]
 		var ctx: Object = load(WEAPON_DIR + "core/gs_weapon_context.gd").new()
 		var mirror := {}
+		var batched := {}
 		var hold := 0
 		var cone: bool = arsenal.spread_rules != null and arsenal.crosshair_cone
 		for t: int in WEAPON_TICKS:
 			if hold <= 0:
-				if rng.randf() < 0.5:
-					ctx.speed = 0.0
-					ctx.airborne = false
-					ctx.crouched = false
-					ctx.sliding = false
-					ctx.sprinting = false
-					ctx.wall_running = false
-					ctx.hurt_tick = t - rng.randi_range(0, 80) if rng.randf() < 0.3 else -1
-				else:
-					_weapon_posture(rng, ctx, h)
-				ctx.aiming = false
-				hold = rng.randi_range(1, 30)
+				hold = _idle_posture(rng, ctx, h, t)
 			hold -= 1
 			ctx.tick = t
 			if rng.randf() < 0.04:
 				var bloom := float(h.state.get(&"bloom", 0.0)) + rng.randf_range(0.0, 1.5)
-				for d: Dictionary in [h.state, mirror]:
+				for d: Dictionary in [h.state, mirror, batched]:
 					d[&"since_use"] = 0
 					d[&"bloom"] = bloom
 			var still := _weapon_still(ctx, arsenal)
@@ -176,6 +175,14 @@ func _test_weapon_idle_parity(rng: RandomNumberGenerator) -> void:
 			if not script_rested:
 				h._tick(ctx)
 			var got: float = native.idle(mirror, _weapon_row(ctx), still and not cone)
+			if batch != null:
+				var entries := [untuned, untouched, took, 0, true, native, batched, took, 1, not cone]
+				var flags := _idle_batch_step(batch, entries, ctx, still, got, mirror)
+				batch_declines += flags & 1
+				if flags & 2:
+					batch_same += 1
+				elif first_miss == "":
+					first_miss = "case %d tick %d: batch shown %s, idle %s, state %s" % [i, t, took.shown, got, _weapon_state_diff(mirror, batched)]
 			ticks += 1
 			var miss := _weapon_state_diff(h.state, mirror)
 			if miss == "":
@@ -201,6 +208,51 @@ func _test_weapon_idle_parity(rng: RandomNumberGenerator) -> void:
 	_check(same_state == ticks, "%d idle ticks: the native idle leaves the state the script's rest tick or tick does" % ticks, first_miss)
 	_check(rested[0] > ticks / 10 and rested[1] == rested[0], "it rests exactly when the script does (%d of %d rest ticks)" % [rested[1], rested[0]], first_miss)
 	_check(computed > ticks / 4 and same_shown == computed, "%d computed idle ticks: the native cone matches the script's to the bit" % computed, first_miss)
+	if batch != null:
+		_check(batch_same == ticks, "%d batched idle ticks: GSSimWeaponIdleBatch leaves the state and tells the behaviour what idle() answers" % ticks, first_miss)
+		_check(batch_declines == ticks, "an untuned entry declines every tick and is left untouched (%d of %d)" % [batch_declines, ticks])
+
+
+## A fresh idle posture for [method _test_weapon_idle_parity]: half the time settled (standing still, maybe hurt),
+## else a random one; never aiming. Returns how many ticks to hold it.
+func _idle_posture(rng: RandomNumberGenerator, ctx: Object, h: Object, t: int) -> int:
+	if rng.randf() < 0.5:
+		ctx.speed = 0.0
+		ctx.airborne = false
+		ctx.crouched = false
+		ctx.sliding = false
+		ctx.sprinting = false
+		ctx.wall_running = false
+		ctx.hurt_tick = t - rng.randi_range(0, 80) if rng.randf() < 0.3 else -1
+	else:
+		_weapon_posture(rng, ctx, h)
+	ctx.aiming = false
+	return rng.randi_range(1, 30)
+
+
+## One GSSimWeaponIdleBatch run of [param entries] (an untuned twin at row 0, the real one at row 1) beside idle()'s
+## answer [param got] and state [param mirror]. Bit 1: the untuned entry declined untouched; bit 2: the real one
+## left the state idle() did and told its behaviour the same cone.
+func _idle_batch_step(batch: Object, entries: Array, ctx: Object, still: bool, got: float, mirror: Dictionary) -> int:
+	var rows := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+	rows.append_array(_weapon_row(ctx))
+	rows.append(1.0 if still else 0.0)
+	var took: Object = entries[2]
+	took.shown = -9.0
+	var declined: PackedInt32Array = batch.run(entries, rows, 10)
+	var flags := 1 if declined == PackedInt32Array([0]) and entries[1] == {&"since_use": 3} else 0
+	var want := got if got != -1.0 else -9.0
+	if _weapon_state_diff(mirror, entries[6]) == "" and took.shown == want:
+		flags |= 2
+	return flags
+
+
+## Stands in for a behaviour told GSSimWeaponIdleBatch's answer.
+class _Took:
+	var shown := -9.0
+
+	func idle_native_took(v: float) -> void:
+		shown = v
 
 
 ## The game's `idle_still` for [param ctx]: settled (no speed, grounded, standing, no slide, sprint or wall run) and no
