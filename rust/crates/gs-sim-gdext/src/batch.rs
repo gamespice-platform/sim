@@ -124,7 +124,10 @@ impl GSSimMotorBatch {
     /// row stamps its state's rest where the end check settled (else drops it); a row taken back
     /// gets its stamp back. An answer whose counters are not all zero has flag 32. A row with bit 4
     /// in `extra[13]` (`ROW_CONSTS`, gs-player-controller 40) takes its values 23..38 from its
-    /// state's kept ones (`GSSimMotorState.set_consts`). A row without a state ends the run.
+    /// state's kept ones (`GSSimMotorState.set_consts`). A row with bit 8 (`ROW_EVENTS`,
+    /// gs-player-controller 42) gets flag 64 and a bit per change its tick made
+    /// (`gs_sim_motor::state::events`: 128 mode, 256 height, 512 slide, 1024 wall run). A row
+    /// without a state ends the run.
     #[func]
     #[allow(clippy::too_many_arguments)]
     fn run_states(
@@ -334,9 +337,14 @@ impl GSSimMotorBatch {
                 let old = state.bind().rest;
                 state.bind_mut().rest.after(&new, e, o);
                 self.rests.push((row, state.clone(), old));
+                let mut flags = o[12] as i64;
                 if mstate::counted(o) {
-                    o[12] = (o[12] as i64 | mstate::OUT_COUNTED) as f64;
+                    flags |= mstate::OUT_COUNTED;
                 }
+                if e[1] as i64 & mstate::ROW_EVENTS != 0 {
+                    flags |= mstate::events(c.as_slice(), &new);
+                }
+                o[12] = flags as f64;
             }
             into.set(row, &PackedFloat64Array::from(&new[..]).to_variant());
         }

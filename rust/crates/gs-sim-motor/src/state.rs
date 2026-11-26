@@ -29,6 +29,19 @@ pub const ROW_CONSTS_AT: usize = 23;
 /// Flag a batch adds to a row's answer when any counter in it (the collision counters, 13..19,
 /// and the move counters, 40..44) is not zero, so the script reads them only then.
 pub const OUT_COUNTED: i64 = 32;
+/// In `extra[1]`: the row's columns are the ones the player began its tick with, so the batch may
+/// say what the tick changed ([`events`]; gs-player-controller 42).
+pub const ROW_EVENTS: i64 = 8;
+/// Flags [`events`] adds to a row's answer: events were looked at (the bits after it hold), the
+/// mode changed, the height changed, a slide started or ended, a wall run started or ended.
+pub const OUT_EVENTS: i64 = 64;
+pub const OUT_MODE: i64 = 128;
+pub const OUT_MOVED_Y: i64 = 256;
+pub const OUT_SLIDE: i64 = 512;
+pub const OUT_WALL_RUN: i64 = 1024;
+/// Columns of the slide time and the wall-run time (sliding and wall running while at or over 0).
+const SLIDE_TIME: usize = 17;
+const WALL_RUN_TIME: usize = 22;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rest {
@@ -113,6 +126,26 @@ pub fn fill_consts(consts: Option<&[f64; CONSTS_LEN]>, extra: &[f64], row: &mut 
 /// Whether a row's answer `out` counts anything ([`OUT_COUNTED`]).
 pub fn counted(out: &[f64]) -> bool {
     out[13..20].iter().chain(&out[40..45]).any(|&v| v != 0.0)
+}
+
+/// What a tick from columns `c` to `new` changed, as the controller's end of tick compares them
+/// (`GSFpsController.end_tick`): [`OUT_EVENTS`] and a bit per change. The height compares as the
+/// script's `y - before_y`, so -0 and 0 are no change and a NaN is one.
+pub fn events(c: &[f64], new: &[f64]) -> i64 {
+    let mut f = OUT_EVENTS;
+    if c[MODE] != new[MODE] {
+        f |= OUT_MODE;
+    }
+    if c[1] != new[1] {
+        f |= OUT_MOVED_Y;
+    }
+    if (c[SLIDE_TIME] >= 0.0) != (new[SLIDE_TIME] >= 0.0) {
+        f |= OUT_SLIDE;
+    }
+    if (c[WALL_RUN_TIME] >= 0.0) != (new[WALL_RUN_TIME] >= 0.0) {
+        f |= OUT_WALL_RUN;
+    }
+    f
 }
 
 const _: () = assert!(cols::STRIDE > 12 && cols::ROW_OUT == 45);
@@ -238,5 +271,41 @@ mod tests {
         out[16] = 0.0;
         out[44] = 1.0;
         assert!(counted(&out));
+    }
+
+    #[test]
+    fn events_see_each_change_and_nothing_else() {
+        let c = columns();
+        let mut c = c;
+        c[SLIDE_TIME] = -1.0;
+        c[WALL_RUN_TIME] = -1.0;
+        let mut new = c.clone();
+        new[0] += 1.0;
+        new[4] += 2.0;
+        assert_eq!(events(&c, &new), OUT_EVENTS);
+        new[MODE] = 1.0;
+        assert_eq!(events(&c, &new), OUT_EVENTS | OUT_MODE);
+        new[1] += 0.5;
+        new[SLIDE_TIME] = 0.0;
+        new[WALL_RUN_TIME] = 0.25;
+        assert_eq!(
+            events(&c, &new),
+            OUT_EVENTS | OUT_MODE | OUT_MOVED_Y | OUT_SLIDE | OUT_WALL_RUN
+        );
+        // Still sliding (a later time) is no change; ending is one.
+        let mut sliding = c.clone();
+        sliding[SLIDE_TIME] = 0.1;
+        let mut later = sliding.clone();
+        later[SLIDE_TIME] = 0.2;
+        assert_eq!(events(&sliding, &later), OUT_EVENTS);
+        later[SLIDE_TIME] = -1.0;
+        assert_eq!(events(&sliding, &later), OUT_EVENTS | OUT_SLIDE);
+        let mut zero = c.clone();
+        zero[1] = 0.0;
+        let mut neg = zero.clone();
+        neg[1] = -0.0;
+        assert_eq!(events(&zero, &neg), OUT_EVENTS, "-0 is no height change");
+        neg[1] = f64::NAN;
+        assert_eq!(events(&zero, &neg), OUT_EVENTS | OUT_MOVED_Y);
     }
 }
