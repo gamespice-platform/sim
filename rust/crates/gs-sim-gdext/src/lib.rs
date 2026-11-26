@@ -75,6 +75,8 @@ mod sight;
 mod snapshot;
 #[cfg(feature = "snapshot_batch")]
 mod snapshot_batch;
+#[cfg(feature = "spawn")]
+mod spawn;
 #[cfg(feature = "bots")]
 mod tier;
 #[cfg(feature = "timer")]

@@ -195,6 +195,7 @@ dependencies = [
  "gs-sim-seek",
  "gs-sim-senses",
  "gs-sim-snapshot",
+ "gs-sim-spawn",
  "gs-sim-timer",
  "gs-sim-trace",
  "gs-sim-weapon",
@@ -282,6 +283,10 @@ dependencies = [
 
 [[package]]
 name = "gs-sim-snapshot"
+version = "0.1.0"
+
+[[package]]
+name = "gs-sim-spawn"
 version = "0.1.0"
 
 [[package]]
