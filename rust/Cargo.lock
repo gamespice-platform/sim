@@ -186,6 +186,7 @@ dependencies = [
  "gs-sim-interp",
  "gs-sim-math",
  "gs-sim-motor",
+ "gs-sim-navjoin",
  "gs-sim-players",
  "gs-sim-present",
  "gs-sim-pvs",
@@ -230,6 +231,10 @@ version = "0.1.0"
 dependencies = [
  "gs-sim-math",
 ]
+
+[[package]]
+name = "gs-sim-navjoin"
+version = "0.1.0"
 
 [[package]]
 name = "gs-sim-players"

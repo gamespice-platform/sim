@@ -45,6 +45,8 @@ mod killview;
 mod motor;
 #[cfg(feature = "motor")]
 mod motor_state;
+#[cfg(feature = "navjoin")]
+mod navjoin;
 #[cfg(feature = "zombie")]
 mod pace;
 #[cfg(feature = "players")]

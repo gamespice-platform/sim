@@ -1,0 +1,9 @@
+[package]
+name = "gs-sim-navjoin"
+description = "A navigation mesh's edge topology for GameSpice Bot's link join: polygons per shared edge and the islands (polygons joined by shared edges), as the script counts them."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]

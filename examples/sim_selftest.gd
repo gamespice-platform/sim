@@ -46,6 +46,8 @@ func _run() -> void:
 		await _test_sight_clear_to_parity()
 	if GSSim.has(&"timer"):
 		_test_timer()
+	if GSSim.has(&"navjoin"):
+		_test_navjoin_parity()
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -608,3 +610,92 @@ func _arm_case(rng: RandomNumberGenerator) -> Array:
 	var box := AABB(mid - size * rng.randf_range(0.0, 1.0), size)
 	var up := Vector3(rng.randf_range(-0.2, 0.2), 1.0, rng.randf_range(-0.2, 0.2)).normalized()
 	return [shoulder, target, lengths, pole, dir, to_anchor, box, up, rng.randf_range(-80.0, 80.0)]
+
+
+## GSSimNavJoin.topology against gs-bot's script: islands as GSBotNavGeometry.islands groups them (root = lowest
+## polygon) and the sides on each corner's edge as the string-keyed count, on random meshes with welded and
+## near-welded corners (a centimetre key, rounded half away from zero).
+func _test_navjoin_parity() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var join: Object = ClassDB.instantiate(&"GSSimNavJoin")
+	var bad := 0
+	var detail := ""
+	for case in 40:
+		var mesh := _navjoin_mesh(rng)
+		var vertices := mesh.get_vertices()
+		var polys := PackedInt32Array()
+		var offsets := PackedInt32Array([0])
+		var uses := PackedInt32Array()
+		var count := {}
+		var keys: Array[String] = []
+		for i in mesh.get_polygon_count():
+			var polygon := mesh.get_polygon(i)
+			polys.append_array(polygon)
+			offsets.append(polys.size())
+			for k in polygon.size():
+				var a := str(GSBotNavGeometry.vertex_key(vertices[polygon[k]]))
+				var b := str(GSBotNavGeometry.vertex_key(vertices[polygon[(k + 1) % polygon.size()]]))
+				var key := a + "|" + b if a < b else b + "|" + a
+				count[key] = int(count.get(key, 0)) + 1
+				keys.append(key)
+		for key in keys:
+			uses.append(int(count[key]))
+		var answer: Dictionary = join.call(&"topology", vertices, polys, offsets)
+		var roots: PackedInt32Array = answer.get("roots", PackedInt32Array())
+		var ok: bool = answer.get("uses", PackedInt32Array()) == uses and roots.size() == mesh.get_polygon_count()
+		var islands := GSBotNavGeometry.islands(mesh)
+		var covered := 0
+		for island in islands:
+			var members: PackedInt32Array = island["polygons"]
+			covered += members.size()
+			for p in members:
+				ok = ok and roots.size() > p and roots[p] == members[0]
+		ok = ok and covered == roots.size()
+		if not ok:
+			bad += 1
+			detail = "case %d: %d polygons, %d islands" % [case, mesh.get_polygon_count(), islands.size()]
+	_check(bad == 0, "navjoin: native edge sides and island roots are the script's on 40 random meshes", detail)
+	var refused: Dictionary = join.call(&"topology", PackedVector3Array([Vector3.ZERO]), PackedInt32Array([0, 5, 0]), PackedInt32Array([0, 3]))
+	_check(refused.is_empty(), "navjoin: a corner past the vertices is refused (empty), the caller keeps the script")
+
+
+## Strips of quads on a grid, some corners copied (welded by index), some nudged under half a centimetre
+## (the same key), some strips far apart (their own islands), a few loose triangles.
+static func _navjoin_mesh(rng: RandomNumberGenerator) -> NavigationMesh:
+	var vertices := PackedVector3Array()
+	var polygons: Array[PackedInt32Array] = []
+	for strip in rng.randi_range(1, 5):
+		var origin := Vector3(rng.randi_range(-3, 3) * 50.0, rng.randf_range(-2.0, 2.0), strip * 3.0)
+		var length := rng.randi_range(1, 12)
+		var row := []
+		for x in length + 1:
+			var pair := PackedInt32Array()
+			for z in 2:
+				var v := origin + Vector3(x * 1.25, 0.0, z * 1.5)
+				if rng.randf() < 0.3:
+					v += Vector3(rng.randf_range(-0.004, 0.004), 0.0, rng.randf_range(-0.004, 0.004))
+				vertices.append(v)
+				pair.append(vertices.size() - 1)
+				if rng.randf() < 0.2:
+					vertices.append(v)
+			row.append(pair)
+		for x in length:
+			if rng.randf() < 0.15:
+				continue
+			polygons.append(PackedInt32Array([row[x][0], row[x][1], row[x + 1][1], row[x + 1][0]]))
+	for t in rng.randi_range(0, 3):
+		var at := Vector3(rng.randf_range(-200.0, 200.0), 0.0, rng.randf_range(-200.0, 200.0))
+		vertices.append_array([at, at + Vector3(1, 0, 0), at + Vector3(0, 0, 1)])
+		var n := vertices.size()
+		polygons.append(PackedInt32Array([n - 3, n - 2, n - 1]))
+	for i in range(polygons.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var swap := polygons[i]
+		polygons[i] = polygons[j]
+		polygons[j] = swap
+	var mesh := NavigationMesh.new()
+	mesh.set_vertices(vertices)
+	for polygon in polygons:
+		mesh.add_polygon(polygon)
+	return mesh
