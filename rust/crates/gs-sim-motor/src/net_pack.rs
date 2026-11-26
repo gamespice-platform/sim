@@ -1,6 +1,7 @@
 //! gs-player-controller's `GSFpsNetSync` packers (`pack_flags`, `pack_timers`, `pack_timers2`,
 //! `pack_stamina`) over a state's columns ([`crate::cols`]), so a server's per-player pull is one
-//! call instead of a property read per field. Same integers as the script, bit for bit.
+//! call instead of a property read per field. Same integers as the script, bit for bit. [`pull`] adds the
+//! sub-quantum hold a carrier applies after it, so the whole movement pull is one call.
 
 /// `GSFpsCommand.BUTTON_BITS`.
 pub const BUTTON_BITS: u32 = 8;
@@ -30,6 +31,7 @@ const T2_MAX: i64 = (1 << JUMP_TIMER_BITS) - 1;
 
 // Column offsets (`GSFpsStateColumns`).
 const MODE: usize = 9;
+const YAW: usize = 12;
 const PREVIOUS_BUTTONS: usize = 13;
 const TIME_SINCE_JUMP: usize = 14;
 const TIME_SINCE_GROUNDED: usize = 15;
@@ -171,6 +173,114 @@ pub fn pack(cols: &[f64], extra: &Extra) -> [i64; 4] {
     ]
 }
 
+/// [`hold_mask`] bit: keep the velocity from before the pull.
+pub const HOLD_VELOCITY: i64 = 1;
+/// [`hold_mask`] bit: keep the yaw from before the pull.
+pub const HOLD_YAW: i64 = 2;
+/// [`hold_mask`] bit: keep the pitch from before the pull.
+pub const HOLD_PITCH: i64 = 4;
+
+/// How a carrier writes its velocity (gs-net `VECTOR3_VELOCITY`, `-speed..speed` in `velocity_bits`) and its
+/// yaw and pitch (`ANGLE`, `*_bits` wide). A width outside 1..=62 leaves that property out of the hold.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Wire {
+    pub speed: f64,
+    pub velocity_bits: i64,
+    pub yaw_bits: i64,
+    pub pitch_bits: i64,
+}
+
+/// The replicated values before a pull: the velocity as the carrier stores it (`Vector3`, so `f32`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Held {
+    pub velocity: [f32; 3],
+    pub yaw: f64,
+    pub pitch: f64,
+}
+
+fn width_ok(bits: i64) -> bool {
+    (1..=62).contains(&bits)
+}
+
+/// Godot's `clampf`: a NaN passes through.
+fn clampf(x: f64, lo: f64, hi: f64) -> f64 {
+    if x < lo {
+        lo
+    } else if x > hi {
+        hi
+    } else {
+        x
+    }
+}
+
+/// Godot's `fposmod`.
+fn fposmod(x: f64, y: f64) -> f64 {
+    let mut value = x % y;
+    if (value < 0.0 && y > 0.0) || (value > 0.0 && y < 0.0) {
+        value += y;
+    }
+    value + 0.0
+}
+
+/// gs-net `GSNetVar._snap_range`: the value a range-quantised float reads back as.
+pub fn snap_range(value: f64, min: f64, max: f64, bits: i64) -> f64 {
+    let mask = (1i64 << bits) - 1;
+    let normalised = clampf((value - min) / (max - min), 0.0, 1.0);
+    let quantised = (normalised * mask as f64).round() as i64 & mask;
+    min + quantised as f64 / mask as f64 * (max - min)
+}
+
+/// The code gs-net's `write_angle` puts on the wire for `degrees` (Fatal Contact's `FcPlayerNet._angle_code`).
+pub fn angle_code(degrees: f64, bits: i64) -> i64 {
+    let mask = (1i64 << bits) - 1;
+    (fposmod(degrees, 360.0) / 360.0 * mask as f64).round() as i64 & mask
+}
+
+fn snap_velocity(v: [f32; 3], wire: &Wire) -> [f32; 3] {
+    v.map(|c| snap_range(f64::from(c), -wire.speed, wire.speed, wire.velocity_bits) as f32)
+}
+
+/// Which of velocity, yaw and pitch a pull should leave at [`Held`] (`HOLD_*` bits): those whose new value
+/// (`cols` velocity and yaw, `pitch`) differs but writes the same wire codes, so the carrier reports no change no
+/// receiver could see. Fatal Contact's `FcPlayerNet._hold_subquantum`, to the bit.
+pub fn hold_mask(cols: &[f64], pitch: f64, held: &Held, wire: &Wire) -> i64 {
+    let mut mask = 0;
+    if width_ok(wire.velocity_bits) && wire.speed > 0.0 {
+        let velocity = [cols[3] as f32, cols[4] as f32, cols[5] as f32];
+        if velocity != held.velocity
+            && snap_velocity(velocity, wire) == snap_velocity(held.velocity, wire)
+        {
+            mask |= HOLD_VELOCITY;
+        }
+    }
+    let yaw = cols[YAW];
+    if width_ok(wire.yaw_bits)
+        && yaw != held.yaw
+        && angle_code(yaw, wire.yaw_bits) == angle_code(held.yaw, wire.yaw_bits)
+    {
+        mask |= HOLD_YAW;
+    }
+    if width_ok(wire.pitch_bits)
+        && pitch != held.pitch
+        && angle_code(pitch, wire.pitch_bits) == angle_code(held.pitch, wire.pitch_bits)
+    {
+        mask |= HOLD_PITCH;
+    }
+    mask
+}
+
+/// [`pack`] and then [`hold_mask`]: `[flags, timers, timers2, stamina, hold]`, a server's whole movement pull.
+pub fn pull(cols: &[f64], extra: &Extra, pitch: f64, held: &Held, wire: &Wire) -> [i64; 5] {
+    let [flags, timers, timers2, stamina] = pack(cols, extra);
+    [
+        flags,
+        timers,
+        timers2,
+        stamina,
+        hold_mask(cols, pitch, held, wire),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +342,79 @@ mod tests {
             ..extra()
         };
         assert_eq!(pack_stamina(&e), 8192 | 1 << 14 | 8191 << 15);
+    }
+
+    const WIRE: Wire = Wire {
+        speed: 100.0,
+        velocity_bits: 12,
+        yaw_bits: 16,
+        pitch_bits: 16,
+    };
+
+    fn held(cols: &[f64], pitch: f64) -> Held {
+        Held {
+            velocity: [cols[3] as f32, cols[4] as f32, cols[5] as f32],
+            yaw: cols[YAW],
+            pitch,
+        }
+    }
+
+    #[test]
+    fn hold_keeps_subquantum_changes_only() {
+        let mut cols = DEFAULTS;
+        cols[3] = 3.0;
+        cols[YAW] = 90.0;
+        let before = held(&cols, 10.0);
+        // Nothing changed: nothing to hold.
+        assert_eq!(hold_mask(&cols, 10.0, &before, &WIRE), 0);
+        // A step far below a code (200 / 4095 for velocity, 360 / 65535 for angles) is held.
+        cols[3] = 3.0001;
+        cols[YAW] = 90.0001;
+        assert_eq!(
+            hold_mask(&cols, 10.0001, &before, &WIRE),
+            HOLD_VELOCITY | HOLD_YAW | HOLD_PITCH
+        );
+        // A step of whole codes is not.
+        cols[3] = 4.0;
+        cols[YAW] = 91.0;
+        assert_eq!(hold_mask(&cols, 11.0, &before, &WIRE), 0);
+        // A width out of range drops the property.
+        let off = Wire {
+            velocity_bits: 0,
+            yaw_bits: 63,
+            ..WIRE
+        };
+        cols[3] = 3.0001;
+        cols[YAW] = 90.0001;
+        assert_eq!(hold_mask(&cols, 10.0001, &before, &off), HOLD_PITCH);
+    }
+
+    #[test]
+    fn angle_code_wraps_like_fposmod() {
+        assert_eq!(angle_code(-90.0, 8), angle_code(270.0, 8));
+        assert_eq!(angle_code(360.0, 8), 0);
+        assert_eq!(angle_code(-0.0, 8), 0);
+        assert_eq!(angle_code(f64::NAN, 8), 0);
+        assert_eq!(angle_code(359.9, 8), 255);
+    }
+
+    #[test]
+    fn snap_range_clamps() {
+        assert_eq!(snap_range(500.0, -100.0, 100.0, 12), 100.0);
+        assert_eq!(snap_range(-500.0, -100.0, 100.0, 12), -100.0);
+        assert_eq!(
+            snap_range(0.0, -1.0, 1.0, 1),
+            1.0,
+            "half rounds away from zero"
+        );
+    }
+
+    #[test]
+    fn pull_is_pack_then_hold() {
+        let cols = DEFAULTS;
+        let before = held(&cols, 0.0);
+        let out = pull(&cols, &extra(), 0.0, &before, &WIRE);
+        assert_eq!(out[..4], pack(&cols, &extra()));
+        assert_eq!(out[4], 0);
     }
 }
