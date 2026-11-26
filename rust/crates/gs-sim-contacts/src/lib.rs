@@ -94,6 +94,50 @@ pub fn contact(r: &[f64], launch_enabled: bool) -> Contact {
     c
 }
 
+/// The contact fields a player keeps from tick to tick until its state changes (eye and aim
+/// heights, alive, team, the four motion flags and the health ratio), as bits, in the order a
+/// writer sets them. [`Stable::changed`] says which to write again; position, velocity and view
+/// move nearly every tick and are always written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stable([u64; STABLE]);
+
+/// Fields in a [`Stable`].
+pub const STABLE: usize = 9;
+
+impl Stable {
+    /// [param c]'s kept fields with the world's [param eye] and [param aim] heights: eye, aim,
+    /// alive, team, grounded, sliding, wall running, air jump ready, health.
+    pub fn of(c: &Contact, eye: f64, aim: f64) -> Self {
+        Self([
+            eye.to_bits(),
+            aim.to_bits(),
+            u64::from(c.alive),
+            c.team as u64,
+            u64::from(c.grounded),
+            u64::from(c.sliding),
+            u64::from(c.wall_running),
+            u64::from(c.air_jump_ready),
+            c.health.to_bits(),
+        ])
+    }
+
+    /// A bit per field (in [`Stable::of`]'s order) that differs from [param before], to the bit
+    /// (a NaN that stays the same NaN is unchanged; -0.0 after 0.0 is a change). Every bit
+    /// without a [param before].
+    pub fn changed(&self, before: Option<&Stable>) -> u16 {
+        let Some(b) = before else {
+            return (1 << STABLE) - 1;
+        };
+        let mut mask = 0;
+        for k in 0..STABLE {
+            if self.0[k] != b.0[k] {
+                mask |= 1 << k;
+            }
+        }
+        mask
+    }
+}
+
 /// Godot's `at + Vector3.UP * h`.
 pub fn lift(at: [f32; 3], h: f64) -> [f32; 3] {
     let h = h as f32;
@@ -115,6 +159,35 @@ mod tests {
             *v = 0.1 * i as f64 + 0.123_456_789;
         }
         r
+    }
+
+    #[test]
+    fn stable_changes_to_the_bit() {
+        let c = contact(&record(CONTROLLER | ALIVE | HEALTH), true);
+        let a = Stable::of(&c, 1.6, 1.2);
+        assert_eq!(a.changed(None), 0b1_1111_1111);
+        assert_eq!(a.changed(Some(&a)), 0);
+        let mut d = c;
+        d.health = -0.0;
+        let mut e = c;
+        e.health = 0.0;
+        assert_eq!(
+            Stable::of(&d, 1.6, 1.2).changed(Some(&Stable::of(&e, 1.6, 1.2))),
+            1 << 8
+        );
+        d.health = f64::NAN;
+        let n = Stable::of(&d, 1.6, 1.2);
+        assert_eq!(n.changed(Some(&n)), 0);
+        let mut f = c;
+        f.alive = !c.alive;
+        f.sliding = !c.sliding;
+        assert_eq!(Stable::of(&f, 1.6, 1.2).changed(Some(&a)), 1 << 2 | 1 << 5);
+        assert_eq!(Stable::of(&c, 1.7, 1.2).changed(Some(&a)), 1);
+        f = c;
+        f.team = 3;
+        f.position = [9.0; 3];
+        f.view_yaw = 4.0;
+        assert_eq!(Stable::of(&f, 1.6, 1.2).changed(Some(&a)), 1 << 3);
     }
 
     #[test]
