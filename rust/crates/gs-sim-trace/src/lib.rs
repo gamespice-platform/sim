@@ -307,10 +307,11 @@ mod tests {
         assert!(bvh.line_of_sight(1.0, [0.0, 0.0, 5.0], [4.0, 2.0, 5.0]));
         assert!(bvh.line_of_sight(f64::NEG_INFINITY, [2.5, 0.5, 0.5], [2.50003, 0.5, 0.50004]));
         // It agrees with world_ray finding nothing.
-        for (f, t) in [
+        let lines: [([f32; 3], [f32; 3]); 2] = [
             ([0.0, 0.5, 0.5], [5.0, 0.7, 0.2]),
             ([0.0, 3.0, 0.5], [4.0, 0.2, 0.5]),
-        ] {
+        ];
+        for (f, t) in lines {
             let d = [t[0] - f[0], t[1] - f[1], t[2] - f[2]];
             let n: f32 = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
             let dir = [d[0] / n, d[1] / n, d[2] / n];
