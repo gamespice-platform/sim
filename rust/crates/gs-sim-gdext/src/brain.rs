@@ -419,6 +419,65 @@ impl GSSimBotMind {
         PackedFloat64Array::from(&row[..])
     }
 
+    /// One `GSBotBrain._hear` over GSBotWorld's sound rows (`gs_sim_brain::hear::STRIDE` each,
+    /// oldest first) on the brain's stream. A source's team comes from `senses`' bodies or, when
+    /// `senses` is null, from the ones [`Self::hold_senses`] kept (so it runs on a worker thread).
+    /// `io`: after_seq, now, here x, y, z, reach, my_id, my_team, eager, counter. Returns heard
+    /// (0 or 1), x, y, z, chase (0 or 1), counter; empty when no bodies are at hand or `io` is
+    /// short (the script then hears).
+    #[func]
+    fn hear(
+        &self,
+        senses: Option<Gd<GSSimBotSenses>>,
+        rows: PackedFloat64Array,
+        io: PackedFloat64Array,
+    ) -> PackedFloat64Array {
+        let packed = match senses {
+            Some(s) => s.bind().share(),
+            None => match &self.held {
+                Some(h) => Arc::clone(h),
+                None => return PackedFloat64Array::new(),
+            },
+        };
+        let a = io.as_slice();
+        if a.len() < 10 {
+            return PackedFloat64Array::new();
+        }
+        let inp = gs_sim_brain::hear::HearIn {
+            after_seq: a[0] as i64,
+            now: a[1],
+            here: V3::new(a[2] as f32, a[3] as f32, a[4] as f32),
+            reach: a[5],
+            my_id: a[6] as i64,
+            my_team: a[7] as i64,
+            eager: a[8],
+        };
+        let table = &packed.table;
+        let team_of = |id: i64| {
+            table
+                .ids
+                .iter()
+                .position(|&x| x == id)
+                .map(|i| table.teams[i] as i64)
+        };
+        let mut rng = Stream::new(self.brain_key, a[9] as i64);
+        let heard = gs_sim_brain::hear::hear(rows.as_slice(), &inp, team_of, &mut rng);
+        let (h, p, c) = match heard {
+            Some(x) => (1.0, x.pos, x.chase),
+            None => (0.0, V3::new(0.0, 0.0, 0.0), false),
+        };
+        PackedFloat64Array::from(
+            &[
+                h,
+                p.x as f64,
+                p.y as f64,
+                p.z as f64,
+                if c { 1.0 } else { 0.0 },
+                rng.counter as f64,
+            ][..],
+        )
+    }
+
     /// The brain's sight cache: 1 or 0 for a good cached answer about `id`, -1 when sight must be asked.
     #[func]
     fn sight_cached(&self, id: i64, now: f64, stamp: i64) -> i64 {
