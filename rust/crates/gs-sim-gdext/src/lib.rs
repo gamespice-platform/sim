@@ -91,6 +91,8 @@ mod threat;
 mod tier;
 #[cfg(feature = "timer")]
 mod timer;
+#[cfg(feature = "volumes")]
+mod volumes;
 #[cfg(feature = "weapon")]
 mod weapon;
 #[cfg(feature = "weapon_net")]
