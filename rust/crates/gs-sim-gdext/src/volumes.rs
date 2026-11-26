@@ -44,8 +44,9 @@ impl GSSimVolumes {
         self.set.len() as i64
     }
 
-    /// One byte per point of [param points]: 1 where the box `point + below .. point + above`
-    /// touches no volume (faces meeting count as touching), 0 where it does or the point is not finite.
+    /// One byte per point of [param points]: 1 where it lies outside every volume grown by [param below]
+    /// under its low corner and [param above] over its high one (a face counts as near), 0 where it does
+    /// not or the point is not finite.
     #[func]
     fn clear_of(
         &self,
