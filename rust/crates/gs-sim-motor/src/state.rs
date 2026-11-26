@@ -32,6 +32,9 @@ pub const OUT_COUNTED: i64 = 32;
 /// In `extra[1]`: the row's columns are the ones the player began its tick with, so the batch may
 /// say what the tick changed ([`events`]; gs-player-controller 42).
 pub const ROW_EVENTS: i64 = 8;
+/// In `extra[1]`: the row's crouch is the batch's ([`crate::crouch::row`], before the tick): the
+/// script left it, and the row's columns are the ones before it (gs-player-controller 43).
+pub const ROW_CROUCH: i64 = 16;
 /// Flags [`events`] adds to a row's answer: events were looked at (the bits after it hold), the
 /// mode changed, the height changed, a slide started or ended, a wall run started or ended.
 pub const OUT_EVENTS: i64 = 64;
