@@ -397,6 +397,169 @@ pub fn tricks(io: &mut [f64], key: i64) -> bool {
     true
 }
 
+/// What [`Resident`]'s steps return, packed in one `i64` so only the intent's buttons cross.
+pub mod packed {
+    pub const JUMP: i64 = 1;
+    pub const CROUCH: i64 = 2;
+    pub const AIR_JUMP: i64 = 4;
+    /// The step stopped for the wall probe: look along [`super::Resident::heading`] and resume.
+    pub const PROBE: i64 = 8;
+    /// The move changed: read [`super::Resident::move_xy`].
+    pub const MOVED: i64 = 16;
+    /// The counts (slide, hop, wall, wall_jump, crouch, air_jump), four bits each from here.
+    pub const COUNTS_SHIFT: u32 = 8;
+    /// How many draws the step took from the brain's stream, from here up.
+    pub const COUNTER_SHIFT: u32 = 32;
+    /// The input flags of [`super::Input::bits`]: the scene code in the low three bits, then these.
+    pub const IN_GROUNDED: i64 = 8;
+    pub const IN_WALL_RUNNING: i64 = 16;
+    pub const IN_AIR_JUMP_READY: i64 = 32;
+    pub const IN_CAN_PROBE: i64 = 64;
+    pub const IN_JUMP: i64 = 128;
+    pub const IN_CROUCH: i64 = 256;
+    pub const IN_AIR_JUMP: i64 = 512;
+}
+
+/// How many state slots (`PHASE` to `WAS_CROUCH`) a bot's tricks carry between steps.
+pub const STATE_LEN: usize = io::WAS_CROUCH + 1;
+
+/// One step's inputs for [`Resident::step`]: what the row's per-step slots hold.
+pub struct Input {
+    pub now: f64,
+    pub dt: f64,
+    pub up: f64,
+    pub yaw: f64,
+    pub out_yaw: f64,
+    pub health: f64,
+    pub vel_x: f64,
+    pub vel_z: f64,
+    pub move_x: f64,
+    pub move_y: f64,
+    pub counter: i64,
+    /// [`packed`]'s `IN_*` flags over the scene code.
+    pub bits: i64,
+    /// jump, trick_chain, cover_crouch, trick_delay, air_jump, wall_run, slide, slide_speed.
+    pub profile: [f64; 8],
+}
+
+/// One bot's tricks with their state kept native between steps (GSSimBotMind holds one per
+/// bot): a step takes the inputs and gives back the buttons packed ([`packed`]), the same
+/// choices and draws as [`tricks`] over a row the script carried.
+pub struct Resident {
+    row: [f64; io::LEN],
+    counter_in: i64,
+}
+
+impl Default for Resident {
+    fn default() -> Self {
+        let mut r = Resident {
+            row: [0.0; io::LEN],
+            counter_in: 0,
+        };
+        r.reset();
+        r
+    }
+}
+
+impl Resident {
+    /// GSBotTricks.reset: idle, no wall, no duck.
+    pub fn reset(&mut self) {
+        self.row[io::PHASE] = phase::IDLE;
+        self.row[io::WALL..io::WALL + 3].fill(0.0);
+        self.row[io::DUCK_UNTIL] = f64::NEG_INFINITY;
+    }
+
+    /// The carried state, `PHASE` to `WAS_CROUCH`.
+    pub fn state(&self) -> &[f64] {
+        &self.row[..STATE_LEN]
+    }
+
+    /// Takes the carried state over (a script that held it hands it here); false when short.
+    pub fn load(&mut self, state: &[f64]) -> bool {
+        if state.len() < STATE_LEN {
+            return false;
+        }
+        self.row[..STATE_LEN].copy_from_slice(&state[..STATE_LEN]);
+        true
+    }
+
+    /// The heading a probe wanted by the last step looks along.
+    pub fn heading(&self) -> (f64, f64) {
+        (self.row[io::HEADING], self.row[io::HEADING + 1])
+    }
+
+    /// The intent's move after the last step.
+    pub fn move_xy(&self) -> (f64, f64) {
+        (self.row[io::MOVE_X], self.row[io::MOVE_Y])
+    }
+
+    /// One `apply` from its start on the brain's stream `key`.
+    pub fn step(&mut self, i: &Input, key: i64) -> i64 {
+        let r = &mut self.row;
+        r[io::COUNTER] = i.counter as f64;
+        r[io::NOW] = i.now;
+        r[io::DT] = i.dt;
+        r[io::SCENE] = (i.bits & 7) as f64;
+        r[io::UP] = i.up;
+        r[io::YAW] = i.yaw;
+        r[io::VEL_X] = i.vel_x;
+        r[io::VEL_Z] = i.vel_z;
+        r[io::GROUNDED] = flag(i.bits & packed::IN_GROUNDED != 0);
+        r[io::WALL_RUNNING] = flag(i.bits & packed::IN_WALL_RUNNING != 0);
+        r[io::AIR_JUMP_READY] = flag(i.bits & packed::IN_AIR_JUMP_READY != 0);
+        r[io::HEALTH] = i.health;
+        r[io::CAN_PROBE] = flag(i.bits & packed::IN_CAN_PROBE != 0);
+        r[io::P_JUMP..io::P_JUMP + 8].copy_from_slice(&i.profile);
+        r[io::MOVE_X] = i.move_x;
+        r[io::MOVE_Y] = i.move_y;
+        r[io::JUMP] = flag(i.bits & packed::IN_JUMP != 0);
+        r[io::CROUCH] = flag(i.bits & packed::IN_CROUCH != 0);
+        r[io::AIR_JUMPED] = flag(i.bits & packed::IN_AIR_JUMP != 0);
+        r[io::OUT_YAW] = i.out_yaw;
+        r[io::STAGE] = 0.0;
+        self.counter_in = i.counter;
+        tricks(&mut self.row, key);
+        self.pack(i.move_x, i.move_y)
+    }
+
+    /// The rest of a step that stopped for the probe, with the wall's normal (zero: none).
+    pub fn resume(&mut self, wall: [f64; 3], key: i64) -> i64 {
+        if self.row[io::STAGE] != 1.0 {
+            return self.pack(self.row[io::MOVE_X], self.row[io::MOVE_Y]);
+        }
+        let (mx, my) = self.move_xy();
+        self.row[io::STAGE] = 2.0;
+        self.row[io::WALL_IN..io::WALL_IN + 3].copy_from_slice(&wall);
+        tricks(&mut self.row, key);
+        self.pack(mx, my)
+    }
+
+    fn pack(&self, move_x: f64, move_y: f64) -> i64 {
+        let r = &self.row;
+        if r[io::STAGE] == 1.0 {
+            return packed::PROBE;
+        }
+        let mut out = 0;
+        if r[io::JUMP] != 0.0 {
+            out |= packed::JUMP;
+        }
+        if r[io::CROUCH] != 0.0 {
+            out |= packed::CROUCH;
+        }
+        if r[io::AIR_JUMPED] != 0.0 {
+            out |= packed::AIR_JUMP;
+        }
+        if r[io::MOVE_X] != move_x || r[io::MOVE_Y] != move_y {
+            out |= packed::MOVED;
+        }
+        for c in 0..6 {
+            let n = (r[io::COUNTS + c] as i64).clamp(0, 15);
+            out |= n << (packed::COUNTS_SHIFT + 4 * c as u32);
+        }
+        out | ((r[io::COUNTER] as i64 - self.counter_in) << packed::COUNTER_SHIFT)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -483,5 +646,89 @@ mod tests {
         assert!(tricks(&mut r, mix(1)));
         assert_eq!(r[io::CROUCH], 1.0);
         assert_eq!(r[io::COUNTER], 0.0);
+    }
+
+    #[test]
+    fn resident_matches_the_carried_row() {
+        let mut carried = row();
+        let mut res = Resident::default();
+        let key = mix(7);
+        let mut counter = 0i64;
+        for k in 0..400 {
+            let now = k as f64 * 0.05;
+            let fast = k % 40 < 25;
+            let grounded = k % 17 != 0;
+            let i = Input {
+                now,
+                dt: 0.05,
+                up: if k % 50 < 5 { 3.0 } else { 0.0 },
+                yaw: 10.0 * k as f64,
+                out_yaw: 10.0 * k as f64,
+                health: 0.4,
+                vel_x: if fast { 9.0 } else { 1.0 },
+                vel_z: 2.0,
+                move_x: 0.0,
+                move_y: 1.0,
+                counter,
+                bits: (k % 6) as i64
+                    | if grounded { packed::IN_GROUNDED } else { 0 }
+                    | if k % 9 < 4 {
+                        packed::IN_WALL_RUNNING
+                    } else {
+                        0
+                    }
+                    | packed::IN_AIR_JUMP_READY
+                    | packed::IN_CAN_PROBE,
+                profile: [0.3, 0.5, 0.5, 0.2, 0.5, 0.5, 1.0, 6.5],
+            };
+            carried[io::STAGE] = 0.0;
+            carried[io::COUNTER] = counter as f64;
+            carried[io::NOW] = i.now;
+            carried[io::DT] = i.dt;
+            carried[io::SCENE] = (i.bits & 7) as f64;
+            carried[io::UP] = i.up;
+            carried[io::YAW] = i.yaw;
+            carried[io::VEL_X] = i.vel_x;
+            carried[io::VEL_Z] = i.vel_z;
+            carried[io::GROUNDED] = flag(grounded);
+            carried[io::WALL_RUNNING] = flag(i.bits & packed::IN_WALL_RUNNING != 0);
+            carried[io::AIR_JUMP_READY] = 1.0;
+            carried[io::HEALTH] = i.health;
+            carried[io::CAN_PROBE] = 1.0;
+            carried[io::MOVE_X] = 0.0;
+            carried[io::MOVE_Y] = 1.0;
+            carried[io::JUMP] = 0.0;
+            carried[io::CROUCH] = 0.0;
+            carried[io::AIR_JUMPED] = 0.0;
+            carried[io::OUT_YAW] = i.out_yaw;
+            assert!(tricks(&mut carried, key));
+            let wall = if k % 3 == 0 {
+                [0.0, 0.0, 1.0]
+            } else {
+                [0.0; 3]
+            };
+            if carried[io::STAGE] == 1.0 {
+                carried[io::STAGE] = 2.0;
+                carried[io::WALL_IN..io::WALL_IN + 3].copy_from_slice(&wall);
+                assert!(tricks(&mut carried, key));
+            }
+            let mut got = res.step(&i, key);
+            if got & packed::PROBE != 0 {
+                got = res.resume(wall, key);
+            }
+            assert_eq!(res.state(), &carried[..STATE_LEN], "tick {k}");
+            assert_eq!(got & packed::JUMP != 0, carried[io::JUMP] != 0.0);
+            assert_eq!(got & packed::CROUCH != 0, carried[io::CROUCH] != 0.0);
+            assert_eq!(got & packed::AIR_JUMP != 0, carried[io::AIR_JUMPED] != 0.0);
+            assert_eq!(res.move_xy(), (carried[io::MOVE_X], carried[io::MOVE_Y]));
+            for c in 0..6 {
+                let n = (got >> (packed::COUNTS_SHIFT + 4 * c as u32)) & 15;
+                assert_eq!(n as f64, carried[io::COUNTS + c]);
+            }
+            counter += got >> packed::COUNTER_SHIFT;
+            assert_eq!(counter as f64, carried[io::COUNTER]);
+        }
+        res.reset();
+        assert_eq!(res.state()[io::DUCK_UNTIL], f64::NEG_INFINITY);
     }
 }

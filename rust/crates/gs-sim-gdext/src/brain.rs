@@ -92,6 +92,8 @@ pub struct GSSimBotMind {
     held: Option<Arc<Packed>>,
     /// The query this mind asks a [`GSSimSightRay`] with, when that is its `los`.
     query: SightQuery,
+    /// GSBotTricks' state, kept here between steps ([`Self::tricks_step`]).
+    trick: gs_sim_brain::tricks::Resident,
 }
 
 impl GSSimBotMind {
@@ -132,6 +134,7 @@ impl IRefCounted for GSSimBotMind {
             found: Found::default(),
             held: None,
             query: SightQuery::default(),
+            trick: gs_sim_brain::tricks::Resident::default(),
         }
     }
 }
@@ -417,6 +420,102 @@ impl GSSimBotMind {
             return PackedFloat64Array::new();
         }
         PackedFloat64Array::from(&row[..])
+    }
+
+    /// One `GSBotTricks.apply` on the state this mind keeps (`tricks_load` hands it over,
+    /// `tricks_state` gives it back): returns the buttons packed (`gs_sim_brain::tricks::packed`:
+    /// jump 1, crouch 2, air_jump 4, probe 8, move changed 16, counts 4 bits each from bit 8,
+    /// the draws taken from bit 32), or -1 when `profile` is short. `bits`: the scene code (0
+    /// other, 1 close, 2 chase, 3 flee, 4 roam, 5 cover), grounded 8, wall_running 16,
+    /// air_jump_ready 32, a world to probe 64, the intent's jump 128, crouch 256, air_jump 512.
+    /// `profile`: jump, trick_chain, cover_crouch, trick_delay, air_jump, wall_run, slide and
+    /// the tricks' slide_speed. On probe 8, run the wall probe along `tricks_heading` and finish
+    /// with `tricks_wall`.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn tricks_step(
+        &mut self,
+        now: f64,
+        dt: f64,
+        up: f64,
+        yaw: f64,
+        out_yaw: f64,
+        health: f64,
+        velocity: Vector3,
+        move_: Vector2,
+        counter: i64,
+        bits: i64,
+        profile: PackedFloat64Array,
+    ) -> i64 {
+        let pr = profile.as_slice();
+        if pr.len() < 8 {
+            godot_error!(
+                "GSSimBotMind.tricks_step: profile holds {} of 8 values",
+                pr.len()
+            );
+            return -1;
+        }
+        let mut p = [0.0; 8];
+        p.copy_from_slice(&pr[..8]);
+        let input = gs_sim_brain::tricks::Input {
+            now,
+            dt,
+            up,
+            yaw,
+            out_yaw,
+            health,
+            vel_x: velocity.x as f64,
+            vel_z: velocity.z as f64,
+            move_x: move_.x as f64,
+            move_y: move_.y as f64,
+            counter,
+            bits,
+            profile: p,
+        };
+        self.trick.step(&input, self.brain_key)
+    }
+
+    /// The heading the wall probe a `tricks_step` asked for looks along.
+    #[func]
+    fn tricks_heading(&self) -> Vector2 {
+        let (x, y) = self.trick.heading();
+        Vector2::new(x as f32, y as f32)
+    }
+
+    /// The rest of a `tricks_step` that asked for the probe, with the wall's normal (zero: none);
+    /// returns the buttons packed as `tricks_step` does.
+    #[func]
+    fn tricks_wall(&mut self, wall: Vector3) -> i64 {
+        self.trick.resume(
+            [wall.x as f64, wall.y as f64, wall.z as f64],
+            self.brain_key,
+        )
+    }
+
+    /// The intent's move after the last tricks step (read it when the step's bit 16 is set).
+    #[func]
+    fn tricks_move(&self) -> Vector2 {
+        let (x, y) = self.trick.move_xy();
+        Vector2::new(x as f32, y as f32)
+    }
+
+    /// GSBotTricks.reset on the kept state.
+    #[func]
+    fn tricks_reset(&mut self) {
+        self.trick.reset();
+    }
+
+    /// The kept state: phase, at, until, look_at, quiet_until, wall x y z, chain, duck_until,
+    /// duck_next, air_next, was_crouch (the first 13 slots of `tricks`' row).
+    #[func]
+    fn tricks_state(&self) -> PackedFloat64Array {
+        PackedFloat64Array::from(self.trick.state())
+    }
+
+    /// Takes the state over in `tricks_state`'s layout; false (and keeps its own) when short.
+    #[func]
+    fn tricks_load(&mut self, state: PackedFloat64Array) -> bool {
+        self.trick.load(state.as_slice())
     }
 
     /// One roaming steer (`GSBotBrain._walk`, `_hold` or `_drift` with `_set_move`) over the row
