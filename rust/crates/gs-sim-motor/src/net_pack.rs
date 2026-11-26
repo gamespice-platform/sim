@@ -173,6 +173,95 @@ pub fn pack(cols: &[f64], extra: &Extra) -> [i64; 4] {
     ]
 }
 
+const POSITION: usize = 0;
+const VELOCITY: usize = 3;
+
+/// `GSFpsNetSync.wall_jump_counts`: `(airborne total, per-wall count)`, `(0, 0)` for a code it never writes.
+pub fn wall_jump_counts(code: i64) -> (i64, i64) {
+    for total in 1..4 {
+        let first = ((total * (total - 1)) >> 1) + 1;
+        if code >= first && code < first + total {
+            return (total, code - first + 1);
+        }
+    }
+    (0, 0)
+}
+
+fn field(flags: i64, shift: u32, bits: u32) -> f64 {
+    ((flags >> shift) & ((1 << bits) - 1)) as f64
+}
+
+/// `GSFpsNetSync.unpack_flags` into `cols`; returns `crouch_held`, which is not a column.
+pub fn unpack_flags(cols: &mut [f64], flags: i64, timer_scale: f64) -> bool {
+    cols[MODE] = (flags & MODE_MASK) as f64;
+    cols[LAUNCH_COOLDOWN_LEFT] = field(flags, LAUNCH_SHIFT, LAUNCH_BITS) / timer_scale;
+    let slide = field(flags, SLIDE_SHIFT, SLIDE_BITS);
+    cols[SLIDE_TIME] = if slide == NOT_SLIDING as f64 {
+        -1.0
+    } else {
+        slide / timer_scale
+    };
+    cols[SLIDE_COOLDOWN_LEFT] =
+        field(flags, SLIDE_COOLDOWN_SHIFT, SLIDE_COOLDOWN_BITS) / timer_scale;
+    cols[PREVIOUS_BUTTONS] = ((flags >> BUTTONS_SHIFT) & ((1 << BUTTON_BITS) - 1)) as f64;
+    cols[DASH_COOLDOWN_LEFT] = field(flags, DASH_SHIFT, DASH_BITS) / timer_scale;
+    let wall_run = field(flags, WALL_RUN_SHIFT, WALL_RUN_BITS) as i64;
+    cols[WALL_RUN_TIME] = if wall_run >= WALL_RUN_FIRST_TIME {
+        (wall_run - WALL_RUN_FIRST_TIME) as f64 / timer_scale
+    } else {
+        -1.0
+    };
+    cols[WALL_RUN_SPENT_COL] = if wall_run == WALL_RUN_SPENT { 1.0 } else { 0.0 };
+    let (in_air, same_wall) =
+        wall_jump_counts(field(flags, WALL_JUMP_COUNT_SHIFT, WALL_JUMP_COUNT_BITS) as i64);
+    cols[WALL_JUMPS_IN_AIR] = in_air as f64;
+    cols[WALL_JUMP_COUNT] = same_wall as f64;
+    cols[WALL_JUMP_HEADING] = field(flags, WALL_HEADING_SHIFT, 3);
+    flags & FLAG_CROUCH_HELD != 0
+}
+
+/// `GSFpsNetSync.unpack_timers2` into `cols`.
+pub fn unpack_timers2(cols: &mut [f64], code: i64) {
+    let slide = code & T2_MAX;
+    cols[SLIDE_TIME] = if slide == 0 {
+        -1.0
+    } else {
+        (slide - 1) as f64 / JUMP_TIMER_SCALE
+    };
+    cols[SLIDE_COOLDOWN_LEFT] = ((code >> JUMP_TIMER_BITS) & T2_MAX) as f64 / JUMP_TIMER_SCALE;
+    let run = (code >> (2 * JUMP_TIMER_BITS)) & T2_MAX;
+    cols[WALL_RUN_TIME] = if run >= WALL_RUN_FIRST_TIME {
+        (run - WALL_RUN_FIRST_TIME) as f64 / JUMP_TIMER_SCALE
+    } else {
+        -1.0
+    };
+    cols[WALL_RUN_SPENT_COL] = if run == WALL_RUN_SPENT { 1.0 } else { 0.0 };
+}
+
+/// What a receiver writes into a state's columns: the replicated position, velocity and yaw, then
+/// [`unpack_flags`], then [`unpack_timers2`] when `timers2` is `Some` (it overrides the coarse slide and
+/// wall-run fields). Returns `crouch_held`.
+pub fn unpack(
+    cols: &mut [f64],
+    position: [f32; 3],
+    velocity: [f32; 3],
+    yaw: f64,
+    flags: i64,
+    timers2: Option<i64>,
+    timer_scale: f64,
+) -> bool {
+    for i in 0..3 {
+        cols[POSITION + i] = f64::from(position[i]);
+        cols[VELOCITY + i] = f64::from(velocity[i]);
+    }
+    cols[YAW] = yaw;
+    let crouch_held = unpack_flags(cols, flags, timer_scale);
+    if let Some(code) = timers2 {
+        unpack_timers2(cols, code);
+    }
+    crouch_held
+}
+
 /// [`hold_mask`] bit: keep the velocity from before the pull.
 pub const HOLD_VELOCITY: i64 = 1;
 /// [`hold_mask`] bit: keep the yaw from before the pull.
@@ -416,5 +505,62 @@ mod tests {
         let out = pull(&cols, &extra(), 0.0, &before, &WIRE);
         assert_eq!(out[..4], pack(&cols, &extra()));
         assert_eq!(out[4], 0);
+    }
+
+    #[test]
+    fn unpack_undoes_pack() {
+        let mut cols = DEFAULTS;
+        cols[MODE] = 3.0;
+        cols[SLIDE_TIME] = 0.5;
+        cols[SLIDE_COOLDOWN_LEFT] = 0.25;
+        cols[LAUNCH_COOLDOWN_LEFT] = 1.5;
+        cols[DASH_COOLDOWN_LEFT] = 2.0;
+        cols[PREVIOUS_BUTTONS] = 37.0;
+        cols[WALL_RUN_TIME] = 0.75;
+        cols[WALL_JUMPS_IN_AIR] = 3.0;
+        cols[WALL_JUMP_COUNT] = 2.0;
+        cols[WALL_JUMP_HEADING] = 7.0;
+        let mut e = extra();
+        e.crouch_held = true;
+        let codes = pack(&cols, &e);
+        let mut out = DEFAULTS;
+        let held = unpack(
+            &mut out,
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+            0.5,
+            codes[0],
+            Some(codes[2]),
+            64.0,
+        );
+        assert!(held);
+        for (i, want) in cols.iter().enumerate().skip(6) {
+            if i != YAW {
+                assert_eq!(out[i], *want, "col {i}");
+            }
+        }
+        assert_eq!(&out[0..6], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        assert_eq!(out[YAW], 0.5);
+    }
+
+    #[test]
+    fn unpack_spent_and_idle() {
+        let mut cols = DEFAULTS;
+        cols[WALL_RUN_SPENT_COL] = 1.0;
+        let codes = pack(&cols, &extra());
+        let mut out = DEFAULTS;
+        assert!(!unpack(
+            &mut out, [0.0; 3], [0.0; 3], 0.0, codes[0], None, 64.0
+        ));
+        assert_eq!(out[WALL_RUN_SPENT_COL], 1.0);
+        assert_eq!(out[WALL_RUN_TIME], -1.0);
+        assert_eq!(out[SLIDE_TIME], -1.0);
+        assert_eq!(wall_jump_counts(0), (0, 0));
+        assert_eq!(wall_jump_counts(7), (0, 0));
+        for total in 1..4 {
+            for same in 1..=total {
+                assert_eq!(wall_jump_counts(wall_jump_code(total, same)), (total, same));
+            }
+        }
     }
 }

@@ -1,9 +1,10 @@
 //! `GSSimFpsNetPack`: gs-player-controller's `GSFpsNetSync` packers over a state's columns, one
 //! call per pull (the script stays the fallback and the specification), and `pull` adds a carrier's sub-quantum
-//! hold (Fatal Contact's `FcPlayerNet._hold_subquantum`). Stateless.
+//! hold (Fatal Contact's `FcPlayerNet._hold_subquantum`). `unpack` is the receiving half (`GSFpsNetSync.push`'s
+//! column writes). Stateless.
 
 use godot::prelude::*;
-use gs_sim_motor::net_pack::{Extra, Held, Wire, pack, pull};
+use gs_sim_motor::net_pack::{Extra, Held, Wire, pack, pull, unpack};
 
 /// A state's replicated integers from its columns.
 #[derive(GodotClass)]
@@ -83,5 +84,37 @@ impl GSSimFpsNetPack {
             pitch_bits: wire[3] as i64,
         };
         PackedInt64Array::from(&pull(cols, &extra, pitch, &held, &wire)[..])
+    }
+
+    /// The receiving half: [param cols] (`GSFpsState._f`) with the replicated position, velocity and yaw written
+    /// and [param flags] unpacked (`GSFpsNetSync.unpack_flags`), then [param timers2] when it is not negative
+    /// (`unpack_timers2`). `crouch_held` is not a column: the caller reads it from [param flags]. Empty when
+    /// [param cols] is shorter than a state's.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn unpack(
+        &self,
+        cols: PackedFloat64Array,
+        position: Vector3,
+        velocity: Vector3,
+        yaw: f64,
+        flags: i64,
+        timers2: i64,
+        timer_scale: f64,
+    ) -> PackedFloat64Array {
+        let mut cols = cols;
+        if cols.len() < gs_sim_motor::cols::STRIDE {
+            return PackedFloat64Array::new();
+        }
+        unpack(
+            cols.as_mut_slice(),
+            [position.x, position.y, position.z],
+            [velocity.x, velocity.y, velocity.z],
+            yaw,
+            flags,
+            (timers2 >= 0).then_some(timers2),
+            timer_scale,
+        );
+        cols
     }
 }
