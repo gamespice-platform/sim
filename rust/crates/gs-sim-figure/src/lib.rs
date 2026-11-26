@@ -22,10 +22,15 @@ pub trait Pose {
     fn rot(&self, bone: i32) -> Quat;
     /// Sets the bone's local rotation (`set_bone_pose_rotation`).
     fn set_rot(&mut self, bone: i32, q: Quat);
+    /// Sets the bone's local position (`set_bone_pose_position`).
+    fn set_pos(&mut self, bone: i32, v: Vec3);
 }
 
-const IDENTITY_Q: Quat = [0.0, 0.0, 0.0, 1.0];
-const UP: Vec3 = Vec3::new(0.0, 1.0, 0.0);
+mod body;
+pub use body::{WALL_LIFT, Wall, WallLeg, aim, on_wall, two_bone_under};
+
+pub(crate) const IDENTITY_Q: Quat = [0.0, 0.0, 0.0, 1.0];
+pub(crate) const UP: Vec3 = Vec3::new(0.0, 1.0, 0.0);
 const FORWARD: Vec3 = Vec3::new(0.0, 0.0, -1.0);
 /// `CMP_EPSILON`.
 const CMP_EPSILON: f32 = 0.00001;
@@ -85,7 +90,7 @@ pub fn quat_angle_to(a: Quat, b: Quat) -> f32 {
     (d * d * 2.0 - 1.0).clamp(-1.0, 1.0).acos()
 }
 
-fn times(v: Vec3, s: f32) -> Vec3 {
+pub(crate) fn times(v: Vec3, s: f32) -> Vec3 {
     Vec3::new(v.x * s, v.y * s, v.z * s)
 }
 
@@ -165,7 +170,7 @@ pub fn chain_rotation<P: Pose>(p: &P, bone: i32) -> Quat {
     q
 }
 
-fn basis_rotation(x: &Xform) -> Quat {
+pub(crate) fn basis_rotation(x: &Xform) -> Quat {
     rotation_quaternion(&x.rows)
 }
 
@@ -699,6 +704,9 @@ mod tests {
         fn set_rot(&mut self, bone: i32, q: Quat) {
             self.rot[bone as usize] = q;
         }
+        fn set_pos(&mut self, bone: i32, v: Vec3) {
+            self.pos[bone as usize] = v;
+        }
     }
 
     fn leg() -> Bones {
@@ -840,5 +848,101 @@ mod tests {
         limit.restore(Some(&mut p));
         assert_eq!(p.rot(1), fast);
         assert!(!limit.turned());
+    }
+
+    /// A root with two legs (upper, lower, foot each), standing at the origin facing +z.
+    fn two_legs() -> Bones {
+        let leg = |x: f32| {
+            [
+                Vec3::new(x, 0.0, 0.0),
+                Vec3::new(0.0, -0.45, 0.0),
+                Vec3::new(0.0, -0.45, 0.0),
+            ]
+        };
+        let mut pos = vec![Vec3::new(0.0, 1.0, 0.0)];
+        pos.extend(leg(0.1));
+        pos.extend(leg(-0.1));
+        Bones {
+            parent: vec![-1, 0, 1, 2, 0, 4, 5],
+            rot: vec![IDENTITY_Q; 7],
+            pos,
+        }
+    }
+
+    fn wall_leg(upper: i32, x: f32) -> WallLeg {
+        WallLeg {
+            upper,
+            lower: upper + 1,
+            foot: upper + 2,
+            foot_rest: Vec3::new(x, 0.1, 0.0),
+            end_local: Vec3::new(0.0, -0.45, 0.0),
+        }
+    }
+
+    #[test]
+    fn aim_turns_each_bone_its_share_about_figure_right() {
+        let mut p = leg();
+        let plan = [1.0, 0.0, 0.5, 0.0, 2.0, 1.0, 0.25, 1.0];
+        let id = [
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        ];
+        aim(&mut p, &plan, &id, 0.8, -0.2);
+        let half = |a: f32| [(a * 0.5).sin(), 0.0, 0.0, (a * 0.5).cos()];
+        let near = |q: Quat, r: Quat| q.iter().zip(r).all(|(a, b)| (a - b).abs() < 1e-6);
+        assert!(near(p.rot(1), half(0.4)), "{:?}", p.rot(1));
+        assert!(near(p.rot(2), half(0.0)), "{:?}", p.rot(2));
+        assert_eq!(p.rot(0), IDENTITY_Q);
+    }
+
+    #[test]
+    fn aim_keeps_the_clip_pose_when_the_figure_basis_collapses() {
+        let mut p = leg();
+        aim(
+            &mut p,
+            &[1.0, 0.0, 1.0, 0.0],
+            &[Vec3::default(); 3],
+            0.8,
+            0.0,
+        );
+        assert_eq!(p.rot(1), IDENTITY_Q);
+    }
+
+    #[test]
+    fn two_bone_under_puts_the_end_on_a_reachable_target() {
+        let mut p = leg();
+        p.pos.push(Vec3::new(0.0, -0.45, 0.0));
+        p.parent.push(2);
+        p.rot.push(IDENTITY_Q);
+        let target = Vec3::new(0.4, 0.6, 0.3);
+        let under = global_pose(&p, 0);
+        two_bone_under(
+            &mut p,
+            [1, 2, 3],
+            &under,
+            target,
+            Vec3::new(0.0, 0.0, 1.0),
+            1.0,
+        );
+        let end = global_pose(&p, 3).origin;
+        assert!((end - target).length() < 1e-4, "{end:?}");
+    }
+
+    #[test]
+    fn on_wall_sets_unraised_feet_on_the_wall_within_reach() {
+        let mut p = two_legs();
+        let legs = [wall_leg(1, 0.1), wall_leg(4, -0.1)];
+        let wall = Wall {
+            normal: Vec3::new(0.0, 0.0, -1.0),
+            d: -0.2,
+        };
+        on_wall(&mut p, &legs, &wall, UP, 1.0);
+        for leg in &legs {
+            let foot = global_pose(&p, leg.foot).origin;
+            let hip = global_pose(&p, leg.upper).origin;
+            assert!(wall.distance_to(foot).abs() < 1e-4, "{foot:?}");
+            assert!((foot - hip).length() <= 0.882 + 1e-4, "{foot:?}");
+        }
     }
 }

@@ -8,7 +8,7 @@
 
 use godot::classes::Skeleton3D;
 use godot::prelude::*;
-use gs_sim_figure::{FloorLeg, Legs, Pose, TurnLimit};
+use gs_sim_figure::{FloorLeg, Legs, Pose, TurnLimit, Wall, WallLeg};
 use gs_sim_math::{Quat, Vec3, Xform};
 
 fn v3(v: Vector3) -> Vec3 {
@@ -100,6 +100,14 @@ impl Pose for Skel<'_> {
             *slot = None;
         }
     }
+
+    fn set_pos(&mut self, bone: i32, v: Vec3) {
+        self.gd
+            .set_bone_pose_position(bone, Vector3::new(v.x, v.y, v.z));
+        if let Some(slot) = self.poses.get_mut(bone as usize) {
+            *slot = None;
+        }
+    }
 }
 
 impl Skel<'_> {
@@ -146,6 +154,31 @@ fn floor_bones(skeleton: &Gd<Skeleton3D>, parents: &[i32]) -> Vec<FloorLeg> {
     out
 }
 
+/// The legs `GSHumanoidLegs.on_wall` poses, `None` when a bone is missing (the script then returns).
+fn wall_bones(skeleton: &Gd<Skeleton3D>) -> Option<[WallLeg; 2]> {
+    let leg = |names: [&str; 3]| {
+        let [upper, lower, foot] = names.map(|n| skeleton.find_bone(n));
+        if upper < 0 || lower < 0 || foot < 0 {
+            return None;
+        }
+        let foot_rest = v3(skeleton.get_bone_global_rest(foot).origin);
+        let end_local = xf(&skeleton.get_bone_global_rest(lower))
+            .affine_inverse()
+            .xform(foot_rest);
+        Some(WallLeg {
+            upper,
+            lower,
+            foot,
+            foot_rest,
+            end_local,
+        })
+    };
+    Some([
+        leg(["UpperLeg.L", "LowerLeg.L", "Foot.L"])?,
+        leg(["UpperLeg.R", "LowerLeg.R", "Foot.R"])?,
+    ])
+}
+
 /// One figure's `GSHumanoidLegs` bone work. The script calls it in the same places with the same
 /// arguments; null skeletons and the zero twist stay on the script's side.
 #[derive(GodotClass)]
@@ -160,6 +193,8 @@ pub struct GSSimLegs {
     parents_seen: Seen,
     poses: Vec<Option<Xform>>,
     rots: Vec<Option<Quat>>,
+    wall_legs: Option<[WallLeg; 2]>,
+    wall_seen: Seen,
 }
 
 impl GSSimLegs {
@@ -246,6 +281,40 @@ impl GSSimLegs {
         s.warm();
         self.legs
             .on_floor(&mut s, &xf(&to_figure), floor_y.as_slice(), raised);
+    }
+
+    /// `GSHumanoidLegs.on_wall` past its weight and wall checks: [param plane] and [param up] are
+    /// in skeleton space, [param weight] already clamped.
+    #[func]
+    fn on_wall(
+        &mut self,
+        skeleton: Option<Gd<Skeleton3D>>,
+        plane: Plane,
+        up: Vector3,
+        weight: f64,
+    ) {
+        let Some(mut skeleton) = skeleton else { return };
+        self.parents_for(&skeleton);
+        let seen = Seen::of(&skeleton);
+        if self.wall_seen != seen {
+            self.wall_seen = seen;
+            self.wall_legs = wall_bones(&skeleton);
+        }
+        let Some(legs) = self.wall_legs.clone() else {
+            return;
+        };
+        let wall = Wall {
+            normal: v3(plane.normal),
+            d: plane.d,
+        };
+        let mut s = Skel::new(
+            &mut skeleton,
+            &self.parents,
+            &mut self.poses,
+            &mut self.rots,
+        );
+        s.warm();
+        gs_sim_figure::on_wall(&mut s, &legs, &wall, v3(up), weight);
     }
 
     /// `GSHumanoidLegs.hold_feet`.
@@ -443,5 +512,77 @@ impl GSSimTurnLimit {
     #[func]
     fn clear(&mut self) {
         self.limit.clear();
+    }
+}
+
+/// One figure's arm posing after its clip: `GSHumanoidAim.apply_plan` and the support hand's
+/// `GSHumanoidIk.two_bone_under`. The script keeps the plans and chains; this side only caches the
+/// skeleton's parents.
+#[derive(GodotClass)]
+#[class(base = RefCounted, init)]
+pub struct GSSimFigurePose {
+    parents: Vec<i32>,
+    parents_seen: Seen,
+    poses: Vec<Option<Xform>>,
+    rots: Vec<Option<Quat>>,
+}
+
+impl GSSimFigurePose {
+    fn parents_for(&mut self, skeleton: &Gd<Skeleton3D>) {
+        let seen = Seen::of(skeleton);
+        if self.parents_seen != seen {
+            self.parents_seen = seen;
+            self.parents = parents_of(skeleton);
+        }
+    }
+}
+
+#[godot_api]
+impl GSSimFigurePose {
+    /// `GSHumanoidAim.apply_plan` with the plan flat (index, parent, share, 1 for an arm bone) and
+    /// the sprint drop worked out: [param drop] is `-SPRINT_DROP * sprint_blend`.
+    #[func]
+    fn aim(
+        &mut self,
+        skeleton: Option<Gd<Skeleton3D>>,
+        plan: PackedFloat64Array,
+        to_figure: Transform3D,
+        pitch: f64,
+        drop: f64,
+    ) {
+        let Some(mut skeleton) = skeleton else { return };
+        self.parents_for(&skeleton);
+        let rows = xf(&to_figure).rows;
+        let mut s = Skel::new(
+            &mut skeleton,
+            &self.parents,
+            &mut self.poses,
+            &mut self.rots,
+        );
+        gs_sim_figure::aim(&mut s, plan.as_slice(), &rows, pitch, drop);
+    }
+
+    /// `GSHumanoidIk.two_bone_under(skeleton, bones, chain_pose(skeleton, chain), target, pole, weight)`.
+    #[func]
+    fn support(
+        &mut self,
+        skeleton: Option<Gd<Skeleton3D>>,
+        bones: PackedInt32Array,
+        chain: PackedInt32Array,
+        target: Vector3,
+        pole: Vector3,
+        weight: f64,
+    ) {
+        let Some(mut skeleton) = skeleton else { return };
+        let &[a, b, c] = bones.as_slice() else { return };
+        self.parents_for(&skeleton);
+        let mut s = Skel::new(
+            &mut skeleton,
+            &self.parents,
+            &mut self.poses,
+            &mut self.rots,
+        );
+        let under = gs_sim_figure::chain_pose(&s, chain.as_slice());
+        gs_sim_figure::two_bone_under(&mut s, [a, b, c], &under, v3(target), v3(pole), weight);
     }
 }
