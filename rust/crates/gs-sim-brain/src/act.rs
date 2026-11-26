@@ -64,77 +64,160 @@ fn drift(aim: &mut Aim, v: &mut View, rate: f64, dt: f64, p: [f64; 3]) {
     }
 }
 
+/// The glance's state between steps (`GSBotBrain._glance_next`, `_glance_until`, `_glance_off`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Glance {
+    pub next: f64,
+    pub until: f64,
+    pub off: f64,
+}
+
+impl Default for Glance {
+    fn default() -> Self {
+        Self {
+            next: 0.0,
+            until: f64::NEG_INFINITY,
+            off: 0.0,
+        }
+    }
+}
+
+impl Glance {
+    /// next, until, off.
+    pub fn state(&self) -> [f64; 3] {
+        [self.next, self.until, self.off]
+    }
+
+    /// Takes over `state`'s layout; false, unchanged, when it is short.
+    pub fn load(&mut self, state: &[f64]) -> bool {
+        if state.len() < 3 {
+            return false;
+        }
+        self.next = state[0];
+        self.until = state[1];
+        self.off = state[2];
+        true
+    }
+}
+
+/// One step's inputs, as [`io`] has them (the view, glance and counter are carried apart).
+#[derive(Clone, Copy, Debug)]
+pub struct Input {
+    /// [`mode`].
+    pub mode: f64,
+    pub eye: Vec3,
+    /// Walk: the flat direction x y. Hold: the face point x z (x NaN: none).
+    pub at: (f64, f64),
+    pub now: f64,
+    pub dt: f64,
+    /// The brain's id.
+    pub id: i64,
+    /// The profile's glance.
+    pub glance: f64,
+    /// prediction, turn_smooth, turn_rate.
+    pub turn: [f64; 3],
+    /// Drift: degrees per second.
+    pub rate: f64,
+}
+
+/// One steering step on `aim` (whose last wanted look carries), the view `v`, the glance `g` and
+/// the brain's stream `key` at `counter`; returns the legs, or None (all untouched) for an
+/// unknown mode.
+pub fn step(
+    aim: &mut Aim,
+    v: &mut View,
+    g: &mut Glance,
+    counter: &mut i64,
+    inp: &Input,
+    key: i64,
+) -> Option<Vec2> {
+    let m = inp.mode;
+    let p = inp.turn;
+    let (eye, now, dt, id, glance) = (inp.eye, inp.now, inp.dt, inp.id, inp.glance);
+    let legs = if m == mode::WALK {
+        let dir = Vec2::of(inp.at.0, inp.at.1);
+        let mut look = angles_to(eye, eye + Vec3::new(dir.x, 0.0, dir.y));
+        look.x = (look.x as f64 + 25.0 * (now * 0.8 + (id % 97) as f64).sin()) as f32;
+        look.y = 0.0;
+        if glance > 0.0 {
+            if now >= g.next && now >= g.until {
+                let mut rng = Stream::new(key, *counter);
+                let side = if rng.next_unit() < 0.5 { 1.0 } else { -1.0 };
+                g.off = side * (35.0 + 70.0 * rng.next_unit());
+                g.until = now + 0.35 + 0.6 * rng.next_unit();
+                g.next = g.until + (1.5 + 4.0 * rng.next_unit()) / (0.3 + glance);
+                *counter = rng.counter;
+            }
+            if now < g.until {
+                look.x = (look.x as f64 + g.off) as f32;
+            }
+        }
+        aim.turn_to(v, look, dt, p[0], p[1], p[2]);
+        set_move(v.yaw, dir)
+    } else if m == mode::HOLD {
+        if inp.at.0.is_nan() {
+            drift(aim, v, 30.0, dt, p);
+        } else {
+            let mut look = angles_to(eye, Vec3::new(inp.at.0 as f32, eye.y, inp.at.1 as f32));
+            look.y = 0.0;
+            let sway = 50.0 * (now * 0.5 + (id % 89) as f64).sin() * (0.3 + glance);
+            look.x = (look.x as f64 + sway) as f32;
+            aim.turn_to(v, look, dt, p[0], p[1], p[2]);
+        }
+        set_move(v.yaw, Vec2::ZERO)
+    } else if m == mode::DRIFT {
+        drift(aim, v, inp.rate, dt, p);
+        set_move(v.yaw, Vec2::ZERO)
+    } else {
+        return None;
+    };
+    Some(legs)
+}
+
 /// One steering step over `row` (layout [`io`]) on `aim` (whose last wanted look carries) and
 /// the brain's stream `key`. False, untouched, for a short row or an unknown mode.
 pub fn steer(aim: &mut Aim, row: &mut [f64], key: i64) -> bool {
     if row.len() < io::LEN {
         return false;
     }
-    let m = row[io::MODE];
+    let inp = Input {
+        mode: row[io::MODE],
+        eye: Vec3::new(
+            row[io::EYE] as f32,
+            row[io::EYE + 1] as f32,
+            row[io::EYE + 2] as f32,
+        ),
+        at: (row[io::DIR], row[io::DIR + 1]),
+        now: row[io::NOW],
+        dt: row[io::DT],
+        id: row[io::ID] as i64,
+        glance: row[io::GLANCE],
+        turn: [
+            row[io::PREDICTION],
+            row[io::TURN_SMOOTH],
+            row[io::TURN_RATE],
+        ],
+        rate: row[io::RATE],
+    };
     let mut v = View {
         yaw: row[io::YAW],
         pitch: row[io::PITCH],
     };
-    let p = [
-        row[io::PREDICTION],
-        row[io::TURN_SMOOTH],
-        row[io::TURN_RATE],
-    ];
-    let eye = Vec3::new(
-        row[io::EYE] as f32,
-        row[io::EYE + 1] as f32,
-        row[io::EYE + 2] as f32,
-    );
-    let now = row[io::NOW];
-    let dt = row[io::DT];
-    let id = row[io::ID] as i64;
-    let glance = row[io::GLANCE];
-    let legs = if m == mode::WALK {
-        let dir = Vec2::of(row[io::DIR], row[io::DIR + 1]);
-        let mut look = angles_to(eye, eye + Vec3::new(dir.x, 0.0, dir.y));
-        look.x = (look.x as f64 + 25.0 * (now * 0.8 + (id % 97) as f64).sin()) as f32;
-        look.y = 0.0;
-        if glance > 0.0 {
-            let mut next = row[io::GLANCE_NEXT];
-            let mut until = row[io::GLANCE_UNTIL];
-            let mut off = row[io::GLANCE_OFF];
-            if now >= next && now >= until {
-                let mut rng = Stream::new(key, row[io::COUNTER] as i64);
-                let side = if rng.next_unit() < 0.5 { 1.0 } else { -1.0 };
-                off = side * (35.0 + 70.0 * rng.next_unit());
-                until = now + 0.35 + 0.6 * rng.next_unit();
-                next = until + (1.5 + 4.0 * rng.next_unit()) / (0.3 + glance);
-                row[io::COUNTER] = rng.counter as f64;
-                row[io::GLANCE_NEXT] = next;
-                row[io::GLANCE_UNTIL] = until;
-                row[io::GLANCE_OFF] = off;
-            }
-            if now < until {
-                look.x = (look.x as f64 + off) as f32;
-            }
-        }
-        aim.turn_to(&mut v, look, dt, p[0], p[1], p[2]);
-        set_move(v.yaw, dir)
-    } else if m == mode::HOLD {
-        let face = (row[io::DIR], row[io::DIR + 1]);
-        if face.0.is_nan() {
-            drift(aim, &mut v, 30.0, dt, p);
-        } else {
-            let mut look = angles_to(eye, Vec3::new(face.0 as f32, eye.y, face.1 as f32));
-            look.y = 0.0;
-            let sway = 50.0 * (now * 0.5 + (id % 89) as f64).sin() * (0.3 + glance);
-            look.x = (look.x as f64 + sway) as f32;
-            aim.turn_to(&mut v, look, dt, p[0], p[1], p[2]);
-        }
-        set_move(v.yaw, Vec2::ZERO)
-    } else if m == mode::DRIFT {
-        drift(aim, &mut v, row[io::RATE], dt, p);
-        set_move(v.yaw, Vec2::ZERO)
-    } else {
+    let mut g = Glance {
+        next: row[io::GLANCE_NEXT],
+        until: row[io::GLANCE_UNTIL],
+        off: row[io::GLANCE_OFF],
+    };
+    let mut counter = row[io::COUNTER] as i64;
+    let Some(legs) = step(aim, &mut v, &mut g, &mut counter, &inp, key) else {
         return false;
     };
     row[io::YAW] = v.yaw;
     row[io::PITCH] = v.pitch;
+    row[io::GLANCE_NEXT] = g.next;
+    row[io::GLANCE_UNTIL] = g.until;
+    row[io::GLANCE_OFF] = g.off;
+    row[io::COUNTER] = counter as f64;
     row[io::MOVE_X] = legs.x as f64;
     row[io::MOVE_Y] = legs.y as f64;
     true
@@ -194,6 +277,48 @@ mod tests {
         r[io::NOW] += 0.01;
         assert!(steer(&mut aim, &mut r, 3));
         assert_eq!(r[io::COUNTER], 4.0);
+    }
+
+    #[test]
+    fn a_step_with_its_own_glance_matches_the_row() {
+        let (mut a, mut b) = (Aim::new(1), Aim::new(1));
+        let mut r = row(mode::WALK);
+        r[io::GLANCE] = 0.6;
+        r[io::DIR] = 0.6;
+        r[io::DIR + 1] = -0.8;
+        r[io::GLANCE_UNTIL] = f64::NEG_INFINITY;
+        let mut v = View::default();
+        let mut g = Glance::default();
+        let mut counter = 0;
+        for i in 0..300 {
+            r[io::NOW] += r[io::DT];
+            r[io::MODE] = [mode::WALK, mode::WALK, mode::HOLD, mode::DRIFT][i % 4];
+            r[io::RATE] = 25.0;
+            let inp = Input {
+                mode: r[io::MODE],
+                eye: Vec3::new(0.0, 1.6, 0.0),
+                at: (r[io::DIR], r[io::DIR + 1]),
+                now: r[io::NOW],
+                dt: r[io::DT],
+                id: 7,
+                glance: r[io::GLANCE],
+                turn: [0.5, 0.6, 360.0],
+                rate: 25.0,
+            };
+            assert!(steer(&mut a, &mut r, 5));
+            let legs = step(&mut b, &mut v, &mut g, &mut counter, &inp, 5).unwrap();
+            assert_eq!((v.yaw, v.pitch), (r[io::YAW], r[io::PITCH]));
+            assert_eq!(
+                g.state(),
+                [r[io::GLANCE_NEXT], r[io::GLANCE_UNTIL], r[io::GLANCE_OFF]]
+            );
+            assert_eq!(counter as f64, r[io::COUNTER]);
+            assert_eq!(
+                (legs.x as f64, legs.y as f64),
+                (r[io::MOVE_X], r[io::MOVE_Y])
+            );
+        }
+        assert!(counter > 0);
     }
 
     #[test]
