@@ -138,6 +138,30 @@ impl Stable {
     }
 }
 
+/// A contact table row's flag bits (gs-bot's `GSBotContactTable`): alive, grounded, sliding,
+/// wall running and air jump ready.
+pub const ROW_ALIVE: i32 = 1;
+pub const ROW_GROUNDED: i32 = 2;
+pub const ROW_SLIDING: i32 = 4;
+pub const ROW_WALL_RUNNING: i32 = 8;
+pub const ROW_AIR_JUMP: i32 = 16;
+/// Floats per contact table row: eye height, aim height, view yaw, view pitch, health.
+pub const ROW_FLOATS: usize = 5;
+
+/// The flag bits of a contact table row for `c`.
+pub fn row_flags(c: &Contact) -> i32 {
+    (if c.alive { ROW_ALIVE } else { 0 })
+        | (if c.grounded { ROW_GROUNDED } else { 0 })
+        | (if c.sliding { ROW_SLIDING } else { 0 })
+        | (if c.wall_running { ROW_WALL_RUNNING } else { 0 })
+        | (if c.air_jump_ready { ROW_AIR_JUMP } else { 0 })
+}
+
+/// The floats of a contact table row for `c`, [`ROW_FLOATS`] of them.
+pub fn row_floats(c: &Contact, eye: f64, aim: f64) -> [f64; ROW_FLOATS] {
+    [eye, aim, c.view_yaw, c.view_pitch, c.health]
+}
+
 /// Godot's `at + Vector3.UP * h`.
 pub fn lift(at: [f32; 3], h: f64) -> [f32; 3] {
     let h = h as f32;
@@ -231,6 +255,21 @@ mod tests {
         let mut r = record(HEALTH);
         r[HEALTH_MAX] = 0.0;
         assert_eq!(contact(&r, true).health, 1.0);
+    }
+
+    #[test]
+    fn row_flags_and_floats() {
+        let c = contact(&record(CONTROLLER | ALIVE | HEALTH), true);
+        let f = row_flags(&c);
+        assert_eq!(f & ROW_ALIVE != 0, c.alive);
+        assert_eq!(f & ROW_GROUNDED != 0, c.grounded);
+        assert_eq!(f & ROW_SLIDING != 0, c.sliding);
+        assert_eq!(f & ROW_WALL_RUNNING != 0, c.wall_running);
+        assert_eq!(f & ROW_AIR_JUMP != 0, c.air_jump_ready);
+        let dead = contact(&record(0), true);
+        assert_eq!(row_flags(&dead) & ROW_ALIVE, 0);
+        let r = row_floats(&c, 1.6, 1.2);
+        assert_eq!(r, [1.6, 1.2, c.view_yaw, c.view_pitch, c.health]);
     }
 
     #[test]
