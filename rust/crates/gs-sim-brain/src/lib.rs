@@ -11,6 +11,7 @@ pub mod aim;
 pub mod fight;
 pub mod hear;
 pub mod num;
+pub mod pickup;
 pub mod tricks;
 
 pub use aim::{Aim, AimProfile, View};
