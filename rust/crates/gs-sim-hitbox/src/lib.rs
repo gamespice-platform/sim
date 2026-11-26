@@ -183,9 +183,132 @@ pub fn set_nearest(boxes: &[Hitbox], from: Vec3, dir: Vec3, max_distance: f64) -
     best.map(|(i, _)| i)
 }
 
+/// The bounds-sphere test `GSTrace.ray` runs inline for each set (`GSHitboxSet._ray_hits_bounds`,
+/// same arithmetic): could a ray reach the sphere at `centre` within `limit`. `along` and the
+/// squared length are f32 like the script's vector calls; the radius and the rest are f64.
+pub fn ray_reaches_bounds(from: Vec3, dir: Vec3, centre: Vec3, radius: f64, limit: f64) -> bool {
+    let offset = from - centre;
+    let along = f64::from(offset.dot(dir));
+    let gap = f64::from(offset.length_squared()) - radius * radius;
+    if gap > 0.0 {
+        if along > 0.0 {
+            return false;
+        }
+        let depth = along * along - gap;
+        if depth < 0.0 || -along - depth.sqrt() > limit {
+            return false;
+        }
+    }
+    true
+}
+
+/// One hitbox set as `GSTrace.ray` sees it: where its bounds sphere is, how big.
+#[derive(Clone, Copy, Debug)]
+pub struct SetBounds {
+    pub centre: Vec3,
+    pub radius: f64,
+}
+
+/// `GSTrace.ray`'s walk over every hitbox set, after the world ray: `(set, hitbox, distance)` of
+/// the hit it keeps, or None when the world hit (or nothing) stands.
+///
+/// In set order, as the script: the bounds test against the current limit, then
+/// `candidates(set)` (None for a disabled, empty or excluded set, else its hitboxes; only asked
+/// of sets whose bounds the ray reaches), then the set's own pick within the limit. A hit must be
+/// strictly nearer than the best so far (the world hit first: ties go to the wall), and each kept
+/// hit shortens the limit for the sets after it, so the same set wins as in the script even when
+/// a tie window straddles the limit.
+pub fn sets_nearest(
+    bounds: &[Option<SetBounds>],
+    mut candidates: impl FnMut(usize) -> Option<Vec<Hitbox>>,
+    from: Vec3,
+    dir: Vec3,
+    max_distance: f64,
+    world_distance: Option<f64>,
+) -> Option<(usize, usize, f64)> {
+    let mut limit = world_distance.unwrap_or(max_distance);
+    let mut best_distance = world_distance;
+    let mut best = None;
+    for (s, b) in bounds.iter().enumerate() {
+        let Some(b) = b else { continue };
+        if !ray_reaches_bounds(from, dir, b.centre, b.radius, limit) {
+            continue;
+        }
+        let Some(boxes) = candidates(s) else { continue };
+        let Some(i) = set_nearest(&boxes, from, dir, limit) else {
+            continue;
+        };
+        let Some(d) = hitbox_ray(&boxes[i], from, dir, limit) else {
+            continue;
+        };
+        if best_distance.is_some_and(|bd| d >= bd) {
+            continue;
+        }
+        best = Some((s, i, d));
+        best_distance = Some(d);
+        limit = d;
+    }
+    best
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sets_walk_keeps_nearest_strictly_and_ties_to_the_wall() {
+        let from = v(0.0, 0.0, 0.0);
+        let dir = v(0.0, 0.0, 1.0);
+        let bounds = |z: f32| {
+            Some(SetBounds {
+                centre: v(0.0, 0.0, z),
+                radius: 1.5,
+            })
+        };
+        let sets = [
+            vec![sphere(v(0.0, 0.0, 10.0), 1.0, 0, 1.0)],
+            vec![
+                sphere(v(0.0, 0.0, 5.0), 1.0, 0, 1.0),
+                sphere(v(0.0, 0.0, 5.0), 1.0, 1, 1.0),
+            ],
+        ];
+        let all = [bounds(10.0), bounds(5.0)];
+        let pick = |s: usize| Some(sets[s].clone());
+        assert_eq!(
+            sets_nearest(&all, pick, from, dir, 100.0, None),
+            Some((1, 1, 4.0))
+        );
+        // A wall at exactly the hit distance wins the tie; a nearer one hides both.
+        assert_eq!(sets_nearest(&all, pick, from, dir, 100.0, Some(4.0)), None);
+        assert_eq!(
+            sets_nearest(&all, pick, from, dir, 100.0, Some(6.0)),
+            Some((1, 1, 4.0))
+        );
+        // An excluded or freed set is skipped; the far one is then the hit.
+        let skip = |s: usize| if s == 1 { None } else { Some(sets[s].clone()) };
+        assert_eq!(
+            sets_nearest(&all, skip, from, dir, 100.0, None),
+            Some((0, 0, 9.0))
+        );
+        assert_eq!(
+            sets_nearest(&[bounds(10.0), None], pick, from, dir, 100.0, None),
+            Some((0, 0, 9.0))
+        );
+        // Two sets at the same distance: the first keeps it.
+        let twin = [bounds(5.0), bounds(5.0)];
+        let same = |_: usize| Some(vec![sphere(v(0.0, 0.0, 5.0), 1.0, 0, 1.0)]);
+        assert_eq!(
+            sets_nearest(&twin, same, from, dir, 100.0, None),
+            Some((0, 0, 4.0))
+        );
+        // Bounds the ray cannot reach are never asked for their hitboxes.
+        let off = [Some(SetBounds {
+            centre: v(5.0, 0.0, 5.0),
+            radius: 1.5,
+        })];
+        let never = |_: usize| -> Option<Vec<Hitbox>> { panic!("asked") };
+        assert_eq!(sets_nearest(&off, never, from, dir, 100.0, None), None);
+    }
 
     fn v(x: f32, y: f32, z: f32) -> Vec3 {
         Vec3 { x, y, z }
