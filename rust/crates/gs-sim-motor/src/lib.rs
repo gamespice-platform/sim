@@ -19,6 +19,7 @@ pub mod site;
 pub mod slide;
 pub mod state;
 pub mod tick;
+pub mod weapon_net;
 
 /// `Vector3.UP`.
 pub const UP: Vec3 = Vec3::new(0.0, 1.0, 0.0);
