@@ -213,6 +213,17 @@ impl GSSimLegs {
         }
     }
 
+    /// The root and the hips [`Self::apply`] turns, looked up once per skeleton; `None` without both.
+    fn twist_bones(&mut self, skeleton: &Gd<Skeleton3D>) -> Option<(i32, i32)> {
+        let seen = Seen::of(skeleton);
+        if self.turn_seen != seen {
+            self.turn_seen = seen;
+            self.root = skeleton.find_bone("Root");
+            self.hips = skeleton.find_bone("Hips");
+        }
+        (self.root >= 0 && self.hips >= 0).then_some((self.root, self.hips))
+    }
+
     /// `GSHumanoidLegs._legs_for`.
     fn legs_for(&mut self, skeleton: &Gd<Skeleton3D>) {
         self.parents_for(skeleton);
@@ -263,17 +274,10 @@ impl GSSimLegs {
     #[func]
     fn apply(&mut self, skeleton: Option<Gd<Skeleton3D>>, up: Vector3, twist: f64) {
         let Some(mut skeleton) = skeleton else { return };
-        let seen = Seen::of(&skeleton);
-        if self.turn_seen != seen {
-            self.turn_seen = seen;
-            self.root = skeleton.find_bone("Root");
-            self.hips = skeleton.find_bone("Hips");
-        }
-        if self.root < 0 || self.hips < 0 {
+        let Some((root, hips)) = self.twist_bones(&skeleton) else {
             return;
-        }
+        };
         self.parents_for(&skeleton);
-        let (root, hips) = (self.root, self.hips);
         let mut s = Skel::new(
             &mut skeleton,
             &self.parents,
@@ -742,6 +746,113 @@ impl GSSimFigurePose {
             &xf(&to_figure),
             &f,
         ) {
+            Some(v) => Vector3::new(v.x, v.y, v.z),
+            None => none,
+        }
+    }
+
+    /// A figure's bone work between its overlays and its swim in one call, in the script's order and
+    /// on one read of each bone: the aim (`aim`, skipped for an empty [param plan]), the legs' turn
+    /// (`GSSimLegs.apply`, skipped for a null [param legs]), the carry (`carry`, skipped for empty
+    /// [param carry_bones]) and the support hand (`support`, skipped unless [param support_bones]
+    /// holds three). [param values]: pitch, drop, twist, up (3), support target (3), pole (3), support
+    /// weight, then 1 to aim the support hand at the grip this call's carry returns instead of the
+    /// target. Returns the carry's grip, `Vector3.INF` for none or no carry.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn upper(
+        &mut self,
+        skeleton: Option<Gd<Skeleton3D>>,
+        legs: Option<Gd<GSSimLegs>>,
+        to_figure: Transform3D,
+        plan: PackedFloat64Array,
+        values: PackedFloat64Array,
+        carry_bones: PackedInt32Array,
+        keyed: PackedByteArray,
+        carry_frame: PackedFloat64Array,
+        support_bones: PackedInt32Array,
+        chain: PackedInt32Array,
+    ) -> Vector3 {
+        let none = Vector3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let Some(mut skeleton) = skeleton else {
+            return none;
+        };
+        let &[
+            pitch,
+            drop,
+            twist,
+            ux,
+            uy,
+            uz,
+            tx,
+            ty,
+            tz,
+            px,
+            py,
+            pz,
+            weight,
+            from_carry,
+        ] = values.as_slice()
+        else {
+            return none;
+        };
+        let mut legs = legs.and_then(|mut l| {
+            let bones = l.bind_mut().twist_bones(&skeleton);
+            bones.map(|b| (l, b))
+        });
+        self.parents_for(&skeleton);
+        let to = xf(&to_figure);
+        let mut s = Skel::new(
+            &mut skeleton,
+            &self.parents,
+            &mut self.poses,
+            &mut self.rots,
+        );
+        if !plan.is_empty() {
+            gs_sim_figure::aim(&mut s, plan.as_slice(), &to.rows, pitch, drop);
+        }
+        if let Some((l, (root, hips))) = legs.as_mut() {
+            let up = Vec3 {
+                x: ux as f32,
+                y: uy as f32,
+                z: uz as f32,
+            };
+            l.bind_mut().legs.apply(&mut s, *root, *hips, up, twist);
+        }
+        let mut grip = None;
+        let mut carried = false;
+        if let (&[a, b, c], Some(body), Some(style), Some(f)) = (
+            carry_bones.as_slice(),
+            self.carry_body.as_ref(),
+            self.carry_style.as_ref(),
+            CarryFrame::from_slice(carry_frame.as_slice()),
+        ) {
+            carried = true;
+            grip = gs_sim_figure::carry(&mut s, body, style, [a, b, c], keyed.as_slice(), &to, &f);
+        }
+        if let &[a, b, c] = support_bones.as_slice() {
+            let target = if from_carry != 0.0 && carried {
+                grip
+            } else {
+                Some(Vec3 {
+                    x: tx as f32,
+                    y: ty as f32,
+                    z: tz as f32,
+                })
+            };
+            if let Some(t) =
+                target.filter(|t| t.x.is_finite() && t.y.is_finite() && t.z.is_finite())
+            {
+                let pole = Vec3 {
+                    x: px as f32,
+                    y: py as f32,
+                    z: pz as f32,
+                };
+                let under = gs_sim_figure::chain_pose(&s, chain.as_slice());
+                gs_sim_figure::two_bone_under(&mut s, [a, b, c], &under, t, pole, weight);
+            }
+        }
+        match grip {
             Some(v) => Vector3::new(v.x, v.y, v.z),
             None => none,
         }
