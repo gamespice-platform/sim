@@ -64,6 +64,55 @@ class Hooked extends GSNetBehaviour:
 		return out
 
 
+## FC's remote player for the mirror test: a node whose controller holds the typed state the hook copies onto.
+class MirrorState extends RefCounted:
+	var position := Vector3.ZERO
+	var yaw := 0.0
+	var pitch := 0.0
+	var crouch_fraction := 0.0
+
+
+class MirrorController extends RefCounted:
+	var state := MirrorState.new()
+
+
+class MirrorPlayer extends Node3D:
+	var controller := MirrorController.new()
+
+
+## FC's [code]FcPlayerNet[/code]: typed net vars, and a [code]_net_interpolated[/code] that copies them onto the
+## player's state and moves the player. [method GSNetInterpolator.bind_mirror] does the same copy natively.
+class Present extends GSNetBehaviour:
+	var net_position := Vector3.ZERO
+	var net_yaw := 0.0
+	var net_pitch := 0.0
+	var net_crouch := 0.0
+	var player: MirrorPlayer
+	var hooks := 0
+
+	func _register_net_vars() -> void:
+		replicate(&"net_position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+		replicate(&"net_yaw", GSNetVar.Type.FLOAT).interpolated()
+		replicate(&"net_pitch", GSNetVar.Type.FLOAT).interpolated()
+		replicate(&"net_crouch", GSNetVar.Type.FLOAT).interpolated()
+
+	func _net_interpolated(_tick: int) -> void:
+		hooks += 1
+		if player == null:
+			return
+		var state := player.controller.state
+		state.position = net_position
+		state.yaw = net_yaw
+		state.pitch = net_pitch
+		state.crouch_fraction = net_crouch
+		player.global_position = state.position
+
+	## The player's transform and state, to the bit.
+	func state() -> PackedByteArray:
+		var s := player.controller.state
+		return var_to_bytes([player.global_transform, s.position, s.yaw, s.pitch, s.crouch_fraction, net_position, net_yaw, net_pitch, net_crouch])
+
+
 var _passed := 0
 var _failed := 0
 var _native := false
@@ -352,3 +401,137 @@ func _bench() -> void:
 		var frame_ms := float(Time.get_ticks_usec() - started) / 1000.0 / 400.0
 		print("  bench  64 entities, %s: apply %.3f ms, apply_frame %.3f ms per frame" % ["native" if native else "GDScript", ms, frame_ms])
 		side.free_all()
+
+
+const MIRROR_PAIRS := {&"net_position": &"position", &"net_yaw": &"yaw", &"net_pitch": &"pitch", &"net_crouch": &"crouch_fraction"}
+
+
+## One side of the mirror test: [param count] players under a moved parent, each with a [Present].
+func _mirror_side(config: GSNetConfig, native: bool, count: int) -> Array:
+	var interpolator := _interpolator(config, native)
+	var root := Node3D.new()
+	root.position = Vector3(3.25, -1.5, 7.0)
+	root.rotation = Vector3(0.0, 0.7, 0.0)
+	add_child(root)
+	var identities: Array[GSNetIdentity] = []
+	for i in range(count):
+		var player := MirrorPlayer.new()
+		root.add_child(player)
+		var identity := GSNetIdentity.new()
+		identity.net_id = 10 + i
+		var behaviour := Present.new()
+		behaviour._bind(config)
+		behaviour.player = player
+		var list: Array[GSNetBehaviour] = [behaviour]
+		identity.behaviours = list
+		identities.append(identity)
+		if native:
+			interpolator.bind_mirror(behaviour, player, PackedStringArray(["controller", "state"]), MIRROR_PAIRS, &"position")
+	return [interpolator, identities, root]
+
+
+func _mirror_values(rng: RandomNumberGenerator, tick: int, entity: int, partial: bool) -> Dictionary:
+	var t := float(tick)
+	var all := {
+		&"net_position": Vector3(cos(t * 0.05) * 4.0, sin(t * 0.03), sin(t * 0.05) * 4.0) + Vector3(20.0, 0.0, 0.0) * float(entity),
+		&"net_yaw": fmod(t * 0.04, TAU) + rng.randf() * 0.01,
+		&"net_pitch": rng.randf_range(-1.2, 1.2),
+		&"net_crouch": rng.randf(),
+	}
+	if not partial:
+		return all
+	var out := {}
+	for key in all:
+		if rng.randf() < 0.5:
+			out[key] = all[key]
+	return out
+
+
+func _mirror_state(identities: Array[GSNetIdentity]) -> PackedByteArray:
+	var out := PackedByteArray()
+	for identity in identities:
+		out.append_array((identity.behaviours[0] as Present).state())
+	return out
+
+
+## [method GSNetInterpolator.bind_mirror] against the script hook it replaces: the same seeded stream (loss, stalls,
+## partial ticks, a player freed, a mirror unbound) into a script interpolator running the hook and a native one
+## running the mirror; every player's global transform and state must be equal to the bit after every frame.
+func _test_mirror(run_seed: int) -> void:
+	var config := _config()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = run_seed
+	var a := _mirror_side(config, false, ENTITIES)
+	var b := _mirror_side(config, true, ENTITIES)
+	var ia: GSNetInterpolator = a[0]
+	var ib: GSNetInterpolator = b[0]
+	_check(ib.mirror_count() == ENTITIES and ia.mirror_count() == 0, "seed %d mirrors bound only natively (%d)" % [run_seed, ib.mirror_count()])
+	var now := 0.0
+	var next_send := 0
+	var first_bad := -1
+	for frame in range(FRAMES):
+		var dt: float = [1.0 / 144.0, 1.0 / 60.0, 1.0 / 30.0][rng.randi_range(0, 2)]
+		now += dt * float(config.tick_rate)
+		while next_send <= int(now):
+			if rng.randf() >= 0.05:
+				for e in range(ENTITIES):
+					var vals := _mirror_values(rng, next_send, e, rng.randf() < 0.3)
+					ia.push(10 + e, next_send, vals.duplicate())
+					ib.push(10 + e, next_send, vals.duplicate())
+			next_send += 2
+		if frame == 800:
+			# A mirror unbound: the native side goes back to the script hook.
+			ib.unbind_mirror(b[1][1].behaviours[0])
+		for side in [a, b]:
+			var interpolator: GSNetInterpolator = side[0]
+			interpolator.advance(dt)
+			if frame % 2 == 0:
+				interpolator.apply_frame(side[1], now)
+			else:
+				for identity in side[1]:
+					interpolator.apply(identity, now)
+		if first_bad < 0 and _mirror_state(a[1]) != _mirror_state(b[1]):
+			first_bad = frame
+	var hooks := [0, 0]
+	for i in range(ENTITIES):
+		hooks[0] += (a[1][i].behaviours[0] as Present).hooks
+		hooks[1] += (b[1][i].behaviours[0] as Present).hooks
+	var mirrored: int = ib._native.mirrored_count()
+	_check(first_bad < 0, "seed %d mirror: %d frames, transforms and state to the bit" % [run_seed, FRAMES], "first difference at frame %d" % first_bad)
+	_check(mirrored > 0 and hooks[1] > 0 and hooks[0] == hooks[1] + mirrored, "seed %d mirror replaced %d hook calls, %d left to the script after unbind" % [run_seed, mirrored, hooks[1]], str([hooks, mirrored]))
+	ib.prune(PackedInt64Array([10, 12, 13]))
+	for side in [a, b]:
+		for identity in side[1]:
+			identity.behaviours[0].free()
+			identity.free()
+		side[2].free()
+	ib.clear()
+	_check(ib.mirror_count() == 0, "seed %d clear drops the mirrors" % run_seed)
+
+
+## What the remote-present copy costs per frame for 32 players: script hook against mirror (not a pass condition).
+func _bench_mirror() -> void:
+	var config := _config()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 98
+	for mode in ["script interp + hook", "native interp + hook", "native interp + mirror"]:
+		var side := _mirror_side(config, mode != "script interp + hook", 32)
+		var interpolator: GSNetInterpolator = side[0]
+		if mode == "native interp + hook":
+			for identity in side[1]:
+				interpolator.unbind_mirror(identity.behaviours[0])
+		for tick in range(0, 64, 2):
+			for e in range(32):
+				interpolator.push(10 + e, tick, _mirror_values(rng, tick, e, false))
+		var now := 40.0
+		var started := Time.get_ticks_usec()
+		for frame in range(400):
+			now += 64.0 / 144.0 * 0.05
+			interpolator.advance(1.0 / 144.0)
+			interpolator.apply_frame(side[1], now)
+		var ms := float(Time.get_ticks_usec() - started) / 1000.0 / 400.0
+		print("  bench  32 remote players, %s: %.3f ms per frame" % [mode, ms])
+		for identity in side[1]:
+			identity.behaviours[0].free()
+			identity.free()
+		side[2].free()

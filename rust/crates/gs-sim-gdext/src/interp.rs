@@ -67,6 +67,20 @@ pub struct GSSimInterpolator {
     /// `apply_all` calls so far, while `settle` is on.
     frame: u64,
     settled: i64,
+    /// Behaviour instance id -> the copy that replaces its `_net_interpolated` (`bind_mirror`).
+    mirrors: HashMap<InstanceId, Mirror>,
+    mirrored: i64,
+}
+
+/// `bind_mirror`: what a behaviour's `_net_interpolated` does, done here instead of a script call.
+/// Each pair copies the behaviour's interpolated property onto a state object reached from `node`
+/// through `chain`, then the state's `position` becomes the node's global position.
+struct Mirror {
+    node: InstanceId,
+    chain: Vec<StringName>,
+    /// Net property key and name, state property name.
+    pairs: Vec<(u32, StringName, StringName)>,
+    position: StringName,
 }
 
 fn to_value(v: &Variant) -> Value<Var> {
@@ -217,7 +231,20 @@ impl GSSimInterpolator {
                 }
                 wrote = true;
             }
-            if wrote {
+            if !wrote {
+                continue;
+            }
+            if let Some(mirror) = self.mirrors.get(&part.id) {
+                // The drawn value is what `set` stored; a hooked write may have changed it, so read back.
+                let drawn = |key: u32| {
+                    (!part.hook)
+                        .then(|| values.iter().find(|(k, _)| *k == key))
+                        .flatten()
+                        .map(|(_, v)| to_variant(v))
+                };
+                mirror.run(&behaviour, drawn);
+                self.mirrored += 1;
+            } else {
                 behaviour.call("_net_interpolated", std::slice::from_ref(tick));
             }
         }
@@ -256,6 +283,39 @@ impl GSSimInterpolator {
         self.interp.push(net_id, tick, out);
         if let Some(plan) = self.interp.plan_mut(net_id) {
             plan.last = None;
+        }
+    }
+}
+
+impl Mirror {
+    /// FC's `_net_interpolated`, step for step: nothing without the node, the pairs in order,
+    /// then `node.global_position = state.position`.
+    fn run(&self, behaviour: &Gd<Object>, drawn: impl Fn(u32) -> Option<Variant>) {
+        let Ok(mut node) = Gd::<Node3D>::try_from_instance_id(self.node) else {
+            return;
+        };
+        let mut state: Gd<Object> = node.clone().upcast();
+        for link in &self.chain {
+            let Ok(next) = state.get(link).try_to::<Gd<Object>>() else {
+                return;
+            };
+            state = next;
+        }
+        let mut position = None;
+        for (key, net, field) in &self.pairs {
+            let value = drawn(*key).unwrap_or_else(|| behaviour.get(net));
+            state.set(field, &value);
+            if *field == self.position {
+                position = Some(value);
+            }
+        }
+        // The state's typed property may have converted what was set; only a Vector3 passes as is.
+        let position = match position {
+            Some(v) if v.get_type() == VariantType::VECTOR3 => v,
+            _ => state.get(&self.position),
+        };
+        if let Ok(p) = position.try_to::<Vector3>() {
+            node.set_global_position(p);
         }
     }
 }
@@ -488,6 +548,52 @@ impl GSSimInterpolator {
         out
     }
 
+    /// Replaces `behaviour`'s `_net_interpolated` with a copy done in `apply`/`apply_all`, for a
+    /// hook that only copies interpolated values: after a frame's writes, each `pairs` entry
+    /// (behaviour property -> state property) is copied onto the object reached from `node`
+    /// through the `chain` properties, then `node.global_position` is set to the state's
+    /// `position` property. Nothing happens once `node` is freed. Rebinding replaces.
+    #[func]
+    fn bind_mirror(
+        &mut self,
+        behaviour: Gd<Object>,
+        node: Gd<Node3D>,
+        chain: PackedStringArray,
+        pairs: VarDictionary,
+        position: StringName,
+    ) {
+        let mut list = Vec::with_capacity(pairs.len());
+        for (k, v) in pairs.iter_shared() {
+            let net = k.to::<StringName>();
+            list.push((self.key(net.clone()), net, v.to::<StringName>()));
+        }
+        let mirror = Mirror {
+            node: node.instance_id(),
+            chain: chain.as_slice().iter().map(StringName::from).collect(),
+            pairs: list,
+            position,
+        };
+        self.mirrors.insert(behaviour.instance_id(), mirror);
+    }
+
+    /// Back to `_net_interpolated` for `behaviour`.
+    #[func]
+    fn unbind_mirror(&mut self, behaviour: Gd<Object>) {
+        self.mirrors.remove(&behaviour.instance_id());
+    }
+
+    /// Behaviours bound with `bind_mirror`.
+    #[func]
+    fn mirror_count(&self) -> i64 {
+        self.mirrors.len() as i64
+    }
+
+    /// Mirrors run (in place of `_net_interpolated`) since the last `reset_counts`.
+    #[func]
+    fn mirrored_count(&self) -> i64 {
+        self.mirrored
+    }
+
     #[func]
     fn forget(&mut self, net_id: i64) {
         self.interp.forget(net_id);
@@ -496,11 +602,14 @@ impl GSSimInterpolator {
     #[func]
     fn clear(&mut self) {
         self.interp.clear();
+        self.mirrors.clear();
     }
 
     #[func]
     fn prune(&mut self, live_ids: PackedInt64Array) {
         self.interp.prune(live_ids.as_slice());
+        self.mirrors
+            .retain(|id, _| Gd::<Object>::try_from_instance_id(*id).is_ok());
     }
 
     #[func]
@@ -527,5 +636,6 @@ impl GSSimInterpolator {
     fn reset_counts(&mut self) {
         self.interp.counts = Counts::default();
         self.settled = 0;
+        self.mirrored = 0;
     }
 }
