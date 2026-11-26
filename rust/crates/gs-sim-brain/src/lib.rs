@@ -8,6 +8,7 @@
 pub mod aim;
 pub mod fight;
 pub mod num;
+pub mod tricks;
 
 pub use aim::{Aim, AimProfile, View};
 pub use fight::{FightIn, FightOut, FightProfile, FirstShot, Strafe, fight};
