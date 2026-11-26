@@ -94,6 +94,8 @@ pub struct GSSimBotMind {
     query: SightQuery,
     /// GSBotTricks' state, kept here between steps ([`Self::tricks_step`]).
     trick: gs_sim_brain::tricks::Resident,
+    /// GSBotBrain's glance, kept here between steers ([`Self::steer_step`]).
+    glance: gs_sim_brain::act::Glance,
 }
 
 impl GSSimBotMind {
@@ -135,6 +137,7 @@ impl IRefCounted for GSSimBotMind {
             held: None,
             query: SightQuery::default(),
             trick: gs_sim_brain::tricks::Resident::default(),
+            glance: gs_sim_brain::act::Glance::default(),
         }
     }
 }
@@ -529,6 +532,116 @@ impl GSSimBotMind {
             return PackedFloat64Array::new();
         }
         PackedFloat64Array::from(&row[..])
+    }
+
+    /// One roaming steer like [`Self::steer`], with the inputs as arguments and the glance kept
+    /// in this mind (`glance_load` hands it over, `glance_state` gives it back). `mode` 0 walk
+    /// along the flat direction `at`, 1 hold facing the point x z `at` (x NaN: none); a drift
+    /// is [`Self::steer_drift`]. `prediction`, `turn_smooth`, `turn_rate`: the aim's profile.
+    /// Returns yaw, pitch, the stream's counter and the legs x y, or an empty array for an
+    /// unknown mode (nothing changed; the script then steers). No engine calls: worker-safe.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn steer_step(
+        &mut self,
+        mode: i64,
+        yaw: f64,
+        pitch: f64,
+        eye: Vector3,
+        at: Vector2,
+        now: f64,
+        dt: f64,
+        id: i64,
+        glance: f64,
+        counter: i64,
+        prediction: f64,
+        turn_smooth: f64,
+        turn_rate: f64,
+    ) -> PackedFloat64Array {
+        if !(0..=1).contains(&mode) {
+            return PackedFloat64Array::new();
+        }
+        let inp = gs_sim_brain::act::Input {
+            mode: mode as f64,
+            eye: V3::new(eye.x, eye.y, eye.z),
+            at: (at.x as f64, at.y as f64),
+            now,
+            dt,
+            id,
+            glance,
+            turn: [prediction, turn_smooth, turn_rate],
+            rate: 0.0,
+        };
+        let mut v = View { yaw, pitch };
+        let mut counter = counter;
+        let Some(legs) = gs_sim_brain::act::step(
+            &mut self.aim,
+            &mut v,
+            &mut self.glance,
+            &mut counter,
+            &inp,
+            self.brain_key,
+        ) else {
+            return PackedFloat64Array::new();
+        };
+        PackedFloat64Array::from(
+            &[v.yaw, v.pitch, counter as f64, legs.x as f64, legs.y as f64][..],
+        )
+    }
+
+    /// `GSBotBrain._drift` at `rate` deg/s for `dt` s (the aim's profile as in
+    /// [`Self::steer_step`]); returns the view, yaw and pitch.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn steer_drift(
+        &mut self,
+        yaw: f64,
+        pitch: f64,
+        rate: f64,
+        dt: f64,
+        prediction: f64,
+        turn_smooth: f64,
+        turn_rate: f64,
+    ) -> PackedFloat64Array {
+        let inp = gs_sim_brain::act::Input {
+            mode: gs_sim_brain::act::mode::DRIFT,
+            eye: V3::new(0.0, 0.0, 0.0),
+            at: (0.0, 0.0),
+            now: 0.0,
+            dt,
+            id: 0,
+            glance: 0.0,
+            turn: [prediction, turn_smooth, turn_rate],
+            rate,
+        };
+        let mut v = View { yaw, pitch };
+        let mut counter = 0;
+        let mut g = self.glance;
+        if gs_sim_brain::act::step(
+            &mut self.aim,
+            &mut v,
+            &mut g,
+            &mut counter,
+            &inp,
+            self.brain_key,
+        )
+        .is_none()
+        {
+            return PackedFloat64Array::new();
+        }
+        PackedFloat64Array::from(&[v.yaw, v.pitch][..])
+    }
+
+    /// The kept glance: next, until, off.
+    #[func]
+    fn glance_state(&self) -> PackedFloat64Array {
+        PackedFloat64Array::from(&self.glance.state()[..])
+    }
+
+    /// Takes the glance over in `glance_state`'s layout; false (and keeps its own) when short.
+    #[func]
+    fn glance_load(&mut self, state: PackedFloat64Array) -> bool {
+        self.glance.load(state.as_slice())
     }
 
     /// One `GSBotBrain._hear` over GSBotWorld's sound rows (`gs_sim_brain::hear::STRIDE` each,
