@@ -41,6 +41,7 @@ gs-sim-trace = { path = "../gs-sim-trace", optional = true }
 gs-sim-players = { path = "../gs-sim-players", optional = true }
 gs-sim-present = { path = "../gs-sim-present", optional = true }
 gs-sim-clips = { path = "../gs-sim-clips", optional = true }
+gs-sim-spawn = { path = "../gs-sim-spawn", optional = true }
 gs-sim-timer = { path = "../gs-sim-timer", optional = true }
 gs-sim-figure = { path = "../gs-sim-figure", optional = true }
 gs-sim-navjoin = { path = "../gs-sim-navjoin", optional = true }
@@ -51,7 +52,7 @@ gs-sim-navjoin = { path = "../gs-sim-navjoin", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "threat"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "threat", "spawn"]
 bots = ["dep:gs-sim-bots"]
 brain = ["dep:gs-sim-brain", "bots"]
 snapshot = ["dep:gs-sim-snapshot"]
@@ -85,6 +86,7 @@ present = ["dep:gs-sim-present", "dep:gs-sim-math"]
 pose = ["dep:gs-sim-math"]
 clips = ["dep:gs-sim-clips", "dep:gs-sim-math"]
 timer = ["dep:gs-sim-timer"]
+spawn = ["dep:gs-sim-spawn"]
 figure = ["dep:gs-sim-figure", "dep:gs-sim-math"]
 navjoin = ["dep:gs-sim-navjoin"]
 # A web side module (wasm32-unknown-emscripten, nightly, -Zbuild-std); see docs/web.md.
