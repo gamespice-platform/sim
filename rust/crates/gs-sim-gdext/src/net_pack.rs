@@ -1,10 +1,10 @@
 //! `GSSimFpsNetPack`: gs-player-controller's `GSFpsNetSync` packers over a state's columns, one
 //! call per pull (the script stays the fallback and the specification), and `pull` adds a carrier's sub-quantum
 //! hold (Fatal Contact's `FcPlayerNet._hold_subquantum`). `unpack` is the receiving half (`GSFpsNetSync.push`'s
-//! column writes). Stateless.
+//! column writes), and `unpack_exact` adds an exact movement record (`push_exact`) in the same call. Stateless.
 
 use godot::prelude::*;
-use gs_sim_motor::net_pack::{Extra, Held, Wire, pack, pull, unpack};
+use gs_sim_motor::net_pack::{Extra, Held, Wire, pack, pull, unpack, unpack_exact};
 
 /// A state's replicated integers from its columns.
 #[derive(GodotClass)]
@@ -115,6 +115,40 @@ impl GSSimFpsNetPack {
             (timers2 >= 0).then_some(timers2),
             timer_scale,
         );
+        cols
+    }
+
+    /// [method unpack], then [param exact] (an exact movement record, `GSFpsNetSync.EXACT_FLOATS` long) written
+    /// over its columns (`GSFpsNetSync.push_exact`'s column writes) when it has that length. One call for a
+    /// receiver that gets both. Empty when [param cols] is shorter than a state's.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn unpack_exact(
+        &self,
+        cols: PackedFloat64Array,
+        position: Vector3,
+        velocity: Vector3,
+        yaw: f64,
+        flags: i64,
+        timers2: i64,
+        timer_scale: f64,
+        exact: PackedFloat32Array,
+    ) -> PackedFloat64Array {
+        let mut cols = cols;
+        if cols.len() < gs_sim_motor::cols::STRIDE {
+            return PackedFloat64Array::new();
+        }
+        let slice = cols.as_mut_slice();
+        unpack(
+            slice,
+            [position.x, position.y, position.z],
+            [velocity.x, velocity.y, velocity.z],
+            yaw,
+            flags,
+            (timers2 >= 0).then_some(timers2),
+            timer_scale,
+        );
+        unpack_exact(slice, exact.as_slice());
         cols
     }
 }

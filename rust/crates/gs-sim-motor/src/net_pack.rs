@@ -262,6 +262,29 @@ pub fn unpack(
     crouch_held
 }
 
+/// Floats in an exact movement record (`GSFpsNetSync.EXACT_FLOATS`): position, velocity, crouch fraction,
+/// time since grounded, time since jump, time since jump pressed, wall-run cooldown, stamina, stamina exhausted
+/// (above 0.5), stamina delay.
+pub const EXACT_FLOATS: usize = 14;
+
+/// The column half of `GSFpsNetSync.push_exact`: an exact record's position, velocity and timers written over
+/// `cols`, each `f32` widened as the script's `Vector3` and float setters do. Crouch fraction and stamina are
+/// not columns; the caller writes them. Returns false (and writes nothing) for a record of another length.
+pub fn unpack_exact(cols: &mut [f64], exact: &[f32]) -> bool {
+    if exact.len() != EXACT_FLOATS {
+        return false;
+    }
+    for i in 0..3 {
+        cols[POSITION + i] = f64::from(exact[i]);
+        cols[VELOCITY + i] = f64::from(exact[3 + i]);
+    }
+    cols[TIME_SINCE_GROUNDED] = f64::from(exact[7]);
+    cols[TIME_SINCE_JUMP] = f64::from(exact[8]);
+    cols[TIME_SINCE_JUMP_PRESSED] = f64::from(exact[9]);
+    cols[WALL_RUN_COOLDOWN_LEFT] = f64::from(exact[10]);
+    true
+}
+
 /// [`hold_mask`] bit: keep the velocity from before the pull.
 pub const HOLD_VELOCITY: i64 = 1;
 /// [`hold_mask`] bit: keep the yaw from before the pull.
@@ -505,6 +528,31 @@ mod tests {
         let out = pull(&cols, &extra(), 0.0, &before, &WIRE);
         assert_eq!(out[..4], pack(&cols, &extra()));
         assert_eq!(out[4], 0);
+    }
+
+    #[test]
+    fn unpack_exact_overwrites_only_its_columns() {
+        let mut cols = DEFAULTS;
+        let exact: [f32; EXACT_FLOATS] = [
+            1.5, -2.25, 3.1, 0.1, -9.8, 7.0, 0.5, 0.33, 0.07, 1.9, 0.6, 0.4, 1.0, 0.2,
+        ];
+        let before = cols;
+        assert!(unpack_exact(&mut cols, &exact));
+        assert_eq!(cols[POSITION + 2], f64::from(3.1f32));
+        assert_eq!(cols[VELOCITY + 1], f64::from(-9.8f32));
+        assert_eq!(cols[TIME_SINCE_GROUNDED], f64::from(0.33f32));
+        assert_eq!(cols[TIME_SINCE_JUMP], f64::from(0.07f32));
+        assert_eq!(cols[TIME_SINCE_JUMP_PRESSED], f64::from(1.9f32));
+        assert_eq!(cols[WALL_RUN_COOLDOWN_LEFT], f64::from(0.6f32));
+        let written = [0, 1, 2, 3, 4, 5, 14, 15, 16, 21];
+        for (i, (a, b)) in cols.iter().zip(before.iter()).enumerate() {
+            if !written.contains(&i) {
+                assert_eq!(a.to_bits(), b.to_bits(), "column {i}");
+            }
+        }
+        let mut short = before;
+        assert!(!unpack_exact(&mut short, &exact[..13]));
+        assert_eq!(short, before);
     }
 
     #[test]
