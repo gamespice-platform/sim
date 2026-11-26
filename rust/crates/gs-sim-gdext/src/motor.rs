@@ -128,7 +128,24 @@ fn same_bits(a: V3, b: V3) -> bool {
         && a.z.to_bits() == b.z.to_bits()
 }
 
-#[inline]
+impl GSSimFpsBody {
+    /// [`GSSimFpsBody::overlaps`] for a caller in this crate (the batch's crouch).
+    pub(crate) fn crouch_overlaps(
+        &mut self,
+        at: V3,
+        height: f64,
+        radius: f64,
+        collision_mask: i64,
+        pass_out_mask: i64,
+    ) -> bool {
+        let m = Masks {
+            collision: collision_mask,
+            pass_out: pass_out_mask,
+        };
+        self.body.overlaps(&mut self.space, at, height, radius, m)
+    }
+}
+
 fn mv(v: Vector3) -> V3 {
     V3::new(v.x, v.y, v.z)
 }
@@ -333,7 +350,7 @@ fn packed(h: &Hit) -> PackedFloat64Array {
 /// ground_snap_distance, crest_launch_speed_scale, max_speed, stop_speed, air_friction,
 /// max_velocity, backward_speed_scale, max_air_wish_speed, wall_slide_speed,
 /// wall_run_vertical_damping`.
-const TICK_TUN_LEN: usize = 19;
+pub(crate) const TICK_TUN_LEN: usize = 19;
 
 fn slide_tun(p: &[f64], math_checks: bool) -> Tun {
     Tun {
@@ -458,7 +475,7 @@ impl Rd<'_> {
 }
 
 /// The move tunables after the tick ones, in [`FullTun`]'s field order.
-const FULL_TUN_LEN: usize = 56;
+pub(crate) const FULL_TUN_LEN: usize = 56;
 
 fn full_tun(p: &[f64]) -> FullTun {
     let mut r = Rd { p, i: TICK_TUN_LEN };
@@ -711,12 +728,7 @@ impl GSSimFpsBody {
         collision_mask: i64,
         pass_out_mask: i64,
     ) -> bool {
-        let m = Masks {
-            collision: collision_mask,
-            pass_out: pass_out_mask,
-        };
-        self.body
-            .overlaps(&mut self.space, mv(at), height, radius, m)
+        self.crouch_overlaps(mv(at), height, radius, collision_mask, pass_out_mask)
     }
 
     /// `GSFpsMotor._move` (mode 0, `flag` = walking) or `move_and_slide` (mode 1, `flag` = step),

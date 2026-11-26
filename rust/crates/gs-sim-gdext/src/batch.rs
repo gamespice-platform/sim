@@ -7,14 +7,16 @@
 //! the caller can take rows back when a player ends its tick somewhere else.
 
 use crate::hulls::GSSimHullWorld;
-use crate::motor::{GSSimFpsBody, TICK_IN_LEN, TICK_OUT_LEN};
+use crate::motor::{FULL_TUN_LEN, GSSimFpsBody, TICK_IN_LEN, TICK_OUT_LEN, TICK_TUN_LEN};
 use crate::motor_state::GSSimMotorState;
 use godot::prelude::*;
 use gs_sim_motor::Vec3 as V3;
 use gs_sim_motor::cols;
+use gs_sim_motor::crouch;
 use gs_sim_motor::state::{self as mstate, Rest};
 
 const _: () = assert!(TICK_IN_LEN == cols::ROW_IN && TICK_OUT_LEN == cols::ROW_OUT);
+const _: () = assert!(TICK_TUN_LEN + FULL_TUN_LEN == crouch::TUN_AT);
 
 /// Per row in [`GSSimMotorBatch::run`]'s `meta`: hulls mode (0 or 3), collision mask, pass-out
 /// mask; [`GSSimMotorBatch::run_rows`] adds the row's timers flags (`tick_into`'s `timers`).
@@ -127,7 +129,10 @@ impl GSSimMotorBatch {
     /// state's kept ones (`GSSimMotorState.set_consts`). A row with bit 8 (`ROW_EVENTS`,
     /// gs-player-controller 42) gets flag 64 and a bit per change its tick made
     /// (`gs_sim_motor::state::events`: 128 mode, 256 height, 512 slide, 1024 wall run). A row
-    /// without a state ends the run.
+    /// with bit 16 (`ROW_CROUCH`, gs-player-controller 43) has its crouch run here before its tick
+    /// (`gs_sim_motor::crouch::row`), its columns 30 and 31 the crouch fraction and held flag, its
+    /// tun the crouch's six values at 75; events compare with the columns before the crouch. A row
+    /// without a state, or a crouching one without those, ends the run.
     #[func]
     #[allow(clippy::too_many_arguments)]
     fn run_states(
@@ -176,6 +181,12 @@ impl GSSimMotorBatch {
                 state.bind_mut().rest = old;
             }
         }
+    }
+
+    /// Whether [`Self::run_states`] runs a row's crouch (`ROW_CROUCH`, gs-player-controller 43).
+    #[func]
+    fn crouch_rows(&self) -> bool {
+        true
     }
 
     /// Rows ticked and `run` calls since the last reset.
@@ -285,6 +296,9 @@ impl GSSimMotorBatch {
         // The rows' columns (and states), kept for the answer; a row without them ends the run.
         let mut held = Vec::with_capacity(last.saturating_sub(first));
         let mut held_states = Vec::new();
+        // Per row with a state: the columns and height its crouch left, when it changed any.
+        let mut held_crouch: Vec<Option<(Vec<f64>, f64)>> = Vec::new();
+        let mp = meta.as_slice();
         let mut input = std::mem::take(&mut self.cols_in);
         input.clear();
         input.resize(last.max(first) * TICK_IN_LEN, 0.0);
@@ -307,10 +321,27 @@ impl GSSimMotorBatch {
                     break;
                 };
                 let st = state.bind();
-                st.rest.fill_row(c.as_slice(), e, r);
                 mstate::fill_consts(st.consts.as_ref(), e, r);
+                let crouched = if e[1] as i64 & mstate::ROW_CROUCH != 0 {
+                    let Some(x) = crouch_row(bodies, tuns, mp, row, c.as_slice(), e, r) else {
+                        break;
+                    };
+                    x
+                } else {
+                    None
+                };
+                match &crouched {
+                    Some((cc, height)) => {
+                        let mut ex = [0.0; cols::EXTRA_LEN];
+                        ex.copy_from_slice(e);
+                        ex[0] = *height;
+                        st.rest.fill_row(cc, &ex, r);
+                    }
+                    None => st.rest.fill_row(c.as_slice(), e, r),
+                }
                 drop(st);
                 held_states.push(state);
+                held_crouch.push(crouched);
             }
             held.push(c);
         }
@@ -330,9 +361,18 @@ impl GSSimMotorBatch {
             let row = first + i;
             let e = &ep[row * cols::EXTRA_LEN..(row + 1) * cols::EXTRA_LEN];
             let o = &mut self.out[i * TICK_OUT_LEN..(i + 1) * TICK_OUT_LEN];
+            let mut ex = [0.0; cols::EXTRA_LEN];
+            let (base, e) = match held_crouch.get(i) {
+                Some(Some((cc, height))) => {
+                    ex.copy_from_slice(e);
+                    ex[0] = *height;
+                    (cc.as_slice(), &ex[..])
+                }
+                _ => (c.as_slice(), e),
+            };
             new.clear();
-            new.resize(c.len(), 0.0);
-            cols::apply_out(c.as_slice(), e, o, &mut new);
+            new.resize(base.len(), 0.0);
+            cols::apply_out(base, e, o, &mut new);
             if let Some(state) = held_states.get_mut(i) {
                 let old = state.bind().rest;
                 state.bind_mut().rest.after(&new, e, o);
@@ -349,4 +389,28 @@ impl GSSimMotorBatch {
             into.set(row, &PackedFloat64Array::from(&new[..]).to_variant());
         }
     }
+}
+
+/// A `ROW_CROUCH` row's crouch ([`crouch::row`]) through its own body: `None` when the row lacks
+/// the crouch columns or tun, or its body (the run ends there and the script ticks it).
+fn crouch_row(
+    bodies: &VarArray,
+    tuns: &VarArray,
+    mp: &[i64],
+    row: usize,
+    c: &[f64],
+    e: &[f64],
+    r: &mut [f64],
+) -> Option<Option<(Vec<f64>, f64)>> {
+    if c.len() < crouch::COLS_LEN {
+        return None;
+    }
+    let tun = tuns.get(row)?.try_to::<PackedFloat64Array>().ok()?;
+    let t = crouch::Tun::read(tun.as_slice())?;
+    let mut body = bodies.get(row)?.try_to::<Gd<GSSimFpsBody>>().ok()?;
+    let m = mp.get(row * ROWS_META_LEN..(row + 1) * ROWS_META_LEN)?;
+    let mut b = body.bind_mut();
+    Some(crouch::row(&t, c, e, r, |at, h, radius| {
+        b.crouch_overlaps(at, h, radius, m[1], m[2])
+    }))
 }
