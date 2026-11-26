@@ -321,7 +321,9 @@ pub fn quat_slerp(a: Quat, b: Quat, weight: f32) -> Quat {
         let omega = cosom.acos();
         let sinom = omega.sin();
         (
-            ((1.0 - weight) * omega).sin() / sinom,
+            // The engine's `1.0 - p_weight` is a double literal: this share is worked out in
+            // double (double sin, double divide) and rounded once; the other stays in float.
+            (((1.0 - weight as f64) * omega as f64).sin() / sinom as f64) as f32,
             (weight * omega).sin() / sinom,
         )
     } else {
