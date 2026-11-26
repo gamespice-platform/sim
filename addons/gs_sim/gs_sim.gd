@@ -40,6 +40,7 @@ const MODULES := {
 	&"clips": &"GSSimClipPlayer",
 	&"timer": &"GSSimTimer",
 	&"navjoin": &"GSSimNavJoin",
+	&"npc_ai_senses": &"GSSimNpcAiSenses",
 	&"figure": &"GSSimLegs",
 	&"net_pack": &"GSSimFpsNetPack",
 	&"threat": &"GSSimBotThreat",

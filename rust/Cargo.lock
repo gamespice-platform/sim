@@ -192,6 +192,7 @@ dependencies = [
  "gs-sim-math",
  "gs-sim-motor",
  "gs-sim-navjoin",
+ "gs-sim-npcai",
  "gs-sim-players",
  "gs-sim-present",
  "gs-sim-pvs",
@@ -241,6 +242,13 @@ dependencies = [
 [[package]]
 name = "gs-sim-navjoin"
 version = "0.1.0"
+
+[[package]]
+name = "gs-sim-npcai"
+version = "0.1.0"
+dependencies = [
+ "gs-sim-math",
+]
 
 [[package]]
 name = "gs-sim-players"

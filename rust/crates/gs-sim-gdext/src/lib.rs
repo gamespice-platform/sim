@@ -53,6 +53,8 @@ mod motor_state;
 mod navjoin;
 #[cfg(feature = "net_pack")]
 mod net_pack;
+#[cfg(feature = "npc_ai_senses")]
+mod npc_ai_senses;
 #[cfg(feature = "zombie")]
 mod pace;
 #[cfg(feature = "players")]
