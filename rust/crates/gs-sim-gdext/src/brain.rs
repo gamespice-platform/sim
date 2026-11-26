@@ -665,6 +665,57 @@ impl GSSimBotMind {
         )
     }
 
+    /// GSBotPickup's `_choose` over the world's drop table (`ids`, `at`, `rows` of slot, value,
+    /// ammo): the row of the drop a quiet bot walks to, -1 for none, -2 when the columns do not
+    /// match. `mine` is the loadout's dictionary slots as slot, value, ammo; `skip_ids` and
+    /// `skip_until` the drops left alone. `los(eye, to)` is asked as the script asks it (same drops,
+    /// same order), so the choice is the script's to the bit. Safe on a worker thread.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn pickup_choose(
+        &self,
+        ids: PackedInt64Array,
+        at: PackedVector3Array,
+        rows: PackedFloat64Array,
+        mine: PackedFloat64Array,
+        skip_ids: PackedInt64Array,
+        skip_until: PackedFloat64Array,
+        pos: Vector3,
+        eye: Vector3,
+        range: f64,
+        through: bool,
+        now: f64,
+        los: Callable,
+    ) -> i64 {
+        use gs_sim_brain::pickup::{ChooseIn, STRIDE, Skip, choose};
+        let n = ids.len();
+        if at.len() != n || rows.len() < n * STRIDE || skip_until.len() < skip_ids.len() {
+            return -2;
+        }
+        let points: Vec<V3> = at.as_slice().iter().map(|&v| v3(v)).collect();
+        let inp = ChooseIn {
+            pos: v3(pos),
+            range,
+            through,
+            now,
+        };
+        let skip = Skip {
+            ids: skip_ids.as_slice(),
+            until: skip_until.as_slice(),
+        };
+        let eye = eye.to_variant();
+        let got = choose(
+            ids.as_slice(),
+            &points,
+            rows.as_slice(),
+            mine.as_slice(),
+            skip,
+            &inp,
+            |to| los.call(&[eye.clone(), gv(to).to_variant()]).booleanize(),
+        );
+        got.map_or(-1, |i| i as i64)
+    }
+
     /// Whether this library's objects may be called on worker threads (one thread per object at a
     /// time): desktop and server builds bind with godot-rust's thread-safe storage; web builds are
     /// single-threaded and panic off the main thread, so their brains stay in script there.
