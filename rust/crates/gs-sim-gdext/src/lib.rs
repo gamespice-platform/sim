@@ -27,6 +27,8 @@ mod doors;
 mod doubt;
 #[cfg(feature = "figure")]
 mod figure;
+#[cfg(feature = "figure")]
+mod figure_batch;
 #[cfg(feature = "trace")]
 mod flat_trace;
 #[cfg(feature = "grid2d")]
