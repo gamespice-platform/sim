@@ -43,6 +43,7 @@ const MODULES := {
 	&"figure": &"GSSimLegs",
 	&"net_pack": &"GSSimFpsNetPack",
 	&"threat": &"GSSimBotThreat",
+	&"spawn": &"GSSimSpawnPick",
 }
 
 
