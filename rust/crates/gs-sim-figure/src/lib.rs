@@ -78,12 +78,13 @@ pub fn quat_arc(v0: Vec3, v1: Vec3) -> Quat {
             UP
         };
         let axis = n0.cross(pick).normalized();
-        return [axis.x, axis.y, axis.z, 0.0];
+        return quat_normalized([axis.x, axis.y, axis.z, 0.0]);
     }
     let c = n0.cross(n1);
     let s = ((1.0 + d) * 2.0).sqrt();
     let rs = 1.0 / s;
-    [c.x * rs, c.y * rs, c.z * rs, s * 0.5]
+    // The engine's constructor ends in `normalize()`: without it the result is off by an ulp or two.
+    quat_normalized([c.x * rs, c.y * rs, c.z * rs, s * 0.5])
 }
 
 /// `Quaternion.angle_to()`.
