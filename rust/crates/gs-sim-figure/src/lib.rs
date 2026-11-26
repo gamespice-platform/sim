@@ -27,6 +27,8 @@ pub trait Pose {
 }
 
 mod body;
+mod carry;
+pub use carry::{CarryBody, CarryFrame, CarryStyle, carry};
 pub use body::{WALL_LIFT, Wall, WallLeg, aim, on_wall, two_bone_under};
 
 pub(crate) const IDENTITY_Q: Quat = [0.0, 0.0, 0.0, 1.0];

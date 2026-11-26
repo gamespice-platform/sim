@@ -8,11 +8,18 @@
 
 use godot::classes::Skeleton3D;
 use godot::prelude::*;
-use gs_sim_figure::{FloorLeg, Legs, Pose, TurnLimit, Wall, WallLeg};
+use gs_sim_figure::{
+    CarryBody, CarryFrame, CarryStyle, FloorLeg, Legs, Pose, TurnLimit, Wall, WallLeg,
+};
 use gs_sim_math::{Quat, Vec3, Xform};
 
 fn v3(v: Vector3) -> Vec3 {
     Vec3::new(v.x, v.y, v.z)
+}
+
+/// Quaternions packed four floats each (x, y, z, w), as the script hands them in.
+fn quats(v: &PackedFloat32Array) -> Vec<Quat> {
+    v.as_slice().as_chunks::<4>().0.to_vec()
 }
 
 fn xf(t: &Transform3D) -> Xform {
@@ -515,9 +522,10 @@ impl GSSimTurnLimit {
     }
 }
 
-/// One figure's arm posing after its clip: `GSHumanoidAim.apply_plan` and the support hand's
-/// `GSHumanoidIk.two_bone_under`. The script keeps the plans and chains; this side only caches the
-/// skeleton's parents.
+/// One figure's arm posing after its clip: `GSHumanoidAim.apply_plan`, the gun arm's
+/// `GSHumanoidCarryPose.apply` and the support hand's `GSHumanoidIk.two_bone_under`. The script
+/// keeps the plans, chains and its carry state; this side caches the skeleton's parents and what
+/// the carry measured on the body and baked from the style.
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
 pub struct GSSimFigurePose {
@@ -525,6 +533,8 @@ pub struct GSSimFigurePose {
     parents_seen: Seen,
     poses: Vec<Option<Xform>>,
     rots: Vec<Option<Quat>>,
+    carry_body: Option<CarryBody>,
+    carry_style: Option<CarryStyle>,
 }
 
 impl GSSimFigurePose {
@@ -584,5 +594,118 @@ impl GSSimFigurePose {
         );
         let under = gs_sim_figure::chain_pose(&s, chain.as_slice());
         gs_sim_figure::two_bone_under(&mut s, [a, b, c], &under, v3(target), v3(pole), weight);
+    }
+
+    /// What `GSHumanoidCarryPose._measure` found on a body, quaternions packed four floats each.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn carry_body(
+        &mut self,
+        chest_chain: PackedInt32Array,
+        shoulder: i32,
+        hand_frame: Transform3D,
+        hand_frame_inv: Transform3D,
+        chest_ref: Transform3D,
+        hand_rest: Quaternion,
+        fingers: PackedInt32Array,
+        finger_rest: PackedFloat32Array,
+        grip_bones: PackedInt32Array,
+        grip_pose: PackedFloat32Array,
+    ) {
+        self.carry_body = Some(CarryBody {
+            chest_chain: chest_chain.to_vec(),
+            shoulder,
+            hand_frame: xf(&hand_frame),
+            hand_frame_inv: xf(&hand_frame_inv),
+            chest_ref: xf(&chest_ref),
+            hand_rest: [hand_rest.x, hand_rest.y, hand_rest.z, hand_rest.w],
+            fingers: fingers.to_vec(),
+            finger_rest: quats(&finger_rest),
+            grip_bones: grip_bones.to_vec(),
+            grip_pose: quats(&grip_pose),
+        });
+    }
+
+    /// A `GSHumanoidCarry` as the carry reads it: the five grips and baked turns (ready, sprint,
+    /// aim, reload, swap), `values` = follow, kick, kick_climb, bolt, bolt_back, bolt_roll.
+    #[func]
+    fn carry_style(
+        &mut self,
+        grips: PackedVector3Array,
+        turns: PackedFloat32Array,
+        values: PackedFloat64Array,
+        walk_sway: Vector3,
+        run_sway: Vector3,
+        support: Vector3,
+    ) {
+        let turns = quats(&turns);
+        let (Ok(g), Ok(t), &[follow, kick, kick_climb, bolt, bolt_back, bolt_roll]) = (
+            <[Vector3; 5]>::try_from(grips.as_slice()),
+            <[Quat; 5]>::try_from(turns.as_slice()),
+            values.as_slice(),
+        ) else {
+            self.carry_style = None;
+            return;
+        };
+        self.carry_style = Some(CarryStyle {
+            grips: g.map(v3),
+            turns: t,
+            follow,
+            walk_sway: v3(walk_sway),
+            run_sway: v3(run_sway),
+            kick,
+            kick_climb,
+            bolt,
+            bolt_back,
+            bolt_roll,
+            support: v3(support),
+        });
+    }
+
+    /// `GSHumanoidCarryPose.apply` past its checks: poses the gun arm (`bones`: upper, lower,
+    /// hand) and returns the support grip, `Vector3.INF` for none. `frame` is the
+    /// [`CarryFrame`] layout; `keyed` whether the clip keys each finger root.
+    #[func]
+    fn carry(
+        &mut self,
+        skeleton: Option<Gd<Skeleton3D>>,
+        bones: PackedInt32Array,
+        keyed: PackedByteArray,
+        to_figure: Transform3D,
+        frame: PackedFloat64Array,
+    ) -> Vector3 {
+        let none = Vector3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let (Some(mut skeleton), Some(body), Some(style)) =
+            (skeleton, self.carry_body.as_ref(), self.carry_style.as_ref())
+        else {
+            return none;
+        };
+        let (&[a, b, c], Some(f)) = (bones.as_slice(), CarryFrame::from_slice(frame.as_slice()))
+        else {
+            return none;
+        };
+        let seen = Seen::of(&skeleton);
+        if self.parents_seen != seen {
+            self.parents_seen = seen;
+            self.parents = parents_of(&skeleton);
+        }
+        let mut s = Skel::new(
+            &mut skeleton,
+            &self.parents,
+            &mut self.poses,
+            &mut self.rots,
+        );
+        match gs_sim_figure::carry(
+            &mut s,
+            body,
+            style,
+            [a, b, c],
+            keyed.as_slice(),
+            &xf(&to_figure),
+            &f,
+        ) {
+            Some(v) => Vector3::new(v.x, v.y, v.z),
+            None => none,
+        }
     }
 }
