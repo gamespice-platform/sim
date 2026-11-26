@@ -6,6 +6,8 @@
 //! everything in as arguments; this side keeps only what the script kept between calls about the
 //! bones (the holds, the saved rotations, the last drawn pose). Drawing only.
 
+use std::cell::Cell;
+
 use godot::classes::Skeleton3D;
 use godot::prelude::*;
 use gs_sim_figure::{
@@ -44,13 +46,14 @@ impl Seen {
 }
 
 /// One skeleton seen through [`Pose`] for one call: parents from the per-skeleton cache, local
-/// poses and rotations read once and kept until the call writes that bone (a write is read back
-/// from the engine, so a pose is always the engine's own composition).
+/// poses and rotations read from the engine the first time the call asks for a bone and kept until
+/// the call writes that bone (a written bone's pose is read back from the engine on its next ask,
+/// so a pose is always the engine's own composition). Each read crosses into the engine once.
 struct Skel<'a> {
     gd: &'a mut Gd<Skeleton3D>,
     parents: &'a [i32],
-    poses: &'a mut Vec<Option<Xform>>,
-    rots: &'a mut Vec<Option<Quat>>,
+    poses: &'a [Cell<Option<Xform>>],
+    rots: &'a [Cell<Option<Quat>>],
 }
 
 impl<'a> Skel<'a> {
@@ -67,8 +70,8 @@ impl<'a> Skel<'a> {
         Self {
             gd,
             parents,
-            poses,
-            rots,
+            poses: Cell::from_mut(poses.as_mut_slice()).as_slice_of_cells(),
+            rots: Cell::from_mut(rots.as_mut_slice()).as_slice_of_cells(),
         }
     }
 }
@@ -79,49 +82,46 @@ impl Pose for Skel<'_> {
     }
 
     fn pose(&self, bone: i32) -> Xform {
-        // Interior caching would need `&mut self`; the poses read per call are few, so read
-        // through the cache when it has the bone and from the engine otherwise.
-        match self.poses.get(bone as usize).copied().flatten() {
-            Some(x) => x,
-            None => xf(&self.gd.get_bone_pose(bone)),
+        let slot = self.poses.get(bone as usize);
+        if let Some(x) = slot.and_then(Cell::get) {
+            return x;
         }
+        let x = xf(&self.gd.get_bone_pose(bone));
+        if let Some(slot) = slot {
+            slot.set(Some(x));
+        }
+        x
     }
 
     fn rot(&self, bone: i32) -> Quat {
-        match self.rots.get(bone as usize).copied().flatten() {
-            Some(q) => q,
-            None => {
-                let q = self.gd.get_bone_pose_rotation(bone);
-                [q.x, q.y, q.z, q.w]
-            }
+        let slot = self.rots.get(bone as usize);
+        if let Some(q) = slot.and_then(Cell::get) {
+            return q;
         }
+        let q = self.gd.get_bone_pose_rotation(bone);
+        let q = [q.x, q.y, q.z, q.w];
+        if let Some(slot) = slot {
+            slot.set(Some(q));
+        }
+        q
     }
 
     fn set_rot(&mut self, bone: i32, q: Quat) {
         self.gd
             .set_bone_pose_rotation(bone, Quaternion::new(q[0], q[1], q[2], q[3]));
-        if let Some(slot) = self.rots.get_mut(bone as usize) {
-            *slot = Some(q);
+        if let Some(slot) = self.rots.get(bone as usize) {
+            slot.set(Some(q));
         }
-        if let Some(slot) = self.poses.get_mut(bone as usize) {
-            *slot = None;
+        if let Some(slot) = self.poses.get(bone as usize) {
+            slot.set(None);
         }
     }
 
     fn set_pos(&mut self, bone: i32, v: Vec3) {
         self.gd
             .set_bone_pose_position(bone, Vector3::new(v.x, v.y, v.z));
-        if let Some(slot) = self.poses.get_mut(bone as usize) {
-            *slot = None;
-        }
-    }
-}
-
-impl Skel<'_> {
-    /// Reads every bone's local pose into the cache once (a call that walks chains many times).
-    fn warm(&mut self) {
-        for b in 0..self.parents.len() {
-            self.poses[b] = Some(xf(&self.gd.get_bone_pose(b as i32)));
+        if let Some(slot) = self.poses.get(bone as usize) {
+            slot.set(None);
         }
     }
 }
@@ -285,7 +285,6 @@ impl GSSimLegs {
             &mut self.poses,
             &mut self.rots,
         );
-        s.warm();
         self.legs
             .on_floor(&mut s, &xf(&to_figure), floor_y.as_slice(), raised);
     }
@@ -320,7 +319,6 @@ impl GSSimLegs {
             &mut self.poses,
             &mut self.rots,
         );
-        s.warm();
         gs_sim_figure::on_wall(&mut s, &legs, &wall, v3(up), weight);
     }
 
@@ -350,7 +348,6 @@ impl GSSimLegs {
             &mut self.poses,
             &mut self.rots,
         );
-        s.warm();
         self.legs.hold_feet(
             &mut s,
             &xf(&to_world),
@@ -389,7 +386,6 @@ impl GSSimLegs {
             &mut self.poses,
             &mut self.rots,
         );
-        s.warm();
         self.legs.step_off(
             &mut s,
             &xf(&to_world),
