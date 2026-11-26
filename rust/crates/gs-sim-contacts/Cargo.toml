@@ -1,0 +1,9 @@
+[package]
+name = "gs-sim-contacts"
+description = "A bot world's per-tick contact fields and sight rows from packed player records: the same values as the script, pure."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
