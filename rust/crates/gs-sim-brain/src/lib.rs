@@ -7,6 +7,7 @@
 
 pub mod aim;
 pub mod fight;
+pub mod hear;
 pub mod num;
 pub mod tricks;
 
