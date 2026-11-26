@@ -289,6 +289,17 @@ impl Vec3 {
     }
 }
 
+/// `Quaternion * Quaternion`, the engine's component order.
+pub fn quat_mul(a: Quat, b: Quat) -> Quat {
+    let [x, y, z, w] = a;
+    [
+        w * b[0] + x * b[3] + y * b[2] - z * b[1],
+        w * b[1] + y * b[3] + z * b[0] - x * b[2],
+        w * b[2] + z * b[3] + x * b[1] - y * b[0],
+        w * b[3] - x * b[0] - y * b[1] - z * b[2],
+    ]
+}
+
 /// `Quaternion.normalized()`: each component times `1 / length`, as the engine's `operator/=`.
 pub fn quat_normalized(q: Quat) -> Quat {
     let len = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();

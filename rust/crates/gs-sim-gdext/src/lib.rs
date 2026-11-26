@@ -25,6 +25,8 @@ mod crowd;
 mod doors;
 #[cfg(feature = "doubt")]
 mod doubt;
+#[cfg(feature = "figure")]
+mod figure;
 #[cfg(feature = "trace")]
 mod flat_trace;
 #[cfg(feature = "grid2d")]

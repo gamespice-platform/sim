@@ -13,7 +13,7 @@
 //! `_blend_apply` (a bone is written only when its total weight is not zero; its position only when
 //! some clip has a position track for it, likewise rotation).
 
-use gs_sim_math::{Quat, lerp_f32, quat_normalized, quat_slerp};
+use gs_sim_math::{Quat, lerp_f32, quat_mul, quat_normalized, quat_slerp};
 
 /// `CMP_EPSILON`.
 const EPS: f64 = 0.00001;
@@ -58,17 +58,6 @@ fn fposmod(x: f64, y: f64) -> f64 {
         value += y;
     }
     value + 0.0
-}
-
-/// `Quaternion * Quaternion`, the engine's component order.
-fn quat_mul(a: Quat, b: Quat) -> Quat {
-    let [x, y, z, w] = a;
-    [
-        w * b[0] + x * b[3] + y * b[2] - z * b[1],
-        w * b[1] + y * b[3] + z * b[0] - x * b[2],
-        w * b[2] + z * b[3] + x * b[1] - y * b[0],
-        w * b[3] - x * b[0] - y * b[1] - z * b[2],
-    ]
 }
 
 /// `Animation::interpolate_via_rest`: `(from * Quaternion().slerp(rest.inverse() * to, w)).normalized()`.

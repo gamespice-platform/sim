@@ -125,9 +125,7 @@ fn bake(
                 _ => continue,
             };
             let path = anim.track_get_path(t);
-            if path.get_subname_count() != 1
-                || path.get_concatenated_names() != skeleton_path
-            {
+            if path.get_subname_count() != 1 || path.get_concatenated_names() != skeleton_path {
                 continue;
             }
             let bone = skeleton.find_bone(&path.get_subname(0).to_string());

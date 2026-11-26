@@ -1,0 +1,10 @@
+[package]
+name = "gs-sim-figure"
+description = "A drawn figure's per-frame leg and limb posing after its clip: the legs turned toward the way it moves, feet held on and lifted out of the floor by two-bone IK, and the limbs' turn rate capped, in the engine's order and precision."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gs-sim-math = { path = "../gs-sim-math" }

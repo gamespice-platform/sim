@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/gs-sim-math", "crates/gs-sim-arms", "crates/gs-sim-bots", "crates/gs-sim-brain", "crates/gs-sim-snapshot", "crates/gs-sim-interp", "crates/gs-sim-motor", "crates/gs-sim-audio", "crates/gs-sim-crowd", "crates/gs-sim-weapon", "crates/gs-sim-senses", "crates/gs-sim-zombie", "crates/gs-sim-doors", "crates/gs-sim-grid2d", "crates/gs-sim-witches", "crates/gs-sim-doubt", "crates/gs-sim-seek", "crates/gs-sim-hazards", "crates/gs-sim-road", "crates/gs-sim-pvs", "crates/gs-sim-crc", "crates/gs-sim-interest", "crates/gs-sim-route", "crates/gs-sim-trace", "crates/gs-sim-players", "crates/gs-sim-present", "crates/gs-sim-clips", "crates/gs-sim-timer", "crates/gs-sim-gdext"]
+members = ["crates/gs-sim-math", "crates/gs-sim-arms", "crates/gs-sim-bots", "crates/gs-sim-brain", "crates/gs-sim-snapshot", "crates/gs-sim-interp", "crates/gs-sim-motor", "crates/gs-sim-audio", "crates/gs-sim-crowd", "crates/gs-sim-weapon", "crates/gs-sim-senses", "crates/gs-sim-zombie", "crates/gs-sim-doors", "crates/gs-sim-grid2d", "crates/gs-sim-witches", "crates/gs-sim-doubt", "crates/gs-sim-seek", "crates/gs-sim-hazards", "crates/gs-sim-road", "crates/gs-sim-pvs", "crates/gs-sim-crc", "crates/gs-sim-interest", "crates/gs-sim-route", "crates/gs-sim-trace", "crates/gs-sim-players", "crates/gs-sim-present", "crates/gs-sim-clips", "crates/gs-sim-timer", "crates/gs-sim-figure", "crates/gs-sim-gdext"]
 
 exclude = ["vendor/godot-cell"]
 

@@ -39,6 +39,7 @@ const MODULES := {
 	&"pose": &"GSSimPoseBlend",
 	&"clips": &"GSSimClipPlayer",
 	&"timer": &"GSSimTimer",
+	&"figure": &"GSSimLegs",
 }
 
 

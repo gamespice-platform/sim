@@ -158,6 +158,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gs-sim-figure"
+version = "0.1.0"
+dependencies = [
+ "gs-sim-math",
+]
+
+[[package]]
 name = "gs-sim-gdext"
 version = "0.1.0"
 dependencies = [
@@ -172,6 +179,7 @@ dependencies = [
  "gs-sim-crowd",
  "gs-sim-doors",
  "gs-sim-doubt",
+ "gs-sim-figure",
  "gs-sim-grid2d",
  "gs-sim-hazards",
  "gs-sim-interest",
