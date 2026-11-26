@@ -8,6 +8,8 @@
 
 use gs_sim_math::{clampf, maxf, minf};
 
+pub mod shot;
+
 /// `GSWeaponHitscan._NEVER`: the ticks-since-use count before any use, and its ceiling.
 pub const NEVER: i64 = 1 << 20;
 /// `GSWeaponAccuracyClass.FLINCH_SEC`.
@@ -420,5 +422,7 @@ pub fn rest(s: &mut State) {
     s.since = Some((s.since.unwrap_or(NEVER) + 1).min(NEVER));
 }
 
+#[cfg(test)]
+mod shot_tests;
 #[cfg(test)]
 mod tests;

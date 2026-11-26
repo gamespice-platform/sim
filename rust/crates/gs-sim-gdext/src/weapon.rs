@@ -4,6 +4,8 @@
 //! ([method set_tuning]) and again only when they change, so a tick marshals the posture row and nothing else.
 
 use godot::prelude::*;
+use gs_sim_math::Vec3;
+use gs_sim_weapon::shot::{Recoil, RecoilState, Shot, offset_direction, recoil, scatter};
 use gs_sim_weapon::{
     Frame, Posture, Rules, State, Tuning, WROTE_BLOOM, WROTE_FACTOR, WROTE_MOTION, WROTE_NOW,
     WROTE_SINCE, rest, rests, spread_with, tick,
@@ -16,6 +18,10 @@ struct Keys {
     motion: Variant,
     factor: Variant,
     now: Variant,
+    recoil_n: Variant,
+    recoil_tick: Variant,
+    recoil_ax: Variant,
+    recoil_ay: Variant,
 }
 
 impl Keys {
@@ -27,6 +33,10 @@ impl Keys {
             motion: k("motion"),
             factor: k("spread_factor"),
             now: k("spread_now"),
+            recoil_n: k("recoil_n"),
+            recoil_tick: k("recoil_tick"),
+            recoil_ax: k("recoil_ax"),
+            recoil_ay: k("recoil_ay"),
         }
     }
 }
@@ -38,6 +48,8 @@ pub struct GSSimWeaponSpread {
     tuning: Option<Tuning>,
     frame: Frame,
     keys: Keys,
+    /// [method scatter]'s pellets, kept so a shot allocates no buffer.
+    pellets: Vec<Vec3>,
 }
 
 #[godot_api]
@@ -47,6 +59,7 @@ impl IRefCounted for GSSimWeaponSpread {
             tuning: None,
             frame: Frame::default(),
             keys: Keys::new(),
+            pellets: Vec::new(),
         }
     }
 }
@@ -57,6 +70,10 @@ fn float_of(v: &Variant) -> Option<f64> {
         VariantType::INT => Some(v.to::<i64>() as f64),
         _ => None,
     }
+}
+
+fn vec3(v: Vector3) -> Vec3 {
+    Vec3::new(v.x, v.y, v.z)
 }
 
 fn int_of(v: &Variant) -> Option<i64> {
@@ -201,5 +218,79 @@ impl GSSimWeaponSpread {
         self.tuning
             .as_ref()
             .map_or(-1.0, |t| t.spread_for(speed, airborne, crouched))
+    }
+
+    /// `GSWeaponRecoilRules.apply` then `offset_direction` for one use, on [param state]'s `recoil_*` keys (all four
+    /// set). [param posture] is the use's posture row (as [method tick]'s; its tick is the use's), [param row]
+    /// `[maxi(tick_rate, 1), reset, b.recoil_recovery * recovery, b.recoil_build * build, b.recoil_build_max * build,
+    /// b.recoil_pitch * vertical, b.recoil_yaw * horizontal, share, follow, seed_for(b, id), scale, mult_aim,
+    /// mult_crouch, mult_air, mult_move, weapon aim, weapon crouch, weapon move]` (the weapon terms of
+    /// `recoil_posture`, each the field when 0 or more, else the class preset). Returns `[recoil.x, recoil.y, dir.x,
+    /// dir.y, dir.z]`: the outcome's view kick and [param direction] turned by the bullet's offset. Empty (and
+    /// nothing written) for a short row.
+    #[func]
+    fn recoil(
+        &self,
+        mut state: VarDictionary,
+        posture: PackedFloat64Array,
+        row: PackedFloat64Array,
+        direction: Vector3,
+    ) -> PackedFloat64Array {
+        let (Some(r), Some(p)) = (Recoil::from_row(row.as_slice()), Self::posture(&posture)) else {
+            return PackedFloat64Array::new();
+        };
+        let k = &self.keys;
+        let mut s = RecoilState {
+            n: int_of(&state.get_or_nil(&k.recoil_n)),
+            tick: int_of(&state.get_or_nil(&k.recoil_tick)),
+            ax: float_of(&state.get_or_nil(&k.recoil_ax)),
+            ay: float_of(&state.get_or_nil(&k.recoil_ay)),
+        };
+        let kick = recoil(&r, &p, &mut s);
+        state.set(&k.recoil_n, s.n.unwrap_or(0));
+        state.set(&k.recoil_tick, s.tick.unwrap_or(0));
+        state.set(&k.recoil_ax, s.ax.unwrap_or(0.0));
+        state.set(&k.recoil_ay, s.ay.unwrap_or(0.0));
+        let d = offset_direction(vec3(direction), kick.offset.0, kick.offset.1);
+        PackedFloat64Array::from(
+            &[
+                kick.view.0 as f64,
+                kick.view.1 as f64,
+                d.x as f64,
+                d.y as f64,
+                d.z as f64,
+            ][..],
+        )
+    }
+
+    /// `GSShot.scatter()` for a shot of [param pellet_count] pellets along [param direction]: its `pellets`, as the
+    /// typed array the script keeps.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn scatter(
+        &mut self,
+        direction: Vector3,
+        spread: f64,
+        entity: i64,
+        tick: i64,
+        index: i64,
+        pellet_count: i64,
+        fixed: bool,
+    ) -> Array<Vector3> {
+        let shot = Shot {
+            direction: vec3(direction),
+            spread,
+            entity,
+            tick,
+            index,
+            pellet_count,
+            fixed,
+        };
+        scatter(&shot, &mut self.pellets);
+        let mut out = Array::<Vector3>::new();
+        for p in &self.pellets {
+            out.push(Vector3::new(p.x, p.y, p.z));
+        }
+        out
     }
 }
