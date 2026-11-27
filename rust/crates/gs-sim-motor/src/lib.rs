@@ -14,6 +14,7 @@ pub mod crouch;
 pub mod flat;
 pub mod full;
 pub mod memo;
+pub mod mirror_world;
 pub mod net_pack;
 pub mod site;
 pub mod slide;

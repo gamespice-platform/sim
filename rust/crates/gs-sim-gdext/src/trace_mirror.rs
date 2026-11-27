@@ -11,6 +11,8 @@ use godot::classes::{
     Shape3D, StaticBody3D,
 };
 use godot::prelude::*;
+use gs_sim_motor::mirror_world::MirrorWorld;
+use gs_sim_motor::trace::SharedWorld;
 use gs_sim_trace::mirror::{Hit, Mirror};
 use gs_sim_trace::piece::{Piece, V3, Xform};
 use std::sync::Arc;
@@ -103,12 +105,27 @@ pub struct GSSimTraceMirror {
     skipped: i64,
     /// The id the next staged shape's pieces get.
     next_shape: u32,
+    /// The motor's capsule world over `mirror`, built on first ask and shared by every body.
+    motor_world: Option<(Arc<Mirror>, SharedWorld)>,
 }
 
 impl GSSimTraceMirror {
     /// The built mirror, for a native caller (a mind's sight) that asks it directly.
     pub fn mirror(&self) -> Arc<Mirror> {
         self.mirror.clone()
+    }
+
+    /// The motor's trace world over the built mirror ([`MirrorWorld`]), shared by every body
+    /// given it; rebuilt only when the mirror was rebuilt or reloaded.
+    pub fn motor_world(&mut self) -> SharedWorld {
+        if let Some((m, w)) = &self.motor_world
+            && Arc::ptr_eq(m, &self.mirror)
+        {
+            return w.clone();
+        }
+        let w: SharedWorld = Arc::new(MirrorWorld::new(self.mirror.clone()));
+        self.motor_world = Some((self.mirror.clone(), w.clone()));
+        w
     }
 
     /// `pieces` (one engine shape) given the next shape id.

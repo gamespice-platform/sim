@@ -6,6 +6,7 @@
 //! halves, since an object id need not fit a double.
 
 use crate::hulls::GSSimHullWorld;
+use crate::trace_mirror::GSSimTraceMirror;
 use godot::classes::{
     CapsuleShape3D, Os, PhysicsDirectSpaceState3D, PhysicsRayQueryParameters3D,
     PhysicsShapeQueryParameters3D,
@@ -660,6 +661,16 @@ impl GSSimFpsBody {
     #[func]
     fn clear_flat_world(&mut self) {
         self.set_trace_world(None);
+    }
+
+    /// The map's collision mirror in place of a physics space: every sweep, rest query, overlap
+    /// and ray is answered from the mirror's pieces ([`gs_sim_motor::mirror_world`]) with the
+    /// engine's `cast_motion` and `get_rest_info` rules. Every body given the same mirror shares
+    /// one world. The mirror must be built first; `clear_flat_world` goes back to the space.
+    #[func]
+    fn set_trace_mirror(&mut self, mut mirror: Gd<GSSimTraceMirror>) {
+        let world = mirror.bind_mut().motor_world();
+        self.set_trace_world(Some(world));
     }
 
     /// Whether a trace world (flat or collision model) answers in place of the physics space.
