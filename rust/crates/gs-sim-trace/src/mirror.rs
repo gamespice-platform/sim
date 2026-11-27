@@ -374,11 +374,12 @@ impl Mirror {
                     if t > f64::from(low) + CLEAR || best.is_some_and(|(_, b)| b == i) {
                         continue;
                     }
-                    if let Ok((l, _, last)) = shape(i).cast_carried(f, m, h, &aabb, entry, faces, tried) {
-                        if best.is_none_or(|(b, _)| l < b) {
-                            best = Some((l, i));
-                            carried = last;
-                        }
+                    if let Ok((l, _, last)) =
+                        shape(i).cast_carried(f, m, h, &aabb, entry, faces, tried)
+                        && best.is_none_or(|(b, _)| l < b)
+                    {
+                        best = Some((l, i));
+                        carried = last;
                     }
                 }
             }
