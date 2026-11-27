@@ -33,6 +33,10 @@ pub struct SightConf {
     epoch: u64,
     /// The jail cell's glass rule, when one is in force.
     cell: Option<Cell>,
+    /// The map's collision mirror: when bound, the ray asks it instead of the space (static
+    /// world only, so the mask's moving bodies and the exclusions no longer matter).
+    #[cfg(feature = "trace")]
+    mirror: Option<Arc<gs_sim_trace::mirror::Mirror>>,
 }
 
 /// `GSMapGlassSight` as bound: a ray from within `radius` of `centre` that meets `glass_mask`
@@ -83,6 +87,11 @@ impl SightConf {
 
     /// The bound ray from `from` to `to`, on the reused query.
     fn ray(&self, query: &mut SightQuery, from: Vector3, to: Vector3) -> bool {
+        #[cfg(feature = "trace")]
+        if let Some(mirror) = &self.mirror {
+            let v = |p: Vector3| [f64::from(p.x), f64::from(p.y), f64::from(p.z)];
+            return mirror.ray(v(from), v(to), self.mask).is_none();
+        }
         let Some(space) = &self.space else {
             return true;
         };
@@ -161,6 +170,9 @@ pub struct GSSimSightRay {
     conf: Arc<SightConf>,
     /// The query `clear` uses when script (or a callable) asks.
     query: std::sync::Mutex<SightQuery>,
+    /// The mirror the next [method bind] hands its rays to.
+    #[cfg(feature = "trace")]
+    mirror: Option<Arc<gs_sim_trace::mirror::Mirror>>,
 }
 
 #[godot_api]
@@ -174,8 +186,12 @@ impl IRefCounted for GSSimSightRay {
                 lock: None,
                 epoch: 0,
                 cell: None,
+                #[cfg(feature = "trace")]
+                mirror: None,
             }),
             query: std::sync::Mutex::new(SightQuery::default()),
+            #[cfg(feature = "trace")]
+            mirror: None,
         }
     }
 }
@@ -215,7 +231,23 @@ impl GSSimSightRay {
             lock,
             epoch,
             cell,
+            #[cfg(feature = "trace")]
+            mirror: self.mirror.clone(),
         });
+    }
+
+    /// Hands the rays of every later [method bind] to a `GSSimTraceMirror` (null: back to the
+    /// physics space). The jail cell's glass rule still asks the space.
+    #[func]
+    fn bind_mirror(&mut self, mirror: Option<Gd<RefCounted>>) {
+        #[cfg(feature = "trace")]
+        {
+            self.mirror = mirror
+                .and_then(|m| m.try_cast::<crate::trace_mirror::GSSimTraceMirror>().ok())
+                .map(|m| m.bind().mirror());
+        }
+        #[cfg(not(feature = "trace"))]
+        let _ = mirror;
     }
 
     /// Whether nothing blocks the line from `from` to `to` (the world's `line_of_sight`).

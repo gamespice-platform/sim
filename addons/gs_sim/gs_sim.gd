@@ -50,6 +50,7 @@ const MODULES := {
 	&"contacts": &"GSSimBotContacts",
 	&"volumes": &"GSSimVolumes",
 	&"unlag": &"GSSimUnlagRing",
+	&"trace_mirror": &"GSSimTraceMirror",
 }
 
 
