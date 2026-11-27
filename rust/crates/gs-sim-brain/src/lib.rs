@@ -13,6 +13,7 @@ pub mod hear;
 pub mod num;
 pub mod pickup;
 pub mod tricks;
+pub mod unstick;
 
 pub use aim::{Aim, AimProfile, View};
 pub use fight::{FightIn, FightOut, FightProfile, FirstShot, Strafe, fight};

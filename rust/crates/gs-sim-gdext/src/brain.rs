@@ -94,6 +94,7 @@ pub struct GSSimBotMind {
     query: SightQuery,
     /// GSBotTricks' state, kept here between steps ([`Self::tricks_step`]).
     trick: gs_sim_brain::tricks::Resident,
+    unstick: gs_sim_brain::unstick::Unstick,
     /// GSBotBrain's glance, kept here between steers ([`Self::steer_step`]).
     glance: gs_sim_brain::act::Glance,
 }
@@ -137,6 +138,7 @@ impl IRefCounted for GSSimBotMind {
             held: None,
             query: SightQuery::default(),
             trick: gs_sim_brain::tricks::Resident::default(),
+            unstick: gs_sim_brain::unstick::Unstick::default(),
             glance: gs_sim_brain::act::Glance::default(),
         }
     }
@@ -519,6 +521,43 @@ impl GSSimBotMind {
     #[func]
     fn tricks_load(&mut self, state: PackedFloat64Array) -> bool {
         self.trick.load(state.as_slice())
+    }
+
+    /// One `GSBotUnstick.step` on the state this mind keeps (`unstick_load` hands it over,
+    /// `unstick_state` gives it back), up to the nudge's world query: returns
+    /// `gs_sim_brain::unstick`'s bits (jump 1, crouch 2, replan 4, stranded 8, strafe 16, strafe
+    /// left 32, a window ended stuck 64, wants the nudge 128) with the level from bit 8.
+    /// `can_nudge`: the brain has a world to ask; `after`: the stranded interval (0: never).
+    #[func]
+    fn unstick_step(
+        &mut self,
+        position: Vector3,
+        pushing: bool,
+        now: f64,
+        can_nudge: bool,
+        after: f64,
+    ) -> i64 {
+        let p = gs_sim_brain::num::Vec3::new(position.x, position.y, position.z);
+        self.unstick.step(p, pushing, now, can_nudge, after)
+    }
+
+    /// GSBotUnstick.reset on the kept state (an infinite `position` waits for the next step).
+    #[func]
+    fn unstick_reset(&mut self, position: Vector3, now: f64) {
+        let p = gs_sim_brain::num::Vec3::new(position.x, position.y, position.z);
+        self.unstick.reset(p, now);
+    }
+
+    /// The kept state: level, stuck_since, anchor x y z, anchor_at, pushed, seen, side.
+    #[func]
+    fn unstick_state(&self) -> PackedFloat64Array {
+        PackedFloat64Array::from(&self.unstick.state()[..])
+    }
+
+    /// Takes the state over in `unstick_state`'s layout; false (and keeps its own) when short.
+    #[func]
+    fn unstick_load(&mut self, state: PackedFloat64Array) -> bool {
+        self.unstick.load(state.as_slice())
     }
 
     /// One roaming steer (`GSBotBrain._walk`, `_hold` or `_drift` with `_set_move`) over the row
