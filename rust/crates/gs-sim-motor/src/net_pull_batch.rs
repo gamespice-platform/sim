@@ -86,6 +86,45 @@ pub fn pull_one(
     ]
 }
 
+/// Floats per player in the apply row a caller hands [fn applied] beside the movement row: `[crouch_fraction,
+/// modifiers, fitted, reloading, switching]` (the packed modifiers and the fitted code as whole numbers, booleans
+/// 0 or 1): the replicated fields the pull copies but the motor rows do not carry.
+pub const APPLY_EXTRA: usize = 5;
+
+/// The movement and weapon fields one pull writes on a player's net object, from his movement row, apply row
+/// ([constant APPLY_EXTRA]) and output row: what the game's script apply writes, value for value. A `None` is a
+/// field the sub-quantum hold keeps (left as it was).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Applied {
+    /// `Vector3(f[0], f[1], f[2])`: the columns rounded to the float32 a `Vector3` holds.
+    pub position: [f32; 3],
+    pub velocity: Option<[f32; 3]>,
+    pub yaw: Option<f64>,
+    pub pitch: Option<f64>,
+    pub crouch: f64,
+    pub modifiers: i64,
+    pub fitted: i64,
+    pub reloading: bool,
+    pub switching: bool,
+}
+
+/// What [fn pull_one]'s output row [param out] writes for the player of movement row [param m] ([param columns]
+/// state columns then [constant MOVE_EXTRA]) and apply row [param a].
+pub fn applied(m: &[f64], columns: usize, a: &[f64], out: &[i64]) -> Applied {
+    let hold = out[2];
+    Applied {
+        position: [m[0] as f32, m[1] as f32, m[2] as f32],
+        velocity: (hold & 1 == 0).then(|| [m[3] as f32, m[4] as f32, m[5] as f32]),
+        yaw: (hold & 2 == 0).then(|| m[12]),
+        pitch: (hold & 4 == 0).then(|| m[columns + 4]),
+        crouch: a[0],
+        modifiers: a[1] as i64,
+        fitted: a[2] as i64,
+        reloading: a[3] != 0.0,
+        switching: a[4] != 0.0,
+    }
+}
+
 /// Every player's output row, [constant OUT_STRIDE] each, in row order (see [fn players]).
 pub fn pull_all(
     moves: &[f64],
@@ -197,6 +236,24 @@ mod tests {
             assert_eq!(&row[3..10], &wp[..]);
             assert_eq!(row[10], p as i64);
         }
+    }
+
+    #[test]
+    fn applied_keeps_what_the_hold_keeps() {
+        let (m, _) = rows(5);
+        let a = [0.25, 6.0, 3.0, 1.0, 0.0];
+        let mut out = [0i64; OUT_STRIDE];
+        let all = applied(&m, COLUMNS, &a, &out);
+        assert_eq!(all.position, [m[0] as f32, m[1] as f32, m[2] as f32]);
+        assert_eq!(all.velocity, Some([m[3] as f32, m[4] as f32, m[5] as f32]));
+        assert_eq!(all.yaw, Some(m[12]));
+        assert_eq!(all.pitch, Some(m[COLUMNS + 4]));
+        assert_eq!((all.crouch, all.modifiers, all.fitted), (0.25, 6, 3));
+        assert!(all.reloading && !all.switching);
+        out[2] = 7;
+        let held = applied(&m, COLUMNS, &a, &out);
+        assert_eq!((held.velocity, held.yaw, held.pitch), (None, None, None));
+        assert_eq!(held.position, all.position);
     }
 
     #[test]
