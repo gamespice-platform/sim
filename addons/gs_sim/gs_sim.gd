@@ -38,6 +38,7 @@ const MODULES := {
 	&"players": &"GSSimPlayerPost",
 	&"server_tick": &"GSSimServerTick",
 	&"present": &"GSSimPresentLod",
+	&"world_hold": &"GSSimWorldHold",
 	&"pose": &"GSSimPoseBlend",
 	&"clips": &"GSSimClipPlayer",
 	&"timer": &"GSSimTimer",

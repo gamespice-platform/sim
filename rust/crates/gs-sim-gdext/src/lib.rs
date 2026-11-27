@@ -123,6 +123,8 @@ mod weapon;
 mod weapon_net;
 #[cfg(feature = "witches")]
 mod witches;
+#[cfg(feature = "world_hold")]
+mod world_hold;
 #[cfg(feature = "zombie")]
 mod zombie;
 

@@ -222,6 +222,7 @@ dependencies = [
  "gs-sim-events",
  "gs-sim-figure",
  "gs-sim-grid2d",
+ "gs-sim-hold",
  "gs-sim-hazards",
  "gs-sim-interest",
  "gs-sim-interp",
@@ -254,6 +255,13 @@ version = "0.1.0"
 
 [[package]]
 name = "gs-sim-hazards"
+version = "0.1.0"
+dependencies = [
+ "gs-sim-math",
+]
+
+[[package]]
+name = "gs-sim-hold"
 version = "0.1.0"
 dependencies = [
  "gs-sim-math",

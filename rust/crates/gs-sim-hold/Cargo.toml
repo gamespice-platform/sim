@@ -1,0 +1,10 @@
+[package]
+name = "gs-sim-hold"
+description = "A held weapon's third-person hand pose for a frame (fc-weapons AwWorldModel.advance): key sampling, Euler turns and the holder transform, pure Rust in the script's order and precision."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gs-sim-math = { path = "../gs-sim-math" }

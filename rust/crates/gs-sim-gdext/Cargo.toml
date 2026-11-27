@@ -41,6 +41,7 @@ gs-sim-trace = { path = "../gs-sim-trace", optional = true }
 gs-sim-players = { path = "../gs-sim-players", optional = true }
 gs-sim-events = { path = "../gs-sim-events", optional = true }
 gs-sim-present = { path = "../gs-sim-present", optional = true }
+gs-sim-hold = { path = "../gs-sim-hold", optional = true }
 gs-sim-clips = { path = "../gs-sim-clips", optional = true }
 gs-sim-spawn = { path = "../gs-sim-spawn", optional = true }
 gs-sim-volumes = { path = "../gs-sim-volumes", optional = true }
@@ -59,7 +60,7 @@ godot = { version = "0.5.5", features = ["experimental-threads"] }
 rayon = "1.12"
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_core", "net_pack", "net_pull_batch", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag", "events", "coast"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_core", "net_pack", "net_pull_batch", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag", "events", "coast", "world_hold"]
 bots = ["dep:gs-sim-bots"]
 coast = ["bots", "weapon"]
 brain = ["dep:gs-sim-brain", "bots"]
@@ -95,6 +96,7 @@ trace = ["dep:gs-sim-trace"]
 players = ["dep:gs-sim-players"]
 events = ["dep:gs-sim-events"]
 present = ["dep:gs-sim-present", "dep:gs-sim-math"]
+world_hold = ["dep:gs-sim-hold", "dep:gs-sim-math"]
 pose = ["dep:gs-sim-math"]
 clips = ["dep:gs-sim-clips", "dep:gs-sim-math"]
 timer = ["dep:gs-sim-timer"]

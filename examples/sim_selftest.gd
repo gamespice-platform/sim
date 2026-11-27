@@ -52,9 +52,61 @@ func _run() -> void:
 		_test_navjoin_parity()
 	if GSSim.has(&"shots"):
 		_test_shots()
+	if GSSim.has(&"world_hold"):
+		_test_world_hold()
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
+
+
+## GSSimWorldHold against fc-weapons `AwWorldModel.advance`'s arithmetic, restated here: `Basis.from_euler` to the bit, and the
+## holder's transform over random inspect turns, reload dips, sprint carries, wall tilts and pushes (no action keys: those are held
+## by fc-weapons' aw_selftest, which steps a real gun with the switch on and off).
+func _test_world_hold() -> void:
+	var hold: Object = ClassDB.instantiate(&"GSSimWorldHold")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	var miss := -1
+	for i in range(4000):
+		var e := Vector3(rng.randf_range(-7.0, 7.0), rng.randf_range(-7.0, 7.0), rng.randf_range(-7.0, 7.0))
+		if var_to_bytes(hold.call(&"euler", e)) != var_to_bytes(Basis.from_euler(e)) and miss < 0:
+			miss = i
+	_check(miss < 0, "4000 native Euler turns equal Basis.from_euler to the bit", str(miss))
+	const RELOAD_DIP := Vector3(0.0, -0.05, 0.03)
+	const RELOAD_TURN := Vector3(-18.0, 12.0, 38.0)
+	miss = -1
+	for i in range(2000):
+		var looking := rng.randf() < 0.5
+		var moved := Vector3(rng.randf_range(-0.1, 0.1), rng.randf_range(-0.1, 0.1), rng.randf_range(-0.1, 0.1)) if looking else Vector3.ZERO
+		var degrees := Vector3(rng.randf_range(-60, 60), rng.randf_range(-60, 60), rng.randf_range(-60, 60)) if looking else Vector3.ZERO
+		var reload := rng.randf_range(-0.2, 1.2)
+		var rest := Transform3D(Basis.from_euler(Vector3(rng.randf(), rng.randf(), rng.randf())).scaled(Vector3.ONE * rng.randf_range(0.8, 1.2)),
+			Vector3(rng.randf_range(-0.3, 0.3), rng.randf_range(-0.3, 0.3), rng.randf_range(-0.3, 0.3)))
+		var sprint := rng.randf_range(-0.2, 1.0)
+		var sprint_offset := Vector3(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.2, 0.2), rng.randf_range(-0.2, 0.2))
+		var sprint_degrees := Vector3(rng.randf_range(-50, 50), rng.randf_range(-50, 50), rng.randf_range(-50, 50))
+		var wall_tilt := rng.randf_range(0.0, 0.05) * 150.0
+		var push := rng.randf_range(0.0, 0.1)
+		var turn := Basis.IDENTITY
+		var at := moved
+		if looking:
+			turn = Basis.from_euler(Vector3(deg_to_rad(degrees.x), deg_to_rad(degrees.y), deg_to_rad(degrees.z)))
+		if reload > 0.0:
+			var share := smoothstep(0.0, 1.0, reload)
+			at += RELOAD_DIP * share
+			turn = turn * Basis.from_euler(RELOAD_TURN * share * (PI / 180.0))
+		var s_offset := Vector3.ZERO
+		var s_turn := Basis.IDENTITY
+		if sprint > 0.0:
+			var d := sprint_degrees * sprint
+			s_offset = sprint_offset * sprint
+			s_turn = Basis.from_euler(Vector3(deg_to_rad(d.x), deg_to_rad(d.y), deg_to_rad(d.z)))
+		var low := Basis.from_euler(Vector3(-deg_to_rad(wall_tilt), 0.0, 0.0))
+		var want := Transform3D(low * s_turn * turn * rest.basis, rest.origin + at + s_offset + Vector3(0.0, 0.0, push))
+		var got: Transform3D = hold.call(&"hold", false, 1.0, looking, moved, degrees, reload, rest, sprint, sprint_offset, sprint_degrees, wall_tilt, push)
+		if var_to_bytes(got) != var_to_bytes(want) and miss < 0:
+			miss = i
+	_check(miss < 0, "2000 native holder transforms equal the script's compose to the bit", str(miss))
 
 
 ## GSSimTimer: never short, on time where the OS allows (not the 15.6 ms Windows tick), and the resolution only on Windows.
