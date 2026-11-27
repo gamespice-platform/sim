@@ -6,7 +6,8 @@
 use std::collections::HashMap;
 
 use godot::prelude::*;
-use gs_sim_motor::net_pull_batch::{MOVE_STRIDE, OUT_STRIDE, WEAPON_STRIDE, pull_all};
+use gs_sim_motor::cols::STRIDE;
+use gs_sim_motor::net_pull_batch::{MOVE_EXTRA, OUT_STRIDE, WEAPON_STRIDE, pull_all};
 use gs_sim_motor::weapon_net::weapon_code;
 
 /// Every carrier's replicated movement and weapon integers in one call.
@@ -18,12 +19,18 @@ pub struct GSSimFpsNetPullBatch {
 
 #[godot_api]
 impl GSSimFpsNetPullBatch {
-    /// Floats in one player's movement row: the state's columns (`GSFpsState._f`), then `[crouch_held, stamina,
-    /// stamina_exhausted, stamina_delay_left, pitch, held_velocity x, y, z, held_yaw, held_pitch, max_speed,
-    /// velocity_bits, yaw_bits, pitch_bits]` (booleans 0 or 1; see `GSSimFpsNetPack.pull`).
+    /// The fewest state columns (`GSFpsState._f`) a movement row may carry; [method pull] pulls nobody below it.
     #[func]
-    fn move_stride(&self) -> i64 {
-        MOVE_STRIDE as i64
+    fn min_columns(&self) -> i64 {
+        STRIDE as i64
+    }
+
+    /// Floats in one player's movement row after its state columns: `[crouch_held, stamina, stamina_exhausted,
+    /// stamina_delay_left, pitch, held_velocity x, y, z, held_yaw, held_pitch, max_speed, velocity_bits, yaw_bits,
+    /// pitch_bits]` (booleans 0 or 1; see `GSSimFpsNetPack.pull`).
+    #[func]
+    fn move_extra(&self) -> i64 {
+        MOVE_EXTRA as i64
     }
 
     /// Floats in one player's weapon row: `[current_slot, has_slot, fire_mode_index, magazine, reserve,
@@ -50,12 +57,14 @@ impl GSSimFpsNetPullBatch {
 
     /// One row of [method out_stride] integers per player, in order: `[net_flags, net_timers2, hold, net_slot,
     /// net_fire_mode, net_magazine, net_reserve, net_fire_seq, net_fire_kind, net_charge, net_weapon]`, for the
-    /// players that [param moves], [param weapons] and [param weapon_ids] (each held def's id, `&""` for none)
-    /// all have whole rows for. `hold` is `GSSimFpsNetPack.pull`'s.
+    /// players that [param moves] (rows of [param columns] state columns then [method move_extra]), [param weapons]
+    /// and [param weapon_ids] (each held def's id, `&""` for none) all have whole rows for. `hold` is
+    /// `GSSimFpsNetPack.pull`'s.
     #[func]
     fn pull(
         &self,
         moves: PackedFloat64Array,
+        columns: i64,
         weapons: PackedFloat64Array,
         weapon_ids: Array<StringName>,
         timer_scale: f64,
@@ -65,7 +74,13 @@ impl GSSimFpsNetPullBatch {
             .map(|id| weapon_code(id.is_empty(), self.wire.get(&id).copied()))
             .collect();
         PackedInt64Array::from(
-            &pull_all(moves.as_slice(), weapons.as_slice(), timer_scale, &codes)[..],
+            &pull_all(
+                moves.as_slice(),
+                columns.max(0) as usize,
+                weapons.as_slice(),
+                timer_scale,
+                &codes,
+            )[..],
         )
     }
 }

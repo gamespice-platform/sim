@@ -7,10 +7,11 @@ use crate::cols::STRIDE;
 use crate::net_pack::{Extra, Held, Wire, pull as move_pull};
 use crate::weapon_net::{WeaponIn, pull as weapon_pull};
 
-/// A movement row: the state's columns (`GSFpsState._f`), then `[crouch_held, stamina, stamina_exhausted,
+/// A movement row is the state's columns (`GSFpsState._f`, at least [constant STRIDE]; a controller may carry
+/// more, which are skipped), then these [constant MOVE_EXTRA]: `[crouch_held, stamina, stamina_exhausted,
 /// stamina_delay_left, pitch, held_velocity x, y, z, held_yaw, held_pitch, max_speed, velocity_bits, yaw_bits,
 /// pitch_bits]`. Booleans are 0 or 1.
-pub const MOVE_STRIDE: usize = STRIDE + 14;
+pub const MOVE_EXTRA: usize = 14;
 /// A weapon row: `[current_slot, has_slot, fire_mode_index, magazine, reserve, fire_seq, fire_kind,
 /// charge_shown, windup]`.
 pub const WEAPON_STRIDE: usize = 9;
@@ -18,16 +19,27 @@ pub const WEAPON_STRIDE: usize = 9;
 /// net_fire_seq, net_fire_kind, net_charge, net_weapon]`.
 pub const OUT_STRIDE: usize = 11;
 
-/// How many whole players [param moves], [param weapons] and [param weapon_codes] all have rows for.
-pub fn players(moves: &[f64], weapons: &[f64], weapon_codes: &[i64]) -> usize {
-    (moves.len() / MOVE_STRIDE)
+/// How many whole players [param moves] (rows of [param columns] state columns then [constant MOVE_EXTRA]),
+/// [param weapons] and [param weapon_codes] all have rows for; none when [param columns] is under [constant STRIDE].
+pub fn players(moves: &[f64], columns: usize, weapons: &[f64], weapon_codes: &[i64]) -> usize {
+    if columns < STRIDE {
+        return 0;
+    }
+    (moves.len() / (columns + MOVE_EXTRA))
         .min(weapons.len() / WEAPON_STRIDE)
         .min(weapon_codes.len())
 }
 
-/// One player's output row from his movement row, weapon row and held weapon's wire code.
-pub fn pull_one(m: &[f64], w: &[f64], timer_scale: f64, weapon_code: i64) -> [i64; OUT_STRIDE] {
-    let x = &m[STRIDE..];
+/// One player's output row from his movement row ([param columns] state columns, at least [constant STRIDE],
+/// then [constant MOVE_EXTRA]), weapon row and held weapon's wire code.
+pub fn pull_one(
+    m: &[f64],
+    columns: usize,
+    w: &[f64],
+    timer_scale: f64,
+    weapon_code: i64,
+) -> [i64; OUT_STRIDE] {
+    let x = &m[columns..];
     let extra = Extra {
         crouch_held: x[0] != 0.0,
         timer_scale,
@@ -77,15 +89,18 @@ pub fn pull_one(m: &[f64], w: &[f64], timer_scale: f64, weapon_code: i64) -> [i6
 /// Every player's output row, [constant OUT_STRIDE] each, in row order (see [fn players]).
 pub fn pull_all(
     moves: &[f64],
+    columns: usize,
     weapons: &[f64],
     timer_scale: f64,
     weapon_codes: &[i64],
 ) -> Vec<i64> {
-    let n = players(moves, weapons, weapon_codes);
+    let n = players(moves, columns, weapons, weapon_codes);
+    let stride = columns + MOVE_EXTRA;
     let mut out = Vec::with_capacity(n * OUT_STRIDE);
     for i in 0..n {
         out.extend_from_slice(&pull_one(
-            &moves[i * MOVE_STRIDE..(i + 1) * MOVE_STRIDE],
+            &moves[i * stride..(i + 1) * stride],
+            columns,
             &weapons[i * WEAPON_STRIDE..(i + 1) * WEAPON_STRIDE],
             timer_scale,
             weapon_codes[i],
@@ -98,6 +113,9 @@ pub fn pull_all(
 mod tests {
     use super::*;
 
+    /// A controller carrying two columns past gs-sim's own, as gs-player-controller's state does.
+    const COLUMNS: usize = STRIDE + 2;
+
     fn rows(seed: u64) -> (Vec<f64>, Vec<f64>) {
         let mut s = seed;
         let mut next = || {
@@ -106,7 +124,7 @@ mod tests {
                 .wrapping_add(1442695040888963407);
             ((s >> 33) as f64) / ((1u64 << 31) as f64)
         };
-        let mut m: Vec<f64> = (0..STRIDE).map(|_| next() * 40.0 - 20.0).collect();
+        let mut m: Vec<f64> = (0..COLUMNS).map(|_| next() * 40.0 - 20.0).collect();
         m.extend_from_slice(&[
             1.0,
             next() * 100.0,
@@ -138,11 +156,12 @@ mod tests {
             weapons.extend_from_slice(&w);
             codes.push(p as i64);
         }
-        let out = pull_all(&moves, &weapons, 0.5, &codes);
+        let out = pull_all(&moves, COLUMNS, &weapons, 0.5, &codes);
         assert_eq!(out.len(), 9 * OUT_STRIDE);
         for p in 0..9usize {
-            let m = &moves[p * MOVE_STRIDE..(p + 1) * MOVE_STRIDE];
-            let x = &m[STRIDE..];
+            let stride = COLUMNS + MOVE_EXTRA;
+            let m = &moves[p * stride..(p + 1) * stride];
+            let x = &m[COLUMNS..];
             let extra = Extra {
                 crouch_held: true,
                 timer_scale: 0.5,
@@ -183,9 +202,10 @@ mod tests {
     #[test]
     fn short_rows_pull_only_whole_players() {
         let (m, w) = rows(1);
-        assert_eq!(players(&m[..MOVE_STRIDE - 1], &w, &[0]), 0);
-        assert_eq!(players(&m, &w[..WEAPON_STRIDE - 1], &[0]), 0);
-        assert_eq!(players(&m, &w, &[]), 0);
-        assert_eq!(pull_all(&m, &w, 1.0, &[4]).len(), OUT_STRIDE);
+        assert_eq!(players(&m[..m.len() - 1], COLUMNS, &w, &[0]), 0);
+        assert_eq!(players(&m, COLUMNS, &w[..WEAPON_STRIDE - 1], &[0]), 0);
+        assert_eq!(players(&m, COLUMNS, &w, &[]), 0);
+        assert_eq!(players(&m, STRIDE - 1, &w, &[0]), 0);
+        assert_eq!(pull_all(&m, COLUMNS, &w, 1.0, &[4]).len(), OUT_STRIDE);
     }
 }
