@@ -200,7 +200,7 @@ mod tests {
     }
 
     fn kinds(t: &EventTable) -> Vec<i32> {
-        t.ints.chunks_exact(INTS).map(|c| c[1]).collect()
+        t.ints.as_chunks::<INTS>().0.iter().map(|c| c[1]).collect()
     }
 
     #[test]
