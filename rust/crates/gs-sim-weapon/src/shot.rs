@@ -336,3 +336,37 @@ pub fn recoil(r: &Recoil, p: &Posture, s: &mut RecoilState) -> Kick {
         ),
     }
 }
+
+/// Number of values in a [`recoil_preview`] row.
+pub const PREVIEW_LEN: usize = 18;
+
+/// The degrees (pitch, yaw) the next bullet of a weapon will be turned by recoil at `tick`, worked as
+/// `GSWeaponRecoilRules.apply` would without firing it (no posture, nothing written), times a share: FC's
+/// `FcBots.next_recoil_offset(...) * recoil_share(mind)`, in the script's precision (`Vector2` halves are `f32`).
+/// The row, raw and in this order: `rules.reset, b.recoil_recovery, rules.recovery, b.recoil_build, rules.build,
+/// b.recoil_build_max, b.recoil_pitch, rules.vertical, b.recoil_yaw, rules.horizontal, share (b.recoil_camera when 0
+/// or more, else rules.punch), rules.follow, seed, last tick (state recoil_tick, -1000000 when absent), n, ax, ay,
+/// the share of the offset taken`. `None` when the row is short.
+pub fn recoil_preview(r: &[f64], tick: i64, tick_rate: f64) -> Option<(f32, f32)> {
+    if r.len() < PREVIEW_LEN {
+        return None;
+    }
+    let elapsed = maxf(
+        tick.wrapping_sub(r[13] as i64) as f64 / maxf(tick_rate, 1.0),
+        0.0,
+    );
+    let n = if elapsed <= r[0] { r[14] as i64 } else { 0 };
+    let decay = (-r[1] * r[2] * elapsed).exp() as f32;
+    let residual = (r[15] as f32 * decay, r[16] as f32 * decay);
+    let grow = 1.0 + minf(r[3] * r[4] * n as f64, r[5] * r[4]);
+    let kick = (
+        (r[6] * r[7] * grow) as f32,
+        (r[8] * r[9] * grow * drift(r[12] as i64, n)) as f32,
+    );
+    let keep = (1.0 - r[10]) as f32;
+    let (share, follow) = (r[10] as f32, r[11] as f32);
+    let taken = r[17] as f32;
+    let x = (residual.0 + kick.0) * keep + residual.0 * share * follow;
+    let y = (residual.1 + kick.1) * keep + residual.1 * share * follow;
+    Some((x * taken, y * taken))
+}

@@ -56,8 +56,9 @@ gs-sim-unlag = { path = "../gs-sim-unlag", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag", "coast"]
 bots = ["dep:gs-sim-bots"]
+coast = ["bots", "weapon"]
 brain = ["dep:gs-sim-brain", "bots"]
 snapshot = ["dep:gs-sim-snapshot"]
 interp = ["dep:gs-sim-interp"]

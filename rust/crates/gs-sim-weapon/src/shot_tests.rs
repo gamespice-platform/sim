@@ -186,3 +186,62 @@ fn recoil_posture_multiplies_rules_and_weapon() {
         Some(1)
     );
 }
+
+/// With no posture and a whole share, the preview is the offset the use itself then fires with, bit for bit.
+#[test]
+fn recoil_preview_is_the_next_use_offset() {
+    let r = Recoil {
+        rate: 64,
+        reset: 0.4,
+        recovery: 6.5,
+        build: 0.11,
+        build_max: 0.9,
+        pitch: 1.7,
+        yaw: 0.6,
+        share: 0.35,
+        follow: 0.8,
+        seed: 918_273,
+        scale: 1.0,
+        mult_aim: 0.7,
+        mult_crouch: 0.8,
+        mult_air: 1.5,
+        mult_move: 1.25,
+        weapon_aim: 1.0,
+        weapon_crouch: 1.0,
+        weapon_move: 1.0,
+    };
+    let mut s = RecoilState::default();
+    for (i, tick) in [100i64, 104, 108, 109, 160, 161, 162, 400]
+        .into_iter()
+        .enumerate()
+    {
+        let row = [
+            r.reset,
+            r.recovery,
+            1.0,
+            r.build,
+            1.0,
+            r.build_max,
+            r.pitch,
+            1.0,
+            r.yaw,
+            1.0,
+            r.share,
+            r.follow,
+            r.seed as f64,
+            s.tick.unwrap_or(-1_000_000) as f64,
+            s.n.unwrap_or(0) as f64,
+            s.ax.unwrap_or(0.0),
+            s.ay.unwrap_or(0.0),
+            1.0,
+        ];
+        let (x, y) = recoil_preview(&row, tick, 64.0).expect("a whole row");
+        let kick = recoil(&r, &at(tick), &mut s);
+        assert_eq!(
+            (x.to_bits(), y.to_bits()),
+            (kick.offset.0.to_bits(), kick.offset.1.to_bits()),
+            "use {i}"
+        );
+    }
+    assert!(recoil_preview(&[0.0; PREVIEW_LEN - 1], 0, 64.0).is_none());
+}
