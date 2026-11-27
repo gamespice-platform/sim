@@ -3,16 +3,18 @@
 //! physics server. [method load_scene] walks the map's collision bodies once at map load; a baked
 //! blob ([method to_bytes], [method load_bytes]) is the hook for doing that at convert time.
 //! Moving bodies (`AnimatableBody3D`, or any body in the `trace_dynamic` group) are kept as
-//! body-space pieces and re-posed by [method sync_dynamic]. Answers match Godot Physics within
-//! float noise (fraction 1e-3, normal 1 degree), which the game's parity suite checks.
+//! body-space pieces and re-posed by [method sync_dynamic]. Each engine shape is also kept as a
+//! Godot shape ([`GShape`]), so a box sweep is Godot's `cast_motion` to the bit; rays match
+//! Godot Physics within float noise. The game's parity suite checks both.
 
 use godot::classes::{
     AnimatableBody3D, BoxShape3D, CollisionObject3D, ConcavePolygonShape3D, ConvexPolygonShape3D,
-    Shape3D, StaticBody3D,
+    PhysicsServer3D, Shape3D, StaticBody3D,
 };
 use godot::prelude::*;
 use gs_sim_motor::mirror_world::MirrorWorld;
 use gs_sim_motor::trace::SharedWorld;
+use gs_sim_trace::gjk::{F3, GShape, Geom, Xf};
 use gs_sim_trace::mirror::{Hit, Mirror};
 use gs_sim_trace::piece::{Piece, V3, Xform};
 use std::sync::Arc;
@@ -40,10 +42,42 @@ fn xform(t: Transform3D) -> Xform {
     }
 }
 
-/// A moving body: its pieces in body space and where to read its pose.
+fn f3(v: Vector3) -> F3 {
+    [v.x, v.y, v.z]
+}
+
+/// A Godot transform as the f32 [`Xf`] the server composes with.
+fn gxf(t: Transform3D) -> Xf {
+    let r = t.basis.rows;
+    Xf {
+        rows: [f3(r[0]), f3(r[1]), f3(r[2])],
+        origin: f3(t.origin),
+    }
+}
+
+/// A moving body: its pieces in body space, its shapes with their owner transforms (piece
+/// ranges relative to the body's own pieces), and where to read its pose.
 struct Mover {
     body: InstanceId,
     pieces: Vec<Piece>,
+    shapes: Vec<(GShape, Xf)>,
+}
+
+/// The shape the physics server holds for `shape`, in shape space, as the server's GJK sees it:
+/// a box's half extents, a hull's built vertices, a trimesh's faces.
+fn shape_geom(shape: &Gd<Shape3D>) -> Option<Geom> {
+    if let Ok(b) = shape.clone().try_cast::<BoxShape3D>() {
+        return Some(Geom::Box(f3(b.get_size() * 0.5)));
+    }
+    if let Ok(c) = shape.clone().try_cast::<ConvexPolygonShape3D>() {
+        let data = PhysicsServer3D::singleton().shape_get_data(shape.get_rid());
+        let pts = data
+            .try_to::<PackedVector3Array>()
+            .unwrap_or_else(|_| c.get_points());
+        return Geom::hull(pts.as_slice().iter().map(|p| f3(*p)).collect());
+    }
+    let c = shape.clone().try_cast::<ConcavePolygonShape3D>().ok()?;
+    Geom::faces(c.get_faces().as_slice().iter().map(|p| f3(*p)).collect())
 }
 
 /// The pieces one shape gives under `x`; `None` for a shape type the mirror does not carry.
@@ -100,6 +134,8 @@ fn faces_pieces(faces: &[Vector3], x: &Xform, layer: u32, both: bool) -> Vec<Pie
 pub struct GSSimTraceMirror {
     mirror: Arc<Mirror>,
     staged: Vec<Piece>,
+    /// The Godot shapes of the staged pieces, for [`Mirror::with_shapes`].
+    staged_shapes: Vec<GShape>,
     movers: Vec<Mover>,
     /// Shapes the mirror does not carry (spheres, capsules, height maps), seen at load.
     skipped: i64,
@@ -107,6 +143,8 @@ pub struct GSSimTraceMirror {
     next_shape: u32,
     /// The motor's capsule world over `mirror`, built on first ask and shared by every body.
     motor_world: Option<(Arc<Mirror>, SharedWorld)>,
+    /// A walk for [method load_baked]: static bodies come from the blob, only movers are read.
+    movers_only: bool,
 }
 
 impl GSSimTraceMirror {
@@ -152,29 +190,46 @@ impl GSSimTraceMirror {
         if !moving && body.clone().try_cast::<StaticBody3D>().is_err() {
             return;
         }
+        if self.movers_only && !moving {
+            return;
+        }
         let layer = body.get_collision_layer();
+        let global = body.get_global_transform();
         let pose = if moving {
             Transform3D::IDENTITY
         } else {
-            body.get_global_transform()
+            global
         };
         let mut pieces = Vec::new();
+        let mut shapes = Vec::new();
         for owner in body.get_shape_owners().as_slice() {
             let owner = *owner as u32;
             if body.is_shape_owner_disabled(owner) {
                 continue;
             }
-            let x = xform(pose * body.shape_owner_get_transform(owner));
+            let local = body.shape_owner_get_transform(owner);
+            let x = xform(pose * local);
+            // The server composes body * shape in f32 at query time; so does `Xf::mul`.
+            let owner_xf = gxf(local);
             for i in 0..body.shape_owner_get_shape_count(owner) {
                 let Some(shape) = body.shape_owner_get_shape(owner, i) else {
                     continue;
                 };
-                match shape_pieces(shape, &x, layer) {
-                    Some(p) => {
-                        let p = self.tag(p);
-                        pieces.extend(p);
+                let geom = shape_geom(&shape);
+                let Some(p) = shape_pieces(shape, &x, layer) else {
+                    self.skipped += 1;
+                    continue;
+                };
+                if moving {
+                    let p = self.tag(p);
+                    let range = [pieces.len() as u32, (pieces.len() + p.len()) as u32];
+                    pieces.extend(p);
+                    if let Some(g) = geom {
+                        let s = GShape::new(g, owner_xf, layer, self.next_shape, range);
+                        shapes.push((s, owner_xf));
                     }
-                    None => self.skipped += 1,
+                } else {
+                    self.stage(p, geom, gxf(global).mul(&owner_xf), layer);
                 }
             }
         }
@@ -182,9 +237,21 @@ impl GSSimTraceMirror {
             self.movers.push(Mover {
                 body: body.instance_id(),
                 pieces,
+                shapes,
             });
-        } else {
-            self.staged.extend(pieces);
+        }
+    }
+
+    /// Stages one shape's `pieces` and, when the server shape is one the mirror can cast against,
+    /// its [`GShape`] at `x` naming their range.
+    fn stage(&mut self, pieces: Vec<Piece>, geom: Option<Geom>, x: Xf, layer: u32) {
+        let pieces = self.tag(pieces);
+        let first = self.staged.len() as u32;
+        self.staged.extend(pieces);
+        if let Some(g) = geom {
+            let range = [first, self.staged.len() as u32];
+            let s = GShape::new(g, x, layer, self.next_shape, range);
+            self.staged_shapes.push(s);
         }
     }
 
@@ -210,6 +277,7 @@ impl GSSimTraceMirror {
     #[func]
     fn load_scene(&mut self, root: Gd<Node>) -> i64 {
         self.staged.clear();
+        self.staged_shapes.clear();
         self.movers.clear();
         self.skipped = 0;
         self.walk(root);
@@ -218,12 +286,32 @@ impl GSSimTraceMirror {
         self.mirror.len() as i64
     }
 
+    /// As [method load_scene], with the static part from a baked blob ([method to_bytes]) instead
+    /// of the scene: only [param root]'s moving bodies are read. False (nothing changed) when
+    /// [param bytes] is not a blob; the caller then loads the scene.
+    #[func]
+    fn load_baked(&mut self, root: Gd<Node>, bytes: PackedByteArray) -> bool {
+        let Some(m) = Mirror::from_bytes(bytes.as_slice()) else {
+            return false;
+        };
+        self.staged.clear();
+        self.staged_shapes.clear();
+        self.movers.clear();
+        self.skipped = 0;
+        self.movers_only = true;
+        self.walk(root);
+        self.movers_only = false;
+        self.mirror = Arc::new(m);
+        self.sync_dynamic();
+        true
+    }
+
     /// Stages a box of [param size] under [param transform], for [method build].
     #[func]
     fn add_box(&mut self, transform: Transform3D, size: Vector3, layer: i64) {
         let p = Piece::cuboid(&xform(transform), v3(size * 0.5), layer as u32);
-        let p = self.tag(p.into_iter().collect());
-        self.staged.extend(p);
+        let geom = Some(Geom::Box(f3(size * 0.5)));
+        self.stage(p.into_iter().collect(), geom, gxf(transform), layer as u32);
     }
 
     /// Stages the convex hull of [param points] under [param transform], for [method build].
@@ -231,22 +319,25 @@ impl GSSimTraceMirror {
     fn add_convex(&mut self, transform: Transform3D, points: PackedVector3Array, layer: i64) {
         let x = xform(transform);
         let pts: Vec<V3> = points.as_slice().iter().map(|p| x.point(v3(*p))).collect();
-        let p = self.tag(Piece::convex(&pts, layer as u32).into_iter().collect());
-        self.staged.extend(p);
+        let p = Piece::convex(&pts, layer as u32).into_iter().collect();
+        let geom = Geom::hull(points.as_slice().iter().map(|p| f3(*p)).collect());
+        self.stage(p, geom, gxf(transform), layer as u32);
     }
 
     /// Stages trimesh [param faces] (three points a triangle) under [param transform].
     #[func]
     fn add_faces(&mut self, transform: Transform3D, faces: PackedVector3Array, layer: i64) {
         let p = faces_pieces(faces.as_slice(), &xform(transform), layer as u32, false);
-        let p = self.tag(p);
-        self.staged.extend(p);
+        let geom = Geom::faces(faces.as_slice().iter().map(|p| f3(*p)).collect());
+        self.stage(p, geom, gxf(transform), layer as u32);
     }
 
     /// Builds the mirror over everything staged (the staging list empties).
     #[func]
     fn build(&mut self) {
-        self.mirror = Arc::new(Mirror::new(std::mem::take(&mut self.staged)));
+        let pieces = std::mem::take(&mut self.staged);
+        let shapes = std::mem::take(&mut self.staged_shapes);
+        self.mirror = Arc::new(Mirror::with_shapes(pieces, shapes));
     }
 
     /// Re-poses the moving bodies from their current transforms; a freed body drops out. Call it
@@ -254,18 +345,28 @@ impl GSSimTraceMirror {
     #[func]
     fn sync_dynamic(&mut self) {
         let mut posed = Vec::new();
+        let mut shapes = Vec::new();
         self.movers.retain(|m| {
             let Ok(body) = Gd::<CollisionObject3D>::try_from_instance_id(m.body) else {
                 return false;
             };
-            let x = xform(body.get_global_transform());
+            let global = body.get_global_transform();
+            let x = xform(global);
+            let base = posed.len() as u32;
             posed.extend(m.pieces.iter().map(|p| p.transformed(&x)));
+            for (s, owner_xf) in &m.shapes {
+                let mut s = s.clone();
+                s.pieces = s.pieces.map(|k| base + k);
+                s.pose(gxf(global).mul(owner_xf));
+                shapes.push(s);
+            }
             true
         });
         self.mirror.set_dynamic(posed);
+        self.mirror.set_dynamic_shapes(shapes);
     }
 
-    /// The static pieces as a bake blob (`GSCM` v1), for a map converter to store.
+    /// The static pieces and shapes as a bake blob (`GSCM` v3), for a map converter to store.
     #[func]
     fn to_bytes(&self) -> PackedByteArray {
         PackedByteArray::from(self.mirror.to_bytes().as_slice())
