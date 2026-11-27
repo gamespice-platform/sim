@@ -46,6 +46,7 @@ const MODULES := {
 	&"figure": &"GSSimLegs",
 	&"net_pack": &"GSSimFpsNetPack",
 	&"weapon_net": &"GSSimFpsWeaponNet",
+	&"net_pull_batch": &"GSSimFpsNetPullBatch",
 	&"threat": &"GSSimBotThreat",
 	&"spawn": &"GSSimSpawnPick",
 	&"contacts": &"GSSimBotContacts",

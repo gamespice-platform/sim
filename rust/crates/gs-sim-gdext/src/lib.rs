@@ -57,8 +57,12 @@ mod motor;
 mod motor_state;
 #[cfg(feature = "navjoin")]
 mod navjoin;
+#[cfg(feature = "net_core")]
+mod net_core;
 #[cfg(feature = "net_pack")]
 mod net_pack;
+#[cfg(feature = "net_pull_batch")]
+mod net_pull_batch;
 #[cfg(feature = "npc_ai_senses")]
 mod npc_ai_senses;
 #[cfg(feature = "zombie")]

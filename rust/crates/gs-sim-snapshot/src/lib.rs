@@ -11,6 +11,7 @@
 //! (`GSNetBehaviour._encode` / `read_state`).
 
 mod bits;
+pub mod net_core;
 #[cfg(test)]
 mod tests;
 
