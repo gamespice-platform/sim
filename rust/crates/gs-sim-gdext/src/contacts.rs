@@ -4,8 +4,10 @@
 //! [method fill_changed] writes the fields a player keeps from tick to tick only when they change;
 //! [method fill_table] writes no object at all, only packed columns for gs-bot's `GSBotContactTable`.
 //! [method fill_arms] writes the weapon in hand (`weapon_class`, `magazine`) from interned classes.
+//! [method world_rows] reads the think tiers' rows and the near grid's cells off the filled table.
 
 use godot::prelude::*;
+use gs_sim_contacts::world::{Near, Table, TierRows, near_cells, tier_rows};
 use gs_sim_contacts::{
     Arms, ROW_FLOATS, STABLE, STRIDE, Stable, contact, lift, row_flags, row_floats,
 };
@@ -34,6 +36,14 @@ fn vec3(v: [f32; 3]) -> Vector3 {
     Vector3::new(v[0], v[1], v[2])
 }
 
+fn arr3(v: &Vector3) -> [f32; 3] {
+    [v.x, v.y, v.z]
+}
+
+fn packed3(v: &[[f32; 3]]) -> PackedVector3Array {
+    v.iter().map(|&p| vec3(p)).collect()
+}
+
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
 pub struct GSSimBotContacts {
@@ -54,6 +64,9 @@ pub struct GSSimBotContacts {
     arm_names: Option<(StringName, StringName, StringName)>,
     /// Per contact slot: the object [method fill_arms] wrote there last and what it wrote.
     arms_kept: Vec<(InstanceId, (i32, u64))>,
+    /// The last [method world_rows]' tier rows and near cells.
+    tiers: TierRows,
+    near: Near,
 }
 
 #[godot_api]
@@ -279,6 +292,88 @@ impl GSSimBotContacts {
     #[func]
     fn alive(&self) -> PackedByteArray {
         self.alive.clone()
+    }
+
+    /// Reads the last [method fill_table]'s rows (their player ids [param ids], in order): with
+    /// [param tiers], the think tiers' rows ([method tier_eyes] and [method tier_looks] of the live
+    /// rows not in [param bots], [method tier_ids] and [method tier_at] of the live ones in it);
+    /// with [param near_cell] above 0, the live rows by ground cell of that side ([method
+    /// near_keys], [method near_starts], [method near_rows]). Unasked ones come back empty. The
+    /// same values and order as FC's script `tier_rows` and `_near_refresh`. False when
+    /// [param ids] is not one per row.
+    #[func]
+    fn world_rows(
+        &mut self,
+        ids: PackedInt64Array,
+        bots: PackedInt64Array,
+        tiers: bool,
+        near_cell: f64,
+    ) -> bool {
+        let positions: Vec<[f32; 3]> = self.positions.as_slice().iter().map(arr3).collect();
+        let eyes: Vec<[f32; 3]> = self.eyes.as_slice().iter().map(arr3).collect();
+        let t = Table {
+            ids: ids.as_slice(),
+            flags: self.flags.as_slice(),
+            positions: &positions,
+            eyes: &eyes,
+            floats: self.floats.as_slice(),
+        };
+        self.tiers = TierRows::default();
+        self.near = Near::default();
+        if t.size().is_none() {
+            return false;
+        }
+        if tiers {
+            let mut sorted = bots.as_slice().to_vec();
+            sorted.sort_unstable();
+            tier_rows(&t, &sorted, &mut self.tiers);
+        }
+        if near_cell > 0.0 {
+            near_cells(&t, near_cell, &mut self.near);
+        }
+        true
+    }
+
+    /// The last [method world_rows]' live people's eyes.
+    #[func]
+    fn tier_eyes(&self) -> PackedVector3Array {
+        packed3(&self.tiers.eyes)
+    }
+
+    /// The last [method world_rows]' live people's view directions.
+    #[func]
+    fn tier_looks(&self) -> PackedVector3Array {
+        packed3(&self.tiers.looks)
+    }
+
+    /// The last [method world_rows]' live bots' ids.
+    #[func]
+    fn tier_ids(&self) -> PackedInt32Array {
+        self.tiers.ids.iter().map(|&id| id as i32).collect()
+    }
+
+    /// The last [method world_rows]' live bots' positions.
+    #[func]
+    fn tier_at(&self) -> PackedVector3Array {
+        packed3(&self.tiers.at)
+    }
+
+    /// The last [method world_rows]' near cells' keys, in the order a row first fell in them.
+    #[func]
+    fn near_keys(&self) -> PackedInt64Array {
+        PackedInt64Array::from(self.near.keys.as_slice())
+    }
+
+    /// Where each near cell's rows start in [method near_rows], and one past the last.
+    #[func]
+    fn near_starts(&self) -> PackedInt32Array {
+        PackedInt32Array::from(self.near.starts.as_slice())
+    }
+
+    /// The near cells' rows, cell after cell.
+    #[func]
+    fn near_rows(&self) -> PackedInt32Array {
+        PackedInt32Array::from(self.near.rows.as_slice())
     }
 }
 

@@ -7,6 +7,10 @@
 //! A record is [`STRIDE`] floats: [`HEAD`] head values (flags, team, pitch, health, max health, a
 //! spare), then the player's `GSFpsState` columns ([`COLUMNS`] floats). A player without a
 //! controller has only its position in the first three columns.
+//!
+//! [`world`] reads the think tiers' rows and the near grid's cells off the filled table.
+
+pub mod world;
 
 /// Head values before the state columns.
 pub const HEAD: usize = 6;
