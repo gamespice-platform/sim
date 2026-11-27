@@ -211,5 +211,5 @@ jobs:
             - name: The suites, native loaded
               env:
                   GS_SIM_REQUIRE_NATIVE: '1'
-                  SUITES: examples/sim_selftest examples/sim_weapon_selftest examples/snapshot_selftest
+                  SUITES: examples/sim_selftest examples/sim_weapon_selftest examples/snapshot_selftest examples/snapshot_batch_selftest
               run: gs-ci/scripts/check.sh project

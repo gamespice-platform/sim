@@ -87,6 +87,7 @@ Native (Rust, GDExtension) twins of hot script code in the Gamespice family, one
 | `ci/` | build matrix, installer and packaging ([native-ci.md](native-ci.md)); the installer writes the gitignored `addons/gs_sim/bin/<platform>/` and `.gdextension` |
 | `examples/sim_selftest.tscn` | the bots parity suite |
 | `examples/snapshot_selftest.tscn` | the snapshot parity suite (needs GameSpice Net linked at `addons/gs_net`) |
+| `examples/snapshot_batch_selftest.tscn` | the snapshot batch (`GSSimSnapshotBatch`) against the script's per-entity apply when an entity is registered again under its net id (needs GameSpice Net linked) |
 | `examples/interp_selftest.tscn` | the interpolator parity suite (needs GameSpice Net linked at `addons/gs_net`) |
 
 Kernels live in pure crates so they test without an engine and a second binding (a standalone server, a tool) costs nothing.
