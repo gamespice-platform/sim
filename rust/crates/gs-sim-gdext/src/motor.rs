@@ -15,6 +15,7 @@ use gs_sim_motor::flat::{FlatWorld, Plane as FlatPlane};
 use gs_sim_motor::full::{self, FullIn, FullTun, MoveCounters, Moves};
 use gs_sim_motor::memo::MemoSpace;
 use gs_sim_motor::slide::{Aabb as SlideBox, Mover, Tun};
+use gs_sim_motor::swim::{self, SwimTun};
 use gs_sim_motor::tick::{self, Post, State, TickCounters, TickTun};
 use gs_sim_motor::{Body, Contact, Hit, Masks, Space, Vec3 as V3, site};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -389,6 +390,32 @@ fn tick_tun(p: &[f64]) -> TickTun {
 /// `edge_friction_reach`, `edge_friction_drop`), after the crouch's six values. A shorter tun (the
 /// tick halves', an older script's) has edge friction off.
 pub const EDGE_TUN_AT: usize = gs_sim_motor::crouch::TUN_AT + gs_sim_motor::crouch::TUN_LEN;
+
+/// The whole tick's 16 clock values after `tick_vals`: the 13 timers then the wall normal.
+fn push_clocks(o: &mut Vec<f64>, mv: &Moves) {
+    o.extend_from_slice(&[
+        mv.time_since_jump,
+        mv.time_since_grounded,
+        mv.time_since_jump_pressed,
+        mv.slide_time,
+        mv.slide_cooldown_left,
+        mv.launch_cooldown_left,
+        mv.dash_cooldown_left,
+        mv.wall_run_cooldown_left,
+        mv.wall_run_time,
+        mv.wall_run_spent as i64 as f64,
+        mv.wall_jump_count as f64,
+        mv.wall_jumps_in_air as f64,
+        mv.wall_jump_heading as f64,
+        mv.wall_normal.x as f64,
+        mv.wall_normal.y as f64,
+        mv.wall_normal.z as f64,
+    ]);
+}
+
+/// Where the whole tick's tun may carry a custom mode's tail ([`swim::SwimTun`]), after the edge
+/// friction's three values; the tick runs that mode where the state's mode is the tail's.
+pub const SWIM_TUN_AT: usize = EDGE_TUN_AT + 3;
 
 #[inline]
 fn v3(p: &[f64], i: usize) -> V3 {
@@ -1024,6 +1051,13 @@ impl GSSimFpsBody {
         true
     }
 
+    /// Whether `motor_tick` (and the batch's runs) run `GSFpsSwimMode._simulate` from a swim tail
+    /// at [`SWIM_TUN_AT`] when the state is in the tail's mode, so the script may send a swimmer native.
+    #[func]
+    fn has_swim() -> bool {
+        true
+    }
+
     /// Times every engine query and every `motor_tick` from now on (all bodies), for a profile run.
     #[func]
     fn set_profile(on: bool) {
@@ -1140,6 +1174,33 @@ impl GSSimFpsBody {
         }
         let mut c = TickCounters::default();
         let mut mc = MoveCounters::default();
+        if let Some(st) = tp.get(SWIM_TUN_AT..).and_then(SwimTun::read)
+            && st.mode_id == s.mode
+        {
+            // A swimmer's whole tick (`GSFpsSwimMode._simulate`): no rest, no crouch, the timers
+            // and wall normal as they came, no view turn and no move counted.
+            if self.body.perf_caches {
+                self.space.open();
+            }
+            let mut mover = Mover::new(&mut self.body, &mut self.space, m, boxes, t);
+            let ran_out = swim::tick(
+                &mut mover,
+                &mut s,
+                &st,
+                inp.yaw,
+                inp.buttons,
+                inp.move_x,
+                inp.move_y,
+                inp.delta,
+            );
+            mover.space.close();
+            c.stuck = ran_out as i64;
+            o.extend_from_slice(&tick_vals(&s, 0, &c, &mover.counters));
+            push_clocks(o, &mv);
+            o.extend_from_slice(&[0.0; 6]);
+            prof_end(PROF_TICK, at);
+            return true;
+        }
         // No script runs inside this call, so nothing the space sees can move: an identical
         // engine query within it has the same answer. Behind `perf_caches` like the rest memo.
         if self.body.perf_caches {
@@ -1154,23 +1215,8 @@ impl GSSimFpsBody {
             | (out.post.stamp as i64) << 3
             | (out.post.nonfinite as i64) << 4;
         o.extend_from_slice(&tick_vals(&s, flags, &c, &mover.counters));
+        push_clocks(o, &mv);
         o.extend_from_slice(&[
-            mv.time_since_jump,
-            mv.time_since_grounded,
-            mv.time_since_jump_pressed,
-            mv.slide_time,
-            mv.slide_cooldown_left,
-            mv.launch_cooldown_left,
-            mv.dash_cooldown_left,
-            mv.wall_run_cooldown_left,
-            mv.wall_run_time,
-            mv.wall_run_spent as i64 as f64,
-            mv.wall_jump_count as f64,
-            mv.wall_jumps_in_air as f64,
-            mv.wall_jump_heading as f64,
-            mv.wall_normal.x as f64,
-            mv.wall_normal.y as f64,
-            mv.wall_normal.z as f64,
             out.view_turn,
             mc.slides as f64,
             mc.launches as f64,

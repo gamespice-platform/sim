@@ -20,6 +20,7 @@ pub mod site;
 pub mod slide;
 pub mod slots;
 pub mod state;
+pub mod swim;
 pub mod tick;
 pub mod weapon_net;
 
