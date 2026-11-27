@@ -344,16 +344,42 @@ impl Mirror {
             cands.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
             // A shape first nearer than `t` ends its bisection no lower than `t` less the last
             // bracket (0.75 * 0.5^7 < CLEAR), so none past `best + CLEAR` can beat `best`.
+            // Godot carries the last bisection fraction into the next shape's whole-motion test
+            // (see `GShape::cast_carried`). Its broadphase order shifts as the BVH re-optimises,
+            // so shapes skipped only by that test are retried with the best hit's carry.
             let mut best: Option<(f32, usize)> = None;
+            let mut carried = 1.0_f32;
+            let mut retry = Vec::new();
             for &(t, i) in cands.iter() {
                 if best.is_some_and(|(low, _)| t > f64::from(low) + CLEAR) {
                     break;
                 }
-                let Some((low, _)) = shape(i).cast(f, m, h, &aabb, entry, faces) else {
-                    continue;
-                };
-                if best.is_none_or(|(b, _)| low < b) {
-                    best = Some((low, i));
+                match shape(i).cast_carried(f, m, h, &aabb, entry, faces, carried) {
+                    Ok((low, _, last)) => {
+                        carried = last;
+                        if best.is_none_or(|(b, _)| low < b) {
+                            best = Some((low, i));
+                        }
+                    }
+                    Err(true) => retry.push((t, i)),
+                    Err(false) => {}
+                }
+            }
+            let mut tried = 1.0_f32;
+            while let Some((low, _)) = best
+                && carried < tried
+            {
+                tried = carried;
+                for &(t, i) in &retry {
+                    if t > f64::from(low) + CLEAR || best.is_some_and(|(_, b)| b == i) {
+                        continue;
+                    }
+                    if let Ok((l, _, last)) = shape(i).cast_carried(f, m, h, &aabb, entry, faces, tried) {
+                        if best.is_none_or(|(b, _)| l < b) {
+                            best = Some((l, i));
+                            carried = last;
+                        }
+                    }
                 }
             }
             let (low, i) = best.filter(|(low, _)| *low < 1.0)?;
