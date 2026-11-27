@@ -8,7 +8,7 @@
 //! composed about the grip. Engine `Vector3`/`Basis` math in `f32`, the script's floats in `f64`, rounded to
 //! `f32` exactly where the engine rounds them, so the answer is the script's to the bit.
 
-use gs_sim_math::{Vec3, Xform, clampf, maxf};
+use gs_sim_math::{Vec3, Xform, clampf, lerp_f32, maxf};
 
 /// A basis as the engine stores it: three rows.
 pub type Basis = [Vec3; 3];
@@ -224,6 +224,53 @@ pub fn hold(keys: &[Key], h: &HoldIn) -> Xform {
     Xform { rows, origin }
 }
 
+/// `fposmod(x, y)`: the remainder with the divisor's sign, and never `-0.0`.
+pub fn fposmod(x: f64, y: f64) -> f64 {
+    let mut v = x % y;
+    if (v < 0.0 && y > 0.0) || (v > 0.0 && y < 0.0) {
+        v += y;
+    }
+    v + 0.0
+}
+
+/// `Vector3.lerp`: per component, the weight rounded to `f32`.
+#[inline]
+fn lerp_v(from: Vec3, to: Vec3, weight: f64) -> Vec3 {
+    let w = weight as f32;
+    Vec3::new(
+        lerp_f32(from.x, to.x, w),
+        lerp_f32(from.y, to.y, w),
+        lerp_f32(from.z, to.z, w),
+    )
+}
+
+/// The reload's per-frame inputs to [`support_point`]: `_reload_blend`, `_reload_time`, `_reload_period`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Reload {
+    pub blend: f64,
+    pub time: f64,
+    pub period: f64,
+}
+
+/// `AwWorldModel._support_world`: the support hand's world point from the holder's global transform
+/// (before this frame's pose) and the art's `local` fore-end point; while a reload shows, eased onto
+/// the well-to-belt path that `keys` (`RELOAD_SUPPORT_KEYS`, position field) trace over the cycle.
+pub fn support_point(holder: &Xform, local: Vec3, reload: Reload, keys: &[Key]) -> Vec3 {
+    let fore = holder.xform(local);
+    if reload.blend <= 0.0 {
+        return fore;
+    }
+    let well = holder.xform(local.scale(0.45));
+    let belt = well + Vec3::new(0.0, -0.28, 0.0);
+    let at = sample_field(keys, fposmod(reload.time / reload.period, 1.0), false);
+    let path = lerp_v(
+        lerp_v(fore, well, clampf(at.x as f64, 0.0, 1.0)),
+        belt,
+        clampf(at.y as f64, 0.0, 1.0),
+    );
+    lerp_v(fore, path, smoothstep01(reload.blend))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +344,38 @@ mod tests {
         let x = hold(&[], &h);
         assert_eq!(x.origin, RELOAD_DIP);
         assert_ne!(x.rows, IDENTITY);
+    }
+
+    #[test]
+    fn fposmod_takes_the_divisors_sign() {
+        assert_eq!(fposmod(2.5, 1.0), 0.5);
+        assert_eq!(fposmod(-0.25, 1.0), 0.75);
+        assert_eq!(fposmod(-1.0, 1.0).to_bits(), 0.0f64.to_bits());
+    }
+
+    #[test]
+    fn the_support_point_is_the_fore_end_without_a_reload_and_leaves_it_in_one() {
+        let holder = Xform {
+            rows: IDENTITY,
+            origin: Vec3::new(1.0, 2.0, 3.0),
+        };
+        let local = Vec3::new(0.0, 0.05, -0.3);
+        let fore = support_point(&holder, local, Reload::default(), &[]);
+        assert_eq!(fore, Vec3::new(1.0, 2.05, 2.7));
+        // Half way through the cycle the path is at the belt, below the well.
+        let keys = keys_from_rows(&[
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, //
+            0.25, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, //
+            0.5, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, //
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        ]);
+        let reload = Reload {
+            blend: 1.0,
+            time: 0.75,
+            period: 1.5,
+        };
+        let belt = support_point(&holder, local, reload, &keys);
+        let well = holder.xform(local.scale(0.45));
+        assert_eq!(belt, well + Vec3::new(0.0, -0.28, 0.0));
     }
 }

@@ -107,6 +107,106 @@ func _test_world_hold() -> void:
 		if var_to_bytes(got) != var_to_bytes(want) and miss < 0:
 			miss = i
 	_check(miss < 0, "2000 native holder transforms equal the script's compose to the bit", str(miss))
+	_test_world_hold_batch(hold, rng)
+
+
+## A stand-in person for GSSimWorldHoldBatch: keeps the last support point it was told.
+class _Grip:
+	var got := Vector3.INF
+
+	func set_support_grip(point: Vector3) -> void:
+		got = point
+
+
+## GSSimWorldHoldBatch: one step over many rows gives each holder GSSimWorldHold.hold's transform and each person
+## `AwWorldModel._support_world`'s point (restated here), read off the holder before it is posed.
+func _test_world_hold_batch(hold: Object, rng: RandomNumberGenerator) -> void:
+	var batch: Object = ClassDB.instantiate(&"GSSimWorldHoldBatch")
+	# AwWorldModel.RELOAD_SUPPORT_KEYS, position field only (rotations zero).
+	var support_keys := [[0.0, Vector3.ZERO], [0.25, Vector3(1, 0, 0)], [0.5, Vector3(1, 1, 0)], [0.75, Vector3(1, 0, 0)],
+		[0.9, Vector3(1, 0, 0)], [1.0, Vector3.ZERO]]
+	var packed := PackedFloat64Array()
+	for key: Array in support_keys:
+		var p: Vector3 = key[1]
+		packed.append_array([float(key[0]), p.x, p.y, p.z, 0.0, 0.0, 0.0])
+	batch.call(&"set_support_keys", packed)
+	hold.call(&"set_keys", PackedFloat64Array())
+	var parent := Node3D.new()
+	add_child(parent)
+	var miss := ""
+	var holders: Array[Node3D] = []
+	var grips: Array[_Grip] = []
+	for i in range(24):
+		var h := Node3D.new()
+		parent.add_child(h)
+		holders.append(h)
+		grips.append(_Grip.new())
+		var slot := int(batch.call(&"open", h))
+		if slot != i:
+			miss = "slot %d opened as %d" % [i, slot]
+		batch.call(&"set_person", i, grips[i])
+	for frame in range(40):
+		parent.transform = Transform3D(Basis.from_euler(Vector3(rng.randf(), rng.randf(), rng.randf())), Vector3(rng.randf_range(-9, 9), 1, 2))
+		var rows := PackedFloat64Array()
+		var wants: Array = []
+		for i in holders.size():
+			var rest := Transform3D(Basis.from_euler(Vector3(rng.randf(), rng.randf(), rng.randf())), Vector3(rng.randf_range(-0.3, 0.3), 0.1, -0.2))
+			var s_off := Vector3(rng.randf_range(-0.2, 0.2), 0.05, 0.0)
+			var s_deg := Vector3(rng.randf_range(-50, 50), 15.0, 0.0)
+			var local := Vector3(rng.randf_range(-0.1, 0.1), 0.05, rng.randf_range(-0.6, -0.2))
+			batch.call(&"set_art", i, rest, s_off, s_deg, local)
+			var blend := rng.randf_range(-0.2, 1.2)
+			var time := rng.randf_range(0.0, 5.0)
+			var period := rng.randf_range(0.5, 3.0)
+			var flags := (8 if rng.randf() < 0.8 else 0) | (4 if rng.randf() < 0.8 else 0)
+			var looked := Vector3(rng.randf_range(-0.1, 0.1), 0.0, 0.02)
+			var degrees := Vector3(rng.randf_range(-40, 40), 5.0, 0.0)
+			var sprint := rng.randf_range(-0.2, 1.0)
+			var reload := blend if rng.randf() < 0.5 else 0.0
+			var tilt := rng.randf_range(0.0, 7.0)
+			var push := rng.randf_range(0.0, 0.1)
+			if rng.randf() < 0.5:
+				flags |= 2
+			rows.append_array([i, flags, 1.0, looked.x, looked.y, looked.z, degrees.x, degrees.y, degrees.z, reload, sprint, tilt, push, blend, time, period])
+			var g := holders[i].global_transform
+			var point := Vector3.INF
+			if flags & 8:
+				point = g * local
+				if blend > 0.0:
+					var well := g * (local * 0.45)
+					var belt := well + Vector3.DOWN * 0.28
+					var at: Vector3 = _sample_position(support_keys, fposmod(time / period, 1.0))
+					var path := point.lerp(well, clampf(at.x, 0.0, 1.0)).lerp(belt, clampf(at.y, 0.0, 1.0))
+					point = point.lerp(path, smoothstep(0.0, 1.0, blend))
+			var pose: Variant = holders[i].transform
+			if flags & 4:
+				pose = hold.call(&"hold", false, 1.0, bool(flags & 2), looked, degrees, reload, rest, sprint, s_off, s_deg, tilt, push)
+			grips[i].got = Vector3.INF
+			wants.append([point, pose])
+		batch.call(&"step", rows)
+		for i in holders.size():
+			if miss == "" and (var_to_bytes(grips[i].got) != var_to_bytes(wants[i][0]) or var_to_bytes(holders[i].transform) != var_to_bytes(wants[i][1])):
+				miss = "frame %d gun %d" % [frame, i]
+	_check(miss == "", "40 batched frames of 24 guns equal the single hold and the script's support point to the bit", miss)
+	batch.call(&"close", 0)
+	holders[1].free()
+	batch.call(&"step", PackedFloat64Array([0, 12, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 12, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
+	var spare := Node3D.new()
+	_check(int(batch.call(&"open_count")) == 23 and int(batch.call(&"open", spare)) == 0,
+		"a closed slot and a freed holder are skipped, and the closed slot is reused")
+	spare.free()
+	parent.queue_free()
+
+
+## `AwWeaponPose.sample_field(keys, t, 1)` as GSSimWorldHold samples it (one Catmull-Rom span), via the single kernel.
+func _sample_position(keys: Array, t: float) -> Vector3:
+	var packed := PackedFloat64Array()
+	for key: Array in keys:
+		var p: Vector3 = key[1]
+		packed.append_array([float(key[0]), p.x, p.y, p.z, 0.0, 0.0, 0.0])
+	var one: Object = ClassDB.instantiate(&"GSSimWorldHold")
+	one.call(&"set_keys", packed)
+	return one.call(&"sample", t, 1)
 
 
 ## GSSimTimer: never short, on time where the OS allows (not the 15.6 ms Windows tick), and the resolution only on Windows.

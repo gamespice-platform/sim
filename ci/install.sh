@@ -6,7 +6,7 @@
 #   addons/gs_sim/gs_sim.gdextension      (every platform whose library is present)
 # Both are gitignored: the build is an artifact, never a commit. Without the library the
 # addon runs its GDScript twins, so a missing or failed build is never fatal to a game.
-# --no-build installs a library already built under rust/target. Cross builds need the rust
+# --no-build installs a library already built under rust/target (or $CARGO_TARGET_DIR when set, as cargo does). Cross builds need the rust
 # target installed (rustup target add); the workflows do that. Exit 3: no rust/ crate yet.
 # macos-universal is one fat dylib: it builds both Apple targets and joins them with lipo (macOS only; the
 # row's rust target column lists both, comma separated). The .gdextension then points macos.universal and,
@@ -57,6 +57,8 @@ crate_name() {
 
 [ -f rust/Cargo.toml ] || { echo "install.sh: rust/Cargo.toml not found; nothing to build (the addon runs on GDScript)" >&2; exit 3; }
 CRATE="$(crate_name)"
+# cargo writes to $CARGO_TARGET_DIR when it is set (a relative one is taken from here, the repo root, as cargo does).
+TDIR="${CARGO_TARGET_DIR:-rust/target}"
 if [ "$INSTALL" = 1 ]; then
     [ -n "$PLATFORM" ] || PLATFORM="$(host_platform)"
     R="$(awk -F'\t' -v p="$PLATFORM" '$0!~/^#/ && $1==p {print; exit}' ci/targets.tsv)"
@@ -74,16 +76,16 @@ if [ "$INSTALL" = 1 ]; then
             cargo build "${flags[@]}"
         done
     fi
-    SRC="rust/target/$TARGET/$PROFILE/$FILE"
+    SRC="$TDIR/$TARGET/$PROFILE/$FILE"
     if [ "$PLATFORM" = macos-universal ]; then
         # lipo is a macOS tool (llvm-lipo also works); fail loudly rather than install one architecture as "universal".
         LIPO="$(command -v lipo || command -v llvm-lipo || true)"
         [ -n "$LIPO" ] || { echo "install.sh: macos-universal needs lipo (macOS) or llvm-lipo" >&2; exit 1; }
-        SRC="rust/target/universal-apple-darwin/$PROFILE/$FILE"
+        SRC="$TDIR/universal-apple-darwin/$PROFILE/$FILE"
         PARTS=()
         for t in ${TARGET//,/ }; do
-            [ -f "rust/target/$t/$PROFILE/$FILE" ] || { echo "install.sh: rust/target/$t/$PROFILE/$FILE not found (build it, or drop --no-build)" >&2; exit 1; }
-            PARTS+=("rust/target/$t/$PROFILE/$FILE")
+            [ -f "$TDIR/$t/$PROFILE/$FILE" ] || { echo "install.sh: $TDIR/$t/$PROFILE/$FILE not found (build it, or drop --no-build)" >&2; exit 1; }
+            PARTS+=("$TDIR/$t/$PROFILE/$FILE")
         done
         mkdir -p "$(dirname "$SRC")"
         "$LIPO" -create "${PARTS[@]}" -output "$SRC"
