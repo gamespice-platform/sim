@@ -730,7 +730,7 @@ static func _navjoin_mesh(rng: RandomNumberGenerator) -> NavigationMesh:
 
 
 ## GSSimShots' rows, end to end through the class: a cached box set posed for a shot, a world wall answered by a
-## Callable, a round that stops at it and one that passes it (the exit found by the reverse ray). The walk's rules
+## Callable, a round that stops at it and one that passes it (the reverse ray finds the exit). The walk's rules
 ## themselves are gs-sim-weapon's cargo tests and FC's headless_native_shots (against GSPelletTracer, to the bit).
 func _test_shots() -> void:
 	var shots: Object = ClassDB.instantiate(&"GSSimShots")
