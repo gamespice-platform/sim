@@ -299,8 +299,9 @@ impl GSSimBotContacts {
     /// rows not in [param bots], [method tier_ids] and [method tier_at] of the live ones in it);
     /// with [param near_cell] above 0, the live rows by ground cell of that side ([method
     /// near_keys], [method near_starts], [method near_rows]). Unasked ones come back empty. The
-    /// same values and order as FC's script `tier_rows` and `_near_refresh`. False when
-    /// [param ids] is not one per row.
+    /// same values and order as FC's script `tier_rows` and `_near_refresh`. Returns all seven in
+    /// one array, in that order (one call a tick instead of eight); empty when [param ids] is not
+    /// one per row.
     #[func]
     fn world_rows(
         &mut self,
@@ -308,7 +309,7 @@ impl GSSimBotContacts {
         bots: PackedInt64Array,
         tiers: bool,
         near_cell: f64,
-    ) -> bool {
+    ) -> VarArray {
         let positions: Vec<[f32; 3]> = self.positions.as_slice().iter().map(arr3).collect();
         let eyes: Vec<[f32; 3]> = self.eyes.as_slice().iter().map(arr3).collect();
         let t = Table {
@@ -321,7 +322,7 @@ impl GSSimBotContacts {
         self.tiers = TierRows::default();
         self.near = Near::default();
         if t.size().is_none() {
-            return false;
+            return VarArray::new();
         }
         if tiers {
             let mut sorted = bots.as_slice().to_vec();
@@ -331,7 +332,16 @@ impl GSSimBotContacts {
         if near_cell > 0.0 {
             near_cells(&t, near_cell, &mut self.near);
         }
-        true
+        let rows = [
+            self.tier_eyes().to_variant(),
+            self.tier_looks().to_variant(),
+            self.tier_ids().to_variant(),
+            self.tier_at().to_variant(),
+            self.near_keys().to_variant(),
+            self.near_starts().to_variant(),
+            self.near_rows().to_variant(),
+        ];
+        VarArray::from(&rows[..])
     }
 
     /// The last [method world_rows]' live people's eyes.
