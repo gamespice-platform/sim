@@ -108,6 +108,24 @@ pub fn choose(
     best
 }
 
+/// `GSBotArms.ammo_fraction`: how full a weapon of `full` rounds (magazine plus reserve cap) is with
+/// `magazine` and `reserve` left, 1 for an infinite reserve. The script's ints and its `f64` divide.
+#[inline]
+pub fn ammo_fraction(infinite: bool, full: i64, magazine: i64, reserve: i64) -> f64 {
+    if infinite {
+        return 1.0;
+    }
+    let f = magazine.wrapping_add(reserve) as f64 / full.max(1) as f64;
+    // clampf as the engine's CLAMP: below the floor, else above the ceiling, else itself.
+    if f < 0.0 {
+        0.0
+    } else if f > 1.0 {
+        1.0
+    } else {
+        f
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,5 +201,16 @@ mod tests {
         let (skip, i) = (Skip::default(), inp(20.0, true));
         let got = choose(&ids, &at, &rows, &mine, skip, &i, |_| true);
         assert_eq!(got, None);
+    }
+
+    #[test]
+    fn ammo_fraction_is_the_scripts() {
+        assert_eq!(ammo_fraction(true, 0, 0, 0), 1.0);
+        assert_eq!(ammo_fraction(false, 120, 30, 60), 0.75);
+        assert_eq!(ammo_fraction(false, 0, 0, 0), 0.0);
+        assert_eq!(ammo_fraction(false, 0, 5, 0), 1.0);
+        assert_eq!(ammo_fraction(false, 90, 30, 90), 1.0);
+        assert_eq!(ammo_fraction(false, 90, -5, 0), 0.0);
+        assert_eq!(ammo_fraction(false, 7, 1, 2), 3.0 / 7.0);
     }
 }
