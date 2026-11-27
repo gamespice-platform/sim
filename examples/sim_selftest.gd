@@ -5,6 +5,8 @@ extends Node
 
 const CHANNEL := "gs.sim.selftest"
 
+const NetExactChecks := preload("res://examples/net_exact_checks.gd")
+
 ## Random sight scans compared one by one.
 const SCANS := 3000
 
@@ -52,6 +54,7 @@ func _run() -> void:
 		_test_navjoin_parity()
 	if GSSim.has(&"shots"):
 		_test_shots()
+	NetExactChecks.run(_check)
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)

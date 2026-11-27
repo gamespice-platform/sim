@@ -13,7 +13,8 @@ use std::collections::HashMap;
 
 use godot::prelude::*;
 use gs_sim_snapshot::net_rest::{
-    EXACT_FLOATS, challenge_value_wire, challenge_wire, exact_from_moves, health_wire,
+    EXACT_FLOATS, EXACT_FLOATS_TIMED, challenge_value_wire, challenge_wire, exact_from_moves,
+    health_wire,
 };
 
 /// `GSCombatNetSync.HEALTH_BITS`.
@@ -97,6 +98,8 @@ pub struct GSSimNetRest {
     written: HashMap<i64, (u64, Written)>,
     /// Calls to [method pull_rest_rows] so far.
     calls: u64,
+    /// Whether the exact copy is the sixteen-float timed record ([method set_exact_floats]); fourteen otherwise.
+    timed: bool,
 }
 
 fn obj(v: &Variant) -> Option<Gd<Object>> {
@@ -136,10 +139,23 @@ fn put(target: &mut Gd<Object>, name: &StringName, slot: &mut Option<Variant>, v
 
 #[godot_api]
 impl GSSimNetRest {
-    /// Floats in the exact copy (`FcPlayerNet.EXACT_FLOATS`).
+    /// Floats in the exact copy this object writes (`FcPlayerNet.EXACT_FLOATS`): fourteen until
+    /// [method set_exact_floats] says sixteen.
     #[func]
     fn exact_floats(&self) -> i64 {
-        EXACT_FLOATS as i64
+        self.exact_len() as i64
+    }
+
+    /// Makes the exact copy [param n] floats: fourteen (`GSFpsNetSync.EXACT_FLOATS`) or sixteen
+    /// (`EXACT_FLOATS_TIMED`, slide and wall-run time last). False, and nothing changed, for any other length.
+    #[func]
+    fn set_exact_floats(&mut self, n: i64) -> bool {
+        match usize::try_from(n) {
+            Ok(EXACT_FLOATS) => self.timed = false,
+            Ok(EXACT_FLOATS_TIMED) => self.timed = true,
+            _ => return false,
+        }
+        true
     }
 
     /// `FcPlayerNet._pull_rest` for every net of [param nets], in order, except what needs the game's scripts.
@@ -197,11 +213,19 @@ impl GSSimNetRest {
 }
 
 impl GSSimNetRest {
+    fn exact_len(&self) -> usize {
+        if self.timed {
+            EXACT_FLOATS_TIMED
+        } else {
+            EXACT_FLOATS
+        }
+    }
+
     /// One net's pull: Some(owned by a client), None (nothing written) when it cannot be read.
     fn pull_one(
         &self,
         net: &mut Gd<Object>,
-        exact: Option<[f32; EXACT_FLOATS]>,
+        exact: Option<[f32; EXACT_FLOATS_TIMED]>,
         w: &mut Written,
         interest_aim: bool,
     ) -> Option<bool> {
@@ -232,7 +256,7 @@ impl GSSimNetRest {
             let row = exact?;
             net.set(
                 &k[N_NET_EXACT],
-                &PackedFloat32Array::from(&row[..]).to_variant(),
+                &PackedFloat32Array::from(&row[..self.exact_len()]).to_variant(),
             );
             w[S_EXACT_EMPTY] = None;
         }

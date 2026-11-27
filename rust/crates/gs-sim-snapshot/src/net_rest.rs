@@ -5,8 +5,12 @@
 
 use crate::to_int;
 
-/// Floats in the exact copy (`FcPlayerNet.EXACT_FLOATS`).
+/// Floats in the exact copy (`FcPlayerNet.EXACT_FLOATS`, `GSFpsNetSync.EXACT_FLOATS`).
 pub const EXACT_FLOATS: usize = 14;
+
+/// Floats in the timed exact copy (`GSFpsNetSync.EXACT_FLOATS_TIMED`, API 58): the fourteen, then slide time
+/// and wall-run time. [`exact_row`] always fills all of them; a fourteen-float caller takes the prefix.
+pub const EXACT_FLOATS_TIMED: usize = 16;
 
 /// `GSFpsState._f` columns the exact copy reads (`gs_fps_state_columns.gd`).
 pub mod col {
@@ -15,22 +19,24 @@ pub mod col {
     pub const TIME_SINCE_JUMP: usize = 14;
     pub const TIME_SINCE_GROUNDED: usize = 15;
     pub const TIME_SINCE_JUMP_PRESSED: usize = 16;
+    pub const SLIDE_TIME: usize = 17;
     pub const WALL_RUN_COOLDOWN_LEFT: usize = 21;
+    pub const WALL_RUN_TIME: usize = 22;
     pub const CROUCH_FRACTION: usize = 30;
 }
 
 /// The fewest `_f` columns [`exact_row`] reads.
 pub const MIN_COLUMNS: usize = col::CROUCH_FRACTION + 1;
 
-/// `_pull_exact`'s fourteen floats from a state's columns [param f] and its three stamina
-/// fields, each rounded once to f32 as the script's store into a `PackedFloat32Array` does
-/// (the `Vector3` getters round to the same f32 first). None when [param f] is short.
+/// `GSFpsNetSync.pack_exact`'s sixteen floats (`_pull_exact`'s fourteen are the prefix) from a state's
+/// columns [param f] and its three stamina fields, each rounded once to f32 as the script's store into a
+/// `PackedFloat32Array` does (the `Vector3` getters round to the same f32 first). None when [param f] is short.
 pub fn exact_row(
     f: &[f64],
     stamina: f64,
     exhausted: bool,
     delay_left: f64,
-) -> Option<[f32; EXACT_FLOATS]> {
+) -> Option<[f32; EXACT_FLOATS_TIMED]> {
     if f.len() < MIN_COLUMNS {
         return None;
     }
@@ -50,6 +56,8 @@ pub fn exact_row(
         stamina as f32,
         if exhausted { 1.0 } else { 0.0 },
         delay_left as f32,
+        f[col::SLIDE_TIME] as f32,
+        f[col::WALL_RUN_TIME] as f32,
     ])
 }
 
@@ -65,7 +73,7 @@ pub fn exact_from_moves(
     row: usize,
     columns: usize,
     extra: usize,
-) -> Option<[f32; EXACT_FLOATS]> {
+) -> Option<[f32; EXACT_FLOATS_TIMED]> {
     if extra < MOVE_STAMINA + 3 {
         return None;
     }
@@ -103,12 +111,32 @@ mod tests {
         let row = exact_row(&f, 0.3, true, 0.7).unwrap();
         let want = [
             f[0], f[1], f[2], f[3], f[4], f[5], f[30], f[15], f[14], f[16], f[21], 0.3, 1.0, 0.7,
+            f[17], f[22],
         ];
+        assert_eq!(row.len(), EXACT_FLOATS_TIMED);
         for (got, w) in row.iter().zip(want) {
             assert_eq!(got.to_bits(), (w as f32).to_bits());
         }
         assert_eq!(exact_row(&f, 1.0, false, 0.0).unwrap()[12], 0.0);
         assert!(exact_row(&f[..30], 1.0, false, 0.0).is_none());
+    }
+
+    #[test]
+    fn exact_row_carries_not_sliding_and_not_running_as_minus_one() {
+        let mut f = vec![0.0f64; 32];
+        f[col::SLIDE_TIME] = -1.0;
+        f[col::WALL_RUN_TIME] = -1.0;
+        let row = exact_row(&f, 1.0, false, 0.0).unwrap();
+        assert_eq!(row[14], -1.0);
+        assert_eq!(row[15], -1.0);
+        // A 66 Hz tick count that no 1/7680 s code holds keeps its own f32.
+        f[col::WALL_RUN_TIME] = 7.0 / 66.0;
+        let row = exact_row(&f, 1.0, false, 0.0).unwrap();
+        assert_eq!(row[15].to_bits(), ((7.0f64 / 66.0) as f32).to_bits());
+        assert_eq!(
+            &row[..EXACT_FLOATS],
+            &exact_row(&f, 1.0, false, 0.0).unwrap()[..EXACT_FLOATS]
+        );
     }
 
     #[test]

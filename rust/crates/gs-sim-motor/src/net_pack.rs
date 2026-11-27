@@ -267,11 +267,16 @@ pub fn unpack(
 /// (above 0.5), stamina delay.
 pub const EXACT_FLOATS: usize = 14;
 
+/// Floats in a timed exact record (`GSFpsNetSync.EXACT_FLOATS_TIMED`, API 58): the fourteen, then slide time
+/// and wall-run time (each -1 when not sliding or running).
+pub const EXACT_FLOATS_TIMED: usize = 16;
+
 /// The column half of `GSFpsNetSync.push_exact`: an exact record's position, velocity and timers written over
-/// `cols`, each `f32` widened as the script's `Vector3` and float setters do. Crouch fraction and stamina are
-/// not columns; the caller writes them. Returns false (and writes nothing) for a record of another length.
+/// `cols`, each `f32` widened as the script's `Vector3` and float setters do. A timed record also writes slide
+/// and wall-run time. Crouch fraction and stamina are not columns; the caller writes them. Returns false (and
+/// writes nothing) for a record that is neither [`EXACT_FLOATS`] nor [`EXACT_FLOATS_TIMED`] long.
 pub fn unpack_exact(cols: &mut [f64], exact: &[f32]) -> bool {
-    if exact.len() != EXACT_FLOATS {
+    if exact.len() != EXACT_FLOATS && exact.len() != EXACT_FLOATS_TIMED {
         return false;
     }
     for i in 0..3 {
@@ -282,6 +287,10 @@ pub fn unpack_exact(cols: &mut [f64], exact: &[f32]) -> bool {
     cols[TIME_SINCE_JUMP] = f64::from(exact[8]);
     cols[TIME_SINCE_JUMP_PRESSED] = f64::from(exact[9]);
     cols[WALL_RUN_COOLDOWN_LEFT] = f64::from(exact[10]);
+    if exact.len() == EXACT_FLOATS_TIMED {
+        cols[SLIDE_TIME] = f64::from(exact[14]);
+        cols[WALL_RUN_TIME] = f64::from(exact[15]);
+    }
     true
 }
 
@@ -550,9 +559,57 @@ mod tests {
                 assert_eq!(a.to_bits(), b.to_bits(), "column {i}");
             }
         }
+        assert_eq!(cols[SLIDE_TIME].to_bits(), before[SLIDE_TIME].to_bits());
+        assert_eq!(
+            cols[WALL_RUN_TIME].to_bits(),
+            before[WALL_RUN_TIME].to_bits()
+        );
         let mut short = before;
         assert!(!unpack_exact(&mut short, &exact[..13]));
         assert_eq!(short, before);
+    }
+
+    #[test]
+    fn unpack_exact_timed_also_writes_slide_and_wall_run_time() {
+        let mut cols = DEFAULTS;
+        let exact: [f32; EXACT_FLOATS_TIMED] = [
+            1.5,
+            -2.25,
+            3.1,
+            0.1,
+            -9.8,
+            7.0,
+            0.5,
+            0.33,
+            0.07,
+            1.9,
+            0.6,
+            0.4,
+            1.0,
+            0.2,
+            0.125,
+            (7.0f64 / 66.0) as f32,
+        ];
+        let before = cols;
+        assert!(unpack_exact(&mut cols, &exact));
+        let mut fourteen = before;
+        assert!(unpack_exact(&mut fourteen, &exact[..EXACT_FLOATS]));
+        assert_eq!(cols[SLIDE_TIME], f64::from(0.125f32));
+        assert_eq!(cols[WALL_RUN_TIME], f64::from((7.0f64 / 66.0) as f32));
+        for (i, (a, b)) in cols.iter().zip(fourteen.iter()).enumerate() {
+            if i != SLIDE_TIME && i != WALL_RUN_TIME {
+                assert_eq!(a.to_bits(), b.to_bits(), "column {i}");
+            }
+        }
+        let mut stopped = before;
+        let mut off = exact;
+        off[14] = -1.0;
+        off[15] = -1.0;
+        assert!(unpack_exact(&mut stopped, &off));
+        assert_eq!((stopped[SLIDE_TIME], stopped[WALL_RUN_TIME]), (-1.0, -1.0));
+        let mut fifteen = before;
+        assert!(!unpack_exact(&mut fifteen, &exact[..15]));
+        assert_eq!(fifteen, before);
     }
 
     #[test]

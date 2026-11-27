@@ -4,7 +4,9 @@
 //! column writes), and `unpack_exact` adds an exact movement record (`push_exact`) in the same call. Stateless.
 
 use godot::prelude::*;
-use gs_sim_motor::net_pack::{Extra, Held, Wire, pack, pull, unpack, unpack_exact};
+use gs_sim_motor::net_pack::{
+    EXACT_FLOATS_TIMED, Extra, Held, Wire, pack, pull, unpack, unpack_exact,
+};
 
 /// A state's replicated integers from its columns.
 #[derive(GodotClass)]
@@ -118,8 +120,16 @@ impl GSSimFpsNetPack {
         cols
     }
 
-    /// [method unpack], then [param exact] (an exact movement record, `GSFpsNetSync.EXACT_FLOATS` long) written
-    /// over its columns (`GSFpsNetSync.push_exact`'s column writes) when it has that length. One call for a
+    /// Longest exact record [method unpack_exact] takes (`GSFpsNetSync.EXACT_FLOATS_TIMED`). A library without
+    /// this method takes only the fourteen-float one.
+    #[func]
+    fn exact_floats_timed(&self) -> i64 {
+        EXACT_FLOATS_TIMED as i64
+    }
+
+    /// [method unpack], then [param exact] (an exact movement record, `GSFpsNetSync.EXACT_FLOATS` or
+    /// `EXACT_FLOATS_TIMED` long) written over its columns (`GSFpsNetSync.push_exact`'s column writes, slide and
+    /// wall-run time too for a timed record) when it has one of those lengths. One call for a
     /// receiver that gets both. Empty when [param cols] is shorter than a state's.
     #[func]
     #[allow(clippy::too_many_arguments)]
