@@ -77,6 +77,8 @@ mod route;
 mod seek;
 #[cfg(feature = "senses")]
 mod senses;
+#[cfg(feature = "weapon")]
+mod shots;
 #[cfg(feature = "brain")]
 mod sight;
 #[cfg(feature = "snapshot")]
