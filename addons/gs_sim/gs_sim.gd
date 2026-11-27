@@ -55,6 +55,7 @@ const MODULES := {
 	&"events": &"GSSimTickEvents",
 	&"shots": &"GSSimShots",
 	&"trace_mirror": &"GSSimTraceMirror",
+	&"bot_coast": &"GSSimBotCoast",
 }
 
 

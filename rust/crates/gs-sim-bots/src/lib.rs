@@ -8,6 +8,7 @@ pub use gs_sim_math::Vec3;
 use gs_sim_math::rad_to_deg;
 
 pub mod choose;
+pub mod coast;
 pub mod threat;
 pub mod tier;
 
