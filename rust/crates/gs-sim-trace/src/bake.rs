@@ -1,13 +1,33 @@
 //! A mirror as bytes, so a map converter can bake it at convert time and the game read it back
 //! instead of walking the scene. Little-endian: magic `GSCM`, version `u32`, piece count `u32`,
 //! then per piece `solid u8`, `layer u32`, `shape u32`, and the verts, planes and edges each as a `u32` count
-//! then `f64`s (3, 4 and 3 per item).
+//! then `f64`s (3, 4 and 3 per item). Version 3 adds the Godot shapes ([`GShape`]): a `u32`
+//! count, then per shape a geometry tag `u8` (0 box: three `f32` half extents; 1 hull, 2
+//! trimesh: a `u32` vertex count then three `f32`s each), the transform as twelve `f32`s (basis
+//! rows, origin), `layer u32`, `shape u32` and its piece range as two `u32`s. Everything else
+//! (hull extremes, face hierarchy, bounds) is rebuilt from these, the same way every time, so a
+//! blob read back writes the same bytes. Version 2 blobs still load (no shapes).
 
+use crate::gjk::{F3, GShape, Geom, Xf};
 use crate::mirror::Mirror;
 use crate::piece::{Piece, V3};
 
 const MAGIC: &[u8; 4] = b"GSCM";
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
+const TAG_BOX: u8 = 0;
+const TAG_HULL: u8 = 1;
+const TAG_FACES: u8 = 2;
+
+fn put_f32s(out: &mut Vec<u8>, vs: &[f32]) {
+    for v in vs {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+}
+
+fn put_points(out: &mut Vec<u8>, ps: &[F3]) {
+    put_u32(out, ps.len() as u32);
+    put_f32s(out, ps.as_flattened());
+}
 
 fn put_u32(out: &mut Vec<u8>, v: u32) {
     out.extend_from_slice(&v.to_le_bytes());
@@ -37,6 +57,39 @@ impl Reader<'_> {
 
     fn f64(&mut self) -> Option<f64> {
         Some(f64::from_le_bytes(self.take(8)?.try_into().ok()?))
+    }
+
+    fn f32(&mut self) -> Option<f32> {
+        Some(f32::from_le_bytes(self.take(4)?.try_into().ok()?))
+    }
+
+    fn f32s<const N: usize>(&mut self) -> Option<[f32; N]> {
+        let mut out = [0.0; N];
+        for c in out.iter_mut() {
+            *c = self.f32()?;
+        }
+        Some(out)
+    }
+
+    fn points(&mut self) -> Option<Vec<F3>> {
+        let n = self.u32()? as usize;
+        if n > self.bytes.len() / 12 {
+            return None;
+        }
+        (0..n).map(|_| self.f32s::<3>()).collect()
+    }
+
+    fn shape(&mut self) -> Option<GShape> {
+        let geom = match self.take(1)?[0] {
+            TAG_BOX => Geom::Box(self.f32s::<3>()?),
+            TAG_HULL => Geom::hull(self.points()?)?,
+            TAG_FACES => Geom::faces(self.points()?)?,
+            _ => return None,
+        };
+        let xf = Xf::from_floats(self.f32s::<12>()?);
+        let (layer, shape) = (self.u32()?, self.u32()?);
+        let pieces = [self.u32()?, self.u32()?];
+        Some(GShape::new(geom, xf, layer, shape, pieces))
     }
 
     fn list<const N: usize>(&mut self) -> Option<Vec<[f64; N]>> {
@@ -74,6 +127,28 @@ impl Mirror {
             put_u32(&mut out, p.edges.len() as u32);
             put_f64s(&mut out, p.edges.as_flattened());
         }
+        put_u32(&mut out, self.shapes().len() as u32);
+        for s in self.shapes() {
+            match &s.geom {
+                Geom::Box(h) => {
+                    out.push(TAG_BOX);
+                    put_f32s(&mut out, h);
+                }
+                Geom::Hull { verts, .. } => {
+                    out.push(TAG_HULL);
+                    put_points(&mut out, verts);
+                }
+                Geom::Faces(f) => {
+                    out.push(TAG_FACES);
+                    put_points(&mut out, &f.verts);
+                }
+            }
+            put_f32s(&mut out, &s.xf.floats());
+            put_u32(&mut out, s.layer);
+            put_u32(&mut out, s.shape);
+            put_u32(&mut out, s.pieces[0]);
+            put_u32(&mut out, s.pieces[1]);
+        }
         out
     }
 
@@ -81,7 +156,11 @@ impl Mirror {
     /// truncated blob.
     pub fn from_bytes(bytes: &[u8]) -> Option<Mirror> {
         let mut r = Reader { bytes, at: 0 };
-        if r.take(4)? != MAGIC || r.u32()? != VERSION {
+        if r.take(4)? != MAGIC {
+            return None;
+        }
+        let version = r.u32()?;
+        if version != 2 && version != VERSION {
             return None;
         }
         let n = r.u32()? as usize;
@@ -100,6 +179,16 @@ impl Mirror {
             piece.shape = shape;
             pieces.push(piece);
         }
-        (r.at == bytes.len()).then(|| Mirror::new(pieces))
+        let mut shapes = Vec::new();
+        if version >= 3 {
+            let n = r.u32()? as usize;
+            if n > bytes.len() {
+                return None;
+            }
+            for _ in 0..n {
+                shapes.push(r.shape()?);
+            }
+        }
+        (r.at == bytes.len()).then(|| Mirror::with_shapes(pieces, shapes))
     }
 }
