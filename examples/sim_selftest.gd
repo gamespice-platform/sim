@@ -8,6 +8,9 @@ const CHANNEL := "gs.sim.selftest"
 ## Random sight scans compared one by one.
 const SCANS := 3000
 
+## GSSimTimer: how many times each length is slept. The lateness check reads the fastest wake.
+const TIMER_SAMPLES := 7
+
 ## Random think-tier ticks (settings, people and bots) compared query by query.
 const TIER_ROUNDS := 400
 
@@ -64,16 +67,24 @@ func _test_timer() -> void:
 	var t: Object = ClassDB.instantiate(&"GSSimTimer")
 	var kind := str(t.call(&"sleep_kind"))
 	_check(not kind.is_empty(), "the timer names its sleep", kind)
+	# Each length is slept TIMER_SAMPLES times. Every sample must be long enough. Lateness is judged by the
+	# fastest wake: on a loaded box (PH runs 40+ suites) the scheduler can preempt any single sample for
+	# 150-230 ms. That delay comes from the run queue, not the timer, and a coarse timer is late on every sample.
 	var worst := 0
 	for usec: int in [300, 1000, 2500]:
-		var t0 := Time.get_ticks_usec()
-		t.call(&"sleep_usec", usec)
-		var took := Time.get_ticks_usec() - t0
-		_check(took >= usec, "a %d us timer sleep is never short" % usec, str(took))
-		worst = maxi(worst, took - usec)
+		var best := 1 << 62
+		var shortest := 1 << 62
+		for i in TIMER_SAMPLES:
+			var t0 := Time.get_ticks_usec()
+			t.call(&"sleep_usec", usec)
+			var took := Time.get_ticks_usec() - t0
+			shortest = mini(shortest, took)
+			best = mini(best, took - usec)
+		_check(shortest >= usec, "a %d us timer sleep is never short (%d samples)" % [usec, TIMER_SAMPLES], str(shortest))
+		worst = maxi(worst, best)
 	# Loose: a loaded build box may be late, but never a whole Windows tick on a precise sleep.
 	if bool(t.call(&"is_precise")):
-		_check(worst < 12000, "a precise timer sleep wakes well inside the 15.6 ms Windows tick", "%d us late" % worst)
+		_check(worst < 12000, "a precise timer sleep wakes well inside the 15.6 ms Windows tick", "fastest wake %d us late" % worst)
 	var raised := bool(t.call(&"request_resolution_ms", 1))
 	_check(raised == (OS.get_name() == "Windows"), "the timer resolution is raised on Windows only", str(raised))
 	_check(int(t.call(&"resolution_ms")) == (1 if raised else 0), "the held resolution reads back")
