@@ -59,6 +59,8 @@ mod net_pack;
 mod npc_ai_senses;
 #[cfg(feature = "zombie")]
 mod pace;
+#[cfg(feature = "events")]
+mod events;
 #[cfg(feature = "players")]
 mod players;
 #[cfg(feature = "pose")]

@@ -162,6 +162,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "gs-sim-events"
+version = "0.1.0"
+
+[[package]]
 name = "gs-sim-figure"
 version = "0.1.0"
 dependencies = [
@@ -184,6 +188,7 @@ dependencies = [
  "gs-sim-crowd",
  "gs-sim-doors",
  "gs-sim-doubt",
+ "gs-sim-events",
  "gs-sim-figure",
  "gs-sim-grid2d",
  "gs-sim-hazards",
