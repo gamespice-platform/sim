@@ -54,6 +54,7 @@ const MODULES := {
 	&"unlag": &"GSSimUnlagRing",
 	&"events": &"GSSimTickEvents",
 	&"shots": &"GSSimShots",
+	&"trace_mirror": &"GSSimTraceMirror",
 }
 
 

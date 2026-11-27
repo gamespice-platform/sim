@@ -1,8 +1,15 @@
-//! GameSpice Combat's flat world ray: which of many axis-aligned boxes a ray enters first.
+//! GameSpice Combat's flat world ray: which of many axis-aligned boxes a ray enters first. The
+//! [`mirror`] module is a map's whole static collision (convex pieces and triangles) for ray, box
+//! sweep and point contents queries.
 //!
 //! The script original is `GSTraceFlat._world_ray` and `_ray_aabb` (gs-combat). Box corners are
 //! the engine's `f32`; the slab arithmetic is the script's `f64`, in its order, with Godot's
 //! `maxf`/`minf` (`a > b ? a : b`, `a < b ? a : b`), so the chosen box is the script's to the bit.
+
+pub mod bake;
+pub mod gjk;
+pub mod mirror;
+pub mod piece;
 
 /// Directions shorter than this on an axis are parallel to that axis's slabs (the script's literal).
 pub const PARALLEL: f64 = 0.000001;
