@@ -87,6 +87,8 @@ mod seek;
 mod senses;
 #[cfg(all(feature = "motor", feature = "players", feature = "events"))]
 mod server_tick;
+#[cfg(feature = "weapon")]
+mod shots;
 #[cfg(feature = "brain")]
 mod sight;
 #[cfg(feature = "snapshot")]

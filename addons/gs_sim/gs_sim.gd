@@ -53,6 +53,7 @@ const MODULES := {
 	&"volumes": &"GSSimVolumes",
 	&"unlag": &"GSSimUnlagRing",
 	&"events": &"GSSimTickEvents",
+	&"shots": &"GSSimShots",
 }
 
 
