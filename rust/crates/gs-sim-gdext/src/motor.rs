@@ -13,6 +13,7 @@ use godot::classes::{
 use godot::prelude::*;
 use gs_sim_motor::flat::{FlatWorld, Plane as FlatPlane};
 use gs_sim_motor::full::{self, FullIn, FullTun, MoveCounters, Moves};
+use gs_sim_motor::ladder::{self, LadderTun};
 use gs_sim_motor::memo::MemoSpace;
 use gs_sim_motor::slide::{Aabb as SlideBox, Mover, Tun};
 use gs_sim_motor::swim::{self, SwimTun};
@@ -1058,6 +1059,13 @@ impl GSSimFpsBody {
         true
     }
 
+    /// Whether [`Self::motor_tick`] also runs a ladder climber's tick (`GSFpsLadderMode`) from the
+    /// tail (kind 2, [`ladder::LadderTun`]) at [`SWIM_TUN_AT`] when the state is in the tail's mode.
+    #[func]
+    fn has_ladder() -> bool {
+        true
+    }
+
     /// Times every engine query and every `motor_tick` from now on (all bodies), for a profile run.
     #[func]
     fn set_profile(on: bool) {
@@ -1196,6 +1204,37 @@ impl GSSimFpsBody {
             mover.space.close();
             c.stuck = ran_out as i64;
             o.extend_from_slice(&tick_vals(&s, 0, &c, &mover.counters));
+            push_clocks(o, &mv);
+            o.extend_from_slice(&[0.0; 6]);
+            prof_end(PROF_TICK, at);
+            return true;
+        }
+        if let Some(lt) = tp.get(SWIM_TUN_AT..).and_then(LadderTun::read)
+            && lt.mode_id == s.mode
+        {
+            // A climber's whole tick (`GSFpsLadderMode._simulate`): no rest, no crouch, the timers
+            // and wall normal as they came, no view turn and no move counted; the ground check at
+            // the foot may clear the surface.
+            if self.body.perf_caches {
+                self.space.open();
+            }
+            let mut mover = Mover::new(&mut self.body, &mut self.space, m, boxes, t);
+            let ran_out = ladder::tick(
+                &mut mover,
+                &mut s,
+                &lt,
+                &tt,
+                &mut c,
+                inp.yaw,
+                inp.buttons,
+                inp.move_x,
+                inp.move_y,
+                inp.delta,
+            );
+            mover.space.close();
+            c.stuck += ran_out as i64;
+            let flags = (s.surface_cleared as i64) << 2;
+            o.extend_from_slice(&tick_vals(&s, flags, &c, &mover.counters));
             push_clocks(o, &mv);
             o.extend_from_slice(&[0.0; 6]);
             prof_end(PROF_TICK, at);

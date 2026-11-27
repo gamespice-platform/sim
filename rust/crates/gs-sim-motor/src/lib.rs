@@ -13,6 +13,7 @@ pub mod cols;
 pub mod crouch;
 pub mod flat;
 pub mod full;
+pub mod ladder;
 pub mod memo;
 pub mod net_pack;
 pub mod net_pull_batch;
