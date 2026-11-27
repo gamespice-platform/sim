@@ -89,6 +89,8 @@ mod snapshot_batch;
 mod spawn;
 #[cfg(feature = "zombie")]
 mod think;
+#[cfg(feature = "brain")]
+mod think_mt;
 #[cfg(feature = "threat")]
 mod threat;
 #[cfg(feature = "bots")]
