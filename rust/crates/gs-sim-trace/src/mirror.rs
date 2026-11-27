@@ -7,7 +7,7 @@
 //! shapes are visited by where the swept box first nears them and the walk stops once no later
 //! shape can end nearer; without shapes it is the pieces' exact contact.
 
-use crate::gjk::{CLEAR, GShape, cast_aabb, narrow};
+use crate::gjk::{CLEAR, GShape, Mover, cast_aabb, narrow};
 use crate::piece::{Piece, V3, add, scale, sub, unit};
 use std::cell::RefCell;
 use std::sync::RwLock;
@@ -285,16 +285,49 @@ impl Mirror {
     /// ignored, so `start_solid` stays false for a box the mirror's shapes all came from. With
     /// shapes the fraction is Godot's safe fraction and the normal the pieces' contact normal.
     pub fn sweep(&self, from: V3, motion: V3, half: V3, mask: u32) -> Option<Hit> {
+        let none = self.shapes.is_empty()
+            && self
+                .dynamic_shapes
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty();
+        if none {
+            return self.sweep_pieces(from, motion, half, mask);
+        }
+        self.cast_shapes(from, motion, Mover::Box(narrow(half)), half, mask, |best| {
+            let (low, _, s, moving) = best.filter(|b| b.0 < 1.0)?;
+            Some(self.shape_hit(s, moving, from, motion, half, f64::from(low)))
+        })
+    }
+
+    /// Godot's `cast_motion` of `mover` centred at `from` (identity basis) over the engine
+    /// shapes on `mask`: the safe and unsafe fractions, (1, 1) when nothing is in the way.
+    /// Shapes the mover starts inside of are ignored, as the engine does.
+    pub fn cast_motion(&self, from: V3, motion: V3, mover: Mover, mask: u32) -> (f32, f32) {
+        let half = mover.half().map(f64::from);
+        self.cast_shapes(from, motion, mover, half, mask, |best| {
+            best.filter(|b| b.0 < 1.0)
+                .map_or((1.0, 1.0), |(low, hi, _, _)| (low, hi))
+        })
+    }
+
+    /// The engine-shape cast both [`Self::sweep`] and [`Self::cast_motion`] run: `done` gets the
+    /// best (safe, unsafe, shape, moving) found. `half` bounds `mover` for the entry culling.
+    fn cast_shapes<R>(
+        &self,
+        from: V3,
+        motion: V3,
+        mover: Mover,
+        half: V3,
+        mask: u32,
+        done: impl FnOnce(Option<(f32, f32, &GShape, bool)>) -> R,
+    ) -> R {
         let dynamic_shapes = self
             .dynamic_shapes
             .read()
             .unwrap_or_else(|e| e.into_inner());
-        if self.shapes.is_empty() && dynamic_shapes.is_empty() {
-            drop(dynamic_shapes);
-            return self.sweep_pieces(from, motion, half, mask);
-        }
-        let (f, m, h) = (narrow(from), narrow(motion), narrow(half));
-        let aabb = cast_aabb(f, h, m);
+        let (f, m) = (narrow(from), narrow(motion));
+        let aabb = cast_aabb(f, mover.half(), m);
         let inv = inverse(motion);
         let grow = add(half, [CLEAR; 3]);
         let entry = |lo: V3, hi: V3| seg_box(from, inv, sub(lo, grow), add(hi, grow), 1.0);
@@ -347,18 +380,18 @@ impl Mirror {
             // Godot carries the last bisection fraction into the next shape's whole-motion test
             // (see `GShape::cast_carried`). Its broadphase order shifts as the BVH re-optimises,
             // so shapes skipped only by that test are retried with the best hit's carry.
-            let mut best: Option<(f32, usize)> = None;
+            let mut best: Option<(f32, f32, usize)> = None;
             let mut carried = 1.0_f32;
             let mut retry = Vec::new();
             for &(t, i) in cands.iter() {
-                if best.is_some_and(|(low, _)| t > f64::from(low) + CLEAR) {
+                if best.is_some_and(|(low, _, _)| t > f64::from(low) + CLEAR) {
                     break;
                 }
-                match shape(i).cast_carried(f, m, h, &aabb, entry, faces, carried) {
-                    Ok((low, _, last)) => {
+                match shape(i).cast_mover(f, m, mover, &aabb, entry, faces, carried) {
+                    Ok((low, hi, last)) => {
                         carried = last;
-                        if best.is_none_or(|(b, _)| low < b) {
-                            best = Some((low, i));
+                        if best.is_none_or(|(b, _, _)| low < b) {
+                            best = Some((low, hi, i));
                         }
                     }
                     Err(true) => retry.push((t, i)),
@@ -366,24 +399,24 @@ impl Mirror {
                 }
             }
             let mut tried = 1.0_f32;
-            while let Some((low, _)) = best
+            while let Some((low, _, _)) = best
                 && carried < tried
             {
                 tried = carried;
                 for &(t, i) in &retry {
-                    if t > f64::from(low) + CLEAR || best.is_some_and(|(_, b)| b == i) {
+                    if t > f64::from(low) + CLEAR || best.is_some_and(|(_, _, b)| b == i) {
                         continue;
                     }
-                    if let Ok((l, _, last)) = shape(i).cast_carried(f, m, h, &aabb, entry, faces, tried) {
-                        if best.is_none_or(|(b, _)| l < b) {
-                            best = Some((l, i));
-                            carried = last;
-                        }
+                    if let Ok((l, u, last)) =
+                        shape(i).cast_mover(f, m, mover, &aabb, entry, faces, tried)
+                        && best.is_none_or(|(b, _, _)| l < b)
+                    {
+                        best = Some((l, u, i));
+                        carried = last;
                     }
                 }
             }
-            let (low, i) = best.filter(|(low, _)| *low < 1.0)?;
-            Some(self.shape_hit(shape(i), i >= statics, from, motion, half, f64::from(low)))
+            done(best.map(|(low, hi, i)| (low, hi, shape(i), i >= statics)))
         })
     }
 

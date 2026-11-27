@@ -1,7 +1,7 @@
 //! The Godot-shape box sweep: hand-worked contacts, the early-out against every shape, and a
 //! bake that writes back the same bytes.
 
-use gs_sim_trace::gjk::{CLEAR, F3, GShape, Geom, Xf, cast_aabb, narrow};
+use gs_sim_trace::gjk::{CLEAR, F3, GShape, Geom, Mover, Xf, cast_aabb, narrow};
 use gs_sim_trace::mirror::Mirror;
 use gs_sim_trace::piece::{Piece, V3, Xform};
 
@@ -218,4 +218,34 @@ fn a_version_2_blob_still_loads() {
     let back = Mirror::from_bytes(&v2).unwrap();
     assert_eq!(back.pieces(), m.pieces());
     assert!(back.shapes().is_empty());
+}
+
+#[test]
+fn a_capsule_cast_rounds_off_over_an_edge() {
+    let mut pieces = Vec::new();
+    let shapes = vec![cube([0.0; 3], 1.0, 1, &mut pieces)];
+    let m = Mirror::with_shapes(pieces, shapes);
+    let capsule = Mover::Capsule {
+        radius: 0.5,
+        height: 2.0,
+    };
+    let down = [0.0, -4.0, 0.0];
+    // Square on the top face: the bottom (y 2) meets it (y 1) a quarter of the way.
+    let (safe, unsafe_) = m.cast_motion([0.0, 3.0, 0.0], down, capsule, 1);
+    assert!(
+        safe <= 0.25 && unsafe_ >= 0.25 && unsafe_ - safe < 0.01,
+        "{safe} {unsafe_}"
+    );
+    // 0.4 past the edge the round end touches it with its centre 0.3 up (0.3 of the way), where
+    // the box of the same bounds already sits on the face at 0.25.
+    let (safe, unsafe_) = m.cast_motion([1.4, 3.0, 0.0], down, capsule, 1);
+    assert!(
+        (safe - 0.3).abs() < 0.01 && unsafe_ > safe,
+        "{safe} {unsafe_}"
+    );
+    let (boxed, _) = m.cast_motion([1.4, 3.0, 0.0], down, Mover::Box(capsule.half()), 1);
+    assert!((boxed - 0.25).abs() < 0.01, "{boxed}");
+    // Started inside, and missing: nothing in the way.
+    assert_eq!(m.cast_motion([0.0, 1.5, 0.0], down, capsule, 1), (1.0, 1.0));
+    assert_eq!(m.cast_motion([3.0, 3.0, 0.0], down, capsule, 1), (1.0, 1.0));
 }

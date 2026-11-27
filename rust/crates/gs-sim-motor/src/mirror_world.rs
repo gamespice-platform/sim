@@ -7,10 +7,11 @@
 //! mirror's public pieces, and runs them through a fresh [`Body`]'s space path, so the body's
 //! late-contact correction, retries and normal flips apply exactly as they do over the engine.
 //!
-//! - `cast_motion`: shapes the capsule starts inside of are ignored, and so are shapes the capsule
-//!   misses over the whole motion. A trimesh is one shape: starting inside any of its triangles
-//!   ignores all of them. The rest go through the engine's 8-step search for the first contact,
-//!   with its 0.5/0.25 step coefficients, giving the same `(safe, unsafe)` pair.
+//! - `cast_motion`: with the mirror's engine shapes, the engine's own f32 GJK bisection over them
+//!   ([`Mirror::cast_motion`]). Without, shapes the capsule starts inside of are ignored, and so
+//!   are shapes the capsule misses over the whole motion. A trimesh is one shape: starting inside
+//!   any of its triangles ignores all of them. The rest go through the engine's 8-step search for
+//!   the exact first contact, with its 0.5/0.25/0.75 step coefficients.
 //! - `get_rest_info`: the deepest contact deeper than [`MIN_REST_DEPTH`]. The normal points out of
 //!   the piece and the point lies on the piece.
 //! - `intersect_shape`: anything closer to the capsule's core segment than its radius.
@@ -22,6 +23,7 @@
 
 use std::sync::Arc;
 
+use gs_sim_trace::gjk::Mover;
 use gs_sim_trace::mirror::Mirror;
 use gs_sim_trace::piece::{Piece, V3, add, dot, scale, sub};
 
@@ -140,8 +142,17 @@ impl Space for Probe<'_> {
     }
 
     fn cast(&mut self, from: Vec3, motion: Vec3) -> Option<(f32, f32)> {
-        let c = self.capsule();
         let (from, motion) = (v3(from), v3(motion));
+        if !self.w.mirror.shapes().is_empty() {
+            // The engine's own f32 GJK bisection over its shapes: an exact first contact can
+            // land a bisection step on the other side of the engine's GJK tolerance.
+            let mover = Mover::Capsule {
+                radius: self.radius as f32,
+                height: self.height as f32,
+            };
+            return Some(self.w.mirror.cast_motion(from, motion, mover, self.mask));
+        }
+        let c = self.capsule();
         let (lo, hi) = c.bounds(from);
         let to = add(from, motion);
         let (lo2, hi2) = c.bounds(to);
@@ -168,7 +179,7 @@ impl Space for Probe<'_> {
                 shapes[k].2 = shapes[k].2.min(t);
             }
         });
-        let (mut safe, mut unsafe_) = (1.0_f64, 1.0_f64);
+        let (mut safe, mut unsafe_) = (1.0_f32, 1.0_f32);
         for &(_, inside, t) in &shapes {
             if inside || t > 1.0 {
                 continue;
@@ -179,7 +190,7 @@ impl Space for Probe<'_> {
                 unsafe_ = hi;
             }
         }
-        Some((safe as f32, unsafe_ as f32))
+        Some((safe, unsafe_))
     }
 
     fn rest(&mut self, at: Vec3) -> Option<Contact> {
@@ -228,16 +239,18 @@ impl Space for Probe<'_> {
 
 /// The engine's `cast_motion` search over one shape whose first contact is at `t` (0 < t <= 1):
 /// `(safe, unsafe)`.
-fn cast_search(t: f64) -> (f64, f64) {
-    let (mut low, mut hi, mut coeff) = (0.0_f64, 1.0_f64, 0.5_f64);
+/// In `real_t` (f32) like the engine, which narrows its step towards the end of the motion
+/// (coeff 0.75) while it keeps missing and has never hit.
+fn cast_search(t: f64) -> (f32, f32) {
+    let (mut low, mut hi, mut coeff) = (0.0_f32, 1.0_f32, 0.5_f32);
     for j in 0..CAST_STEPS {
         let f = low + (hi - low) * coeff;
-        if f >= t {
+        if f as f64 >= t {
             hi = f;
             coeff = if j == 0 || low > 0.0 { 0.5 } else { 0.25 };
         } else {
             low = f;
-            coeff = 0.5;
+            coeff = if j == 0 || hi < 1.0 { 0.5 } else { 0.75 };
         }
     }
     (low, hi)
@@ -787,6 +800,14 @@ mod tests {
         let (low, hi) = cast_search(0.3);
         assert!(low < 0.3 && hi >= 0.3 && hi - low < 0.01, "{low} {hi}");
         assert_eq!(cast_search(1.0).1, 1.0);
+    }
+
+    #[test]
+    fn cast_search_narrows_towards_a_late_contact() {
+        // Contact at 0.9: misses at 0.5 then 0.75 with nothing hit yet, so the engine's next step
+        // is 0.75 of the way on (0.9375), not halfway. The halving search ended at 0.8984375.
+        assert_eq!(cast_search(0.9), (0.896_484_4, 0.902_343_75));
+        assert_eq!(cast_search(0.99), (0.988_769_53, 0.990_234_4));
     }
 
     #[test]

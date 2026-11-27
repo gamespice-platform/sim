@@ -12,7 +12,15 @@ fn run(s: &GShape, from: [f32; 3], motion: [f32; 3], carried: f32) -> Option<(f3
     let half = [0.15; 3];
     let aabb = cast_aabb(from, half, motion);
     let mut scratch = Vec::new();
-    let got = s.cast_carried(from, motion, half, &aabb, |_, _| Some(0.0), &mut scratch, carried);
+    let got = s.cast_carried(
+        from,
+        motion,
+        half,
+        &aabb,
+        |_, _| Some(0.0),
+        &mut scratch,
+        carried,
+    );
     println!("carried {carried}: {got:?}");
     got.ok().map(|(low, hi, _)| (low, hi))
 }
@@ -31,7 +39,11 @@ fn cast_hits_shape_godot_hits() {
     );
     let from = [0.8173586, 5.4907613, -12.636626];
     let motion = [3.8488925, -3.1224613, -1.747445];
-    assert_eq!(run(&floor, from, motion, 1.0), None, "pit: alone, Godot misses too");
+    assert_eq!(
+        run(&floor, from, motion, 1.0),
+        None,
+        "pit: alone, Godot misses too"
+    );
     for carried in [0.69140625, 0.6953125] {
         assert_eq!(
             run(&floor, from, motion, carried),
@@ -50,8 +62,12 @@ fn cast_hits_shape_godot_hits() {
     let hull = GShape::new(Geom::hull(v).unwrap(), Xf::IDENTITY, 1, 0, [0, 0]);
     let from = [-122.6542, 23.709192, -106.53104];
     let motion = [-3.5258546, -4.933139, -1.3866969];
-    assert_eq!(run(&hull, from, motion, 1.0), None, "dm-ig: alone, Godot misses too");
-    for carried in [0.755859375, 0.76171875] {
+    assert_eq!(
+        run(&hull, from, motion, 1.0),
+        None,
+        "dm-ig: alone, Godot misses too"
+    );
+    for carried in [387.0 / 512.0, 390.0 / 512.0] {
         assert_eq!(
             run(&hull, from, motion, carried),
             Some((0.16796875, 0.17382813)),

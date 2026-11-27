@@ -451,11 +451,44 @@ impl Conv<'_> {
     }
 }
 
-/// The moving query box: `GodotMotionShape3D` over a box at `from` (identity basis).
+/// The query shape a cast moves, centred on the cast's origin with an identity basis.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Mover {
+    /// A box of these half extents.
+    Box(F3),
+    /// Godot's upright `CapsuleShape3D`, `height` the whole length, round ends included.
+    Capsule { radius: f32, height: f32 },
+}
+
+impl Mover {
+    /// The half extents of the shape's AABB (`CapsuleShape3D`: radius, height / 2, radius).
+    pub fn half(&self) -> F3 {
+        match *self {
+            Mover::Box(h) => h,
+            Mover::Capsule { radius, height } => [radius, height * 0.5, radius],
+        }
+    }
+
+    /// `get_support` of the shape for unit `n`.
+    #[inline]
+    fn support(&self, n: F3) -> F3 {
+        match *self {
+            Mover::Box(h) => box_support(h, n),
+            Mover::Capsule { radius, height } => {
+                let h = height * 0.5 - radius;
+                let mut s = mul(n, radius);
+                s[1] += if s[1] > 0.0 { h } else { -h };
+                s
+            }
+        }
+    }
+}
+
+/// The moving query shape: `GodotMotionShape3D` over a [`Mover`] at `from` (identity basis).
 #[derive(Clone, Copy)]
 struct Probe {
     from: F3,
-    half: F3,
+    shape: Mover,
     motion: F3,
 }
 
@@ -463,7 +496,7 @@ impl Probe {
     #[inline]
     fn support(&self, d: F3) -> F3 {
         let n = normalized(d);
-        let mut s = box_support(self.half, n);
+        let mut s = self.shape.support(n);
         if dot(n, self.motion) > 0.0 {
             s = add(s, self.motion);
         }
@@ -724,8 +757,12 @@ impl GShape {
         };
     }
 
-    fn step(&self, plan: &Plan, from: F3, half: F3, motion: F3, f: f32) -> bool {
-        let probe = Probe { from, half, motion };
+    fn step(&self, plan: &Plan, from: F3, shape: Mover, motion: F3, f: f32) -> bool {
+        let probe = Probe {
+            from,
+            shape,
+            motion,
+        };
         let f = f64::from(f);
         match *plan {
             Plan::Conv(conv, t0) => f < t0 || separated(&probe, conv, &self.xf),
@@ -773,6 +810,30 @@ impl GShape {
         scratch: &mut Vec<(u32, f64)>,
         carried: f32,
     ) -> Result<(f32, f32, f32), bool> {
+        self.cast_mover(
+            from,
+            motion,
+            Mover::Box(half),
+            aabb,
+            entry,
+            scratch,
+            carried,
+        )
+    }
+
+    /// [`Self::cast_carried`] for any [`Mover`]: `aabb` is [`cast_aabb`] over its
+    /// [`Mover::half`], and `entry` sweeps that box.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cast_mover(
+        &self,
+        from: F3,
+        motion: F3,
+        mover: Mover,
+        aabb: &Aabb,
+        entry: impl Fn(V3, V3) -> Option<f64>,
+        scratch: &mut Vec<(u32, f64)>,
+        carried: f32,
+    ) -> Result<(f32, f32, f32), bool> {
         let t0 = entry(self.lo, self.hi).ok_or(false)?;
         let plan = match &self.geom {
             Geom::Box(h) => Plan::Conv(Conv::Box(*h), t0),
@@ -791,17 +852,17 @@ impl GShape {
                 Plan::Faces(faces, scratch)
             }
         };
-        if !self.step(&plan, from, half, [0.0; 3], 0.0) {
+        if !self.step(&plan, from, mover, [0.0; 3], 0.0) {
             return Err(false);
         }
-        if self.step(&plan, from, half, mul(motion, carried), carried) {
+        if self.step(&plan, from, mover, mul(motion, carried), carried) {
             return Err(true);
         }
         let (mut low, mut hi, mut coeff, mut last) = (0.0_f32, 1.0_f32, 0.5_f32, 1.0_f32);
         for j in 0..8 {
             let fraction = low + (hi - low) * coeff;
             last = fraction;
-            if !self.step(&plan, from, half, mul(motion, fraction), fraction) {
+            if !self.step(&plan, from, mover, mul(motion, fraction), fraction) {
                 hi = fraction;
                 coeff = if j == 0 || low > 0.0 { 0.5 } else { 0.25 };
             } else {
