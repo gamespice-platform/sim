@@ -163,7 +163,9 @@ pub fn differs(d: &NetDecl, old: &Val, cur: &Val) -> bool {
     }
     match (old, cur) {
         (Val::Float(a), Val::Float(b)) => (a - b).abs() > d.epsilon,
-        (Val::V3(a), Val::V3(b)) => len3([b[0] - a[0], b[1] - a[1], b[2] - a[2]]) as f64 > d.epsilon,
+        (Val::V3(a), Val::V3(b)) => {
+            len3([b[0] - a[0], b[1] - a[1], b[2] - a[2]]) as f64 > d.epsilon
+        }
         (Val::V2(a), Val::V2(b)) => {
             let x = b[0] - a[0];
             let y = b[1] - a[1];
@@ -269,7 +271,7 @@ pub fn unchanged_runs(mut ids: Vec<i64>) -> Vec<i64> {
 pub fn tail_bits(runs: &[i64]) -> i64 {
     let mut bits = 8 + gamma_bits((runs.len() >> 1) as i64) + TRAILER_BITS;
     let mut cursor = 0i64;
-    for r in runs.chunks_exact(2) {
+    for r in runs.as_chunks::<2>().0 {
         bits += gamma_bits(r[0] - cursor) + gamma_bits(r[1] - 1);
         cursor = r[0] + r[1];
     }
@@ -280,7 +282,7 @@ pub fn write_tail(w: &mut Writer, runs: &[i64]) {
     w.write_bits(TAIL_MARK, 8);
     w.write_gamma((runs.len() >> 1) as i64);
     let mut cursor = 0i64;
-    for r in runs.chunks_exact(2) {
+    for r in runs.as_chunks::<2>().0 {
         w.write_gamma(r[0] - cursor);
         w.write_gamma(r[1] - 1);
         cursor = r[0] + r[1];
@@ -311,7 +313,11 @@ pub fn write_value(w: &mut Writer, d: &NetDecl, e: &Enc) {
         _ => (0, 0.0),
     };
     let v3 = if let Enc::V3(v) = e { *v } else { [0.0; 3] };
-    let q = if let Enc::Quat(q) = e { *q } else { [0.0, 0.0, 0.0, 1.0] };
+    let q = if let Enc::Quat(q) = e {
+        *q
+    } else {
+        [0.0, 0.0, 0.0, 1.0]
+    };
     match d.ty {
         ty::BOOL => w.write_bits((i != 0) as i64, 1),
         ty::UINT | ty::INT => w.write_bits(i, d.bit_width),
@@ -424,7 +430,9 @@ impl View {
                 break;
             }
             resolved += 1;
-            let in_ring = !ring.is_empty() && e.tick >= 0 && ring[(e.tick as u64 % ring.len() as u64) as usize] == e.tick;
+            let in_ring = !ring.is_empty()
+                && e.tick >= 0
+                && ring[(e.tick as u64 % ring.len() as u64) as usize] == e.tick;
             if e.tick == acked_tick || !self.strict || in_ring {
                 merge(&mut self.acked, &mut self.acked_has, e.mask, &e.reads);
             } else {
@@ -478,7 +486,9 @@ pub struct Beh {
 impl Beh {
     /// Whether every declaration's slot is a read value (else this behaviour sends nothing).
     pub fn slots_ok(&self) -> bool {
-        self.nprops <= 64 && self.decls.len() <= 64 && self.decls.iter().all(|d| d.slot < self.nprops)
+        self.nprops <= 64
+            && self.decls.len() <= 64
+            && self.decls.iter().all(|d| d.slot < self.nprops)
     }
 }
 
@@ -540,8 +550,8 @@ impl VisTree {
         if self.clusters <= 0
             || self.row_bytes != (self.clusters + 7) >> 3
             || self.rows.len() as i64 != self.clusters * self.row_bytes
-            || self.planes.len() % 4 != 0
-            || self.nodes.len() % 3 != 0
+            || !self.planes.len().is_multiple_of(4)
+            || !self.nodes.len().is_multiple_of(3)
             || self.nodes.is_empty()
         {
             return false;
@@ -552,18 +562,24 @@ impl VisTree {
         if self.head < 0 || self.head as i64 >= node_count || leaves == 0 {
             return false;
         }
-        for n in self.nodes.chunks_exact(3) {
+        for n in self.nodes.as_chunks::<3>().0 {
             if n[0] < 0 || n[0] as i64 >= plane_count {
                 return false;
             }
             for &c in &n[1..] {
-                let ok = if c >= 0 { (c as i64) < node_count } else { (-1 - c as i64) < leaves };
+                let ok = if c >= 0 {
+                    (c as i64) < node_count
+                } else {
+                    (-1 - c as i64) < leaves
+                };
                 if !ok {
                     return false;
                 }
             }
         }
-        self.leaf_cluster.iter().all(|&c| (c as i64) < self.clusters)
+        self.leaf_cluster
+            .iter()
+            .all(|&c| (c as i64) < self.clusters)
     }
 
     pub fn cluster_of(&self, p: [f32; 3]) -> i32 {
@@ -583,7 +599,10 @@ impl VisTree {
             guard -= 1;
             let n = &self.nodes[node as usize * 3..node as usize * 3 + 3];
             let pl = &self.planes[n[0] as usize * 4..n[0] as usize * 4 + 4];
-            let d = pl[0] as f64 * p[0] as f64 + pl[1] as f64 * p[1] as f64 + pl[2] as f64 * p[2] as f64 - pl[3] as f64;
+            let d = pl[0] as f64 * p[0] as f64
+                + pl[1] as f64 * p[1] as f64
+                + pl[2] as f64 * p[2] as f64
+                - pl[3] as f64;
             node = if d >= 0.0 { n[1] } else { n[2] };
         }
         if node >= 0 {
@@ -598,7 +617,9 @@ impl VisTree {
             return true;
         }
         let at = from as usize * self.row_bytes as usize + (to >> 3) as usize;
-        self.rows.get(at).is_some_and(|b| b & (1u8 << (to & 7)) != 0)
+        self.rows
+            .get(at)
+            .is_some_and(|b| b & (1u8 << (to & 7)) != 0)
     }
 }
 
@@ -705,11 +726,19 @@ impl BudgetStore {
     }
 
     pub fn get_acc(&self, s: usize) -> f64 {
-        if self.has[s] & HAS_ACC != 0 { self.acc[s] } else { 0.0 }
+        if self.has[s] & HAS_ACC != 0 {
+            self.acc[s]
+        } else {
+            0.0
+        }
     }
 
     pub fn get_starved(&self, s: usize) -> i64 {
-        if self.has[s] & HAS_STARVED != 0 { self.starved[s] } else { 0 }
+        if self.has[s] & HAS_STARVED != 0 {
+            self.starved[s]
+        } else {
+            0
+        }
     }
 
     pub fn set_acc(&mut self, s: usize, v: f64) {
@@ -873,7 +902,11 @@ impl Ctx<'_> {
             let b = bit(s);
             if d.max_rate > 0.0 {
                 let interval = 1000.0 / d.max_rate;
-                let last = if view.sent_has & b != 0 { view.last_sent[s] as f64 } else { -100000.0 };
+                let last = if view.sent_has & b != 0 {
+                    view.last_sent[s] as f64
+                } else {
+                    -100000.0
+                };
                 if self.now_ms as f64 - last < interval {
                     continue;
                 }
@@ -981,16 +1014,24 @@ impl Ctx<'_> {
         let now = self.now_ms;
         let pi = &mut peer.interest;
         let mut relevant: Vec<usize> = Vec::with_capacity(self.all.len());
-        let cached = c.interval_sec > 0.0 && pi.has && ((now - pi.at_ms) as f64 / 1000.0) < c.interval_sec;
+        let cached =
+            c.interval_sec > 0.0 && pi.has && ((now - pi.at_ms) as f64 / 1000.0) < c.interval_sec;
         if cached {
             for &r in self.all {
                 let id = self.ident(r);
-                if pi.ids.contains(&id.net_id) || id.always || (job.has_observer && id.owner == job.obs_owner) {
+                if pi.ids.contains(&id.net_id)
+                    || id.always
+                    || (job.has_observer && id.owner == job.obs_owner)
+                {
                     relevant.push(r);
                 }
             }
         } else {
-            let vis = if job.has_observer { c.vis.as_deref() } else { None };
+            let vis = if job.has_observer {
+                c.vis.as_deref()
+            } else {
+                None
+            };
             let from = vis.map_or(-1, |v| v.cluster_of(job.obs_pos));
             let audible2 = c.vis_audible * c.vis_audible;
             for &r in self.all {
@@ -1000,7 +1041,11 @@ impl Ctx<'_> {
                     continue;
                 }
                 let d2 = dist2(job.obs_pos, id.pos) as f64;
-                if d2 <= id.radius * id.radius && (vis.is_none() || d2 <= audible2 || vis.is_some_and(|v| v.sees(from, id.cluster))) {
+                if d2 <= id.radius * id.radius
+                    && (vis.is_none()
+                        || d2 <= audible2
+                        || vis.is_some_and(|v| v.sees(from, id.cluster)))
+                {
                     relevant.push(r);
                 }
             }
@@ -1053,7 +1098,9 @@ impl Ctx<'_> {
             for r in relevant {
                 let id = self.ident(r);
                 let turn = index.wrapping_add(id.net_id);
-                if id.owner == job.obs_owner || (turn.checked_rem(c.far_every) == Some(0) && c.far_tiers == 1) {
+                if id.owner == job.obs_owner
+                    || (turn.checked_rem(c.far_every) == Some(0) && c.far_tiers == 1)
+                {
                     kept.push(r);
                     continue;
                 }
@@ -1075,8 +1122,13 @@ impl Ctx<'_> {
                     band += 1;
                 }
                 if every > c.far_every && aimed {
-                    let rel = [id.pos[0] - job.obs_pos[0], id.pos[1] - job.obs_pos[1], id.pos[2] - job.obs_pos[2]];
-                    let dot = job.obs_aim[0] * rel[0] + job.obs_aim[1] * rel[1] + job.obs_aim[2] * rel[2];
+                    let rel = [
+                        id.pos[0] - job.obs_pos[0],
+                        id.pos[1] - job.obs_pos[1],
+                        id.pos[2] - job.obs_pos[2],
+                    ];
+                    let dot =
+                        job.obs_aim[0] * rel[0] + job.obs_aim[1] * rel[1] + job.obs_aim[2] * rel[2];
                     if dot as f64 >= c.aim_cos * d2.sqrt() {
                         every = c.far_every;
                     }
@@ -1097,13 +1149,7 @@ impl Ctx<'_> {
                 } else {
                     let distance = dist2(job.obs_pos, id.pos).sqrt() as f64;
                     let t = distance / id.score_limit;
-                    let t = if t < 0.0 {
-                        0.0
-                    } else if t > 1.0 {
-                        1.0
-                    } else {
-                        t
-                    };
+                    let t = t.clamp(0.0, 1.0);
                     id.priority * (1.0 - t)
                 }
             })
@@ -1114,7 +1160,16 @@ impl Ctx<'_> {
             let mut keys: Vec<(f32, f32)> = relevant
                 .iter()
                 .enumerate()
-                .map(|(i, &r)| (if self.ident(r).always { -1e9f32 } else { (-scores[i]) as f32 }, i as f32))
+                .map(|(i, &r)| {
+                    (
+                        if self.ident(r).always {
+                            -1e9f32
+                        } else {
+                            (-scores[i]) as f32
+                        },
+                        i as f32,
+                    )
+                })
                 .collect();
             keys.sort_by(|a, b| {
                 use std::cmp::Ordering::*;
@@ -1163,7 +1218,10 @@ impl Ctx<'_> {
                 .into_iter()
                 .enumerate()
                 .filter(|&(i, r)| {
-                    (i as i64) < c.send_budget || (job.has_observer && job.obs_owner > 0 && self.ident(r).owner == job.obs_owner)
+                    (i as i64) < c.send_budget
+                        || (job.has_observer
+                            && job.obs_owner > 0
+                            && self.ident(r).owner == job.obs_owner)
                 })
                 .map(|(_, r)| r)
                 .collect();
@@ -1218,7 +1276,10 @@ impl Ctx<'_> {
                 if job.acked_tick > v.last_ack {
                     v.sync(job.acked_tick, &job.ring);
                 }
-                if v.pending.front().is_some_and(|e| e.tick < self.oldest_pending) {
+                if v.pending
+                    .front()
+                    .is_some_and(|e| e.tick < self.oldest_pending)
+                {
                     v.trim(self.oldest_pending);
                 }
                 let m = self.collect(v, b, peer_id, predicted);
@@ -1235,7 +1296,11 @@ impl Ctx<'_> {
             let mut estimated = 0i64;
             for &bi in &identity.behs {
                 if let Some(b) = self.beh(bi) {
-                    estimated += if peer_id == b.owner { b.est_owner } else { b.est_other };
+                    estimated += if peer_id == b.owner {
+                        b.est_owner
+                    } else {
+                        b.est_other
+                    };
                 }
             }
             estimated = (estimated + 7) >> 3;
@@ -1244,7 +1309,9 @@ impl Ctx<'_> {
                 continue;
             }
             let last = parts.len() - 1;
-            if counts[last] > 0 && parts[last].bit_length() as i64 + estimated * 16 + 256 > limit_bits {
+            if counts[last] > 0
+                && parts[last].bit_length() as i64 + estimated * 16 + 256 > limit_bits
+            {
                 let mut at = parts[last].bit_length() as i64 + ID_BITS + 6;
                 for (k, &bi) in identity.behs.iter().enumerate() {
                     if let Some(b) = self.beh(bi) {
@@ -1263,7 +1330,10 @@ impl Ctx<'_> {
             let last = parts.len() - 1;
             let w = &mut parts[last];
             let before = w.byte_length() as i64;
-            w.write_bits((identity.net_id & ((1i64 << ID_BITS) - 1)) | ((nb & 0x3F) << ID_BITS), ID_BITS + 6);
+            w.write_bits(
+                (identity.net_id & ((1i64 << ID_BITS) - 1)) | ((nb & 0x3F) << ID_BITS),
+                ID_BITS + 6,
+            );
             for (k, &bi) in identity.behs.iter().enumerate() {
                 if let Some(b) = self.beh(bi) {
                     let v = peer.view(b.index);
@@ -1332,10 +1402,12 @@ impl Ctx<'_> {
             let count = counts[index];
             if COUNT_BYTE + 1 < payload.len() {
                 payload[COUNT_BYTE] = (count & 0xFF) as u8;
-                payload[COUNT_BYTE + 1] = (payload[COUNT_BYTE + 1] & 0xF0) | ((count >> 8) & 0x0F) as u8;
+                payload[COUNT_BYTE + 1] =
+                    (payload[COUNT_BYTE + 1] & 0xF0) | ((count >> 8) & 0x0F) as u8;
             }
             job.payloads.push(payload);
-            job.counts.push(count + if is_tail { unchanged.len() as i32 } else { 0 });
+            job.counts
+                .push(count + if is_tail { unchanged.len() as i32 } else { 0 });
         }
     }
 }
@@ -1353,7 +1425,10 @@ mod tests {
         assert_eq!(w.bit_length(), 1 + 5);
         assert_eq!(w.bytes, vec![0b10_1001]);
         assert_eq!(gamma_bits(4), 5);
-        assert_eq!(unchanged_runs(vec![7, 3, 4, 5, 5, 9]), vec![3, 3, 7, 1, 9, 1]);
+        assert_eq!(
+            unchanged_runs(vec![7, 3, 4, 5, 5, 9]),
+            vec![3, 3, 7, 1, 9, 1]
+        );
         assert_eq!(tail_bits(&[]), 17);
         let runs = unchanged_runs(vec![2, 3]);
         let mut t = Writer::new();

@@ -13,10 +13,10 @@ use godot::classes::Object;
 use godot::global::{bytes_to_var, var_to_bytes};
 use godot::prelude::*;
 use gs_sim_snapshot::net_core::{
-    Beh, Ctx, Enc, Ident, InterestCfg, Job, NetDecl, Peer, PeerInterest, Pre, Val, VisTree, Writer, ty, val_equal,
-    write_value,
+    Beh, Ctx, Enc, Ident, InterestCfg, Job, NetDecl, Peer, PeerInterest, Pre, Val, VisTree, ty,
+    val_equal, write_value,
 };
-use gs_sim_snapshot::to_int;
+use gs_sim_snapshot::{Writer, to_int};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -187,7 +187,9 @@ fn dict(v: &Variant) -> Option<VarDictionary> {
     if let Ok(d) = v.try_to::<VarDictionary>() {
         return Some(d);
     }
-    v.try_to::<AnyDictionary>().ok().and_then(|d| d.try_cast_var_dictionary().ok())
+    v.try_to::<AnyDictionary>()
+        .ok()
+        .and_then(|d| d.try_cast_var_dictionary().ok())
 }
 
 fn object(v: &Variant) -> Option<Gd<Object>> {
@@ -229,7 +231,10 @@ fn make_val(v: &Variant) -> Val {
             let q = v.try_to::<Quaternion>().unwrap_or_default();
             Val::Quat([q.x, q.y, q.z, q.w])
         }
-        t => Val::Ext(t.ord() as i64, Arc::new(var_to_bytes(v).as_slice().to_vec())),
+        t => Val::Ext(
+            t.ord() as i64,
+            Arc::new(var_to_bytes(v).as_slice().to_vec()),
+        ),
     }
 }
 
@@ -266,7 +271,9 @@ fn native_enc(d: &NetDecl, v: &Variant) -> Option<Enc> {
         ty::BOOL => match vt {
             VariantType::BOOL => Some(Enc::Int(i64::from(v.booleanize()))),
             VariantType::INT => Some(Enc::Int(i64::from(v.try_to::<i64>().unwrap_or(0) != 0))),
-            VariantType::FLOAT => Some(Enc::Int(i64::from(v.try_to::<f64>().unwrap_or(0.0) != 0.0))),
+            VariantType::FLOAT => {
+                Some(Enc::Int(i64::from(v.try_to::<f64>().unwrap_or(0.0) != 0.0)))
+            }
             _ => None,
         },
         ty::UINT | ty::INT | ty::VARINT => match vt {
@@ -333,7 +340,8 @@ fn run_all(ctx: &Ctx, work: &mut [(&mut Job, &mut Peer)], workers: usize) {
     #[cfg(not(target_family = "wasm"))]
     if threads > 1 {
         // Interleaved, so neighbouring (similar) peers spread over the threads.
-        let mut lanes: Vec<Vec<&mut (&mut Job, &mut Peer)>> = (0..threads).map(|_| Vec::new()).collect();
+        let mut lanes: Vec<Vec<&mut (&mut Job, &mut Peer)>> =
+            (0..threads).map(|_| Vec::new()).collect();
         for (i, w) in work.iter_mut().enumerate() {
             lanes[i % threads].push(w);
         }
@@ -372,7 +380,10 @@ impl GSSimNetCore {
         rec.direct = spec.len() >= 4 && spec[3].booleanize();
         if spec.len() >= 3 {
             rec.props = items(&spec[0]).iter().map(string_name).collect();
-            beh.decls = items(&spec[1]).iter().map(|row| NetDecl::from_row(&floats(row))).collect();
+            beh.decls = items(&spec[1])
+                .iter()
+                .map(|row| NetDecl::from_row(&floats(row)))
+                .collect();
             rec.decl_count = num_i(&spec[2]);
         }
         beh.nprops = rec.props.len();
@@ -384,7 +395,11 @@ impl GSSimNetCore {
 
     /// `_direct_values`.
     fn direct_values(&mut self, bi: usize, obj: &mut Gd<Object>, owner: i64) -> Vec<Variant> {
-        let props = self.brecs[bi].as_ref().expect("behaviour record").props.clone();
+        let props = self.brecs[bi]
+            .as_ref()
+            .expect("behaviour record")
+            .props
+            .clone();
         let mut out: Vec<Variant> = props.iter().map(|p| obj.get(p)).collect();
         let held = obj.get("_native_core");
         let count = if object(&held).is_some() {
@@ -455,22 +470,32 @@ impl GSSimNetCore {
     /// `_read`.
     fn read(&mut self, bi: usize, obj: &mut Gd<Object>, owner: i64) {
         let mut values = self.values(bi, obj, owner);
-        let mut n = self.brecs[bi].as_ref().expect("behaviour record").props.len();
-        let decl_count = self.brecs[bi].as_ref().expect("behaviour record").decl_count;
+        let mut n = self.brecs[bi]
+            .as_ref()
+            .expect("behaviour record")
+            .props
+            .len();
+        let decl_count = self.brecs[bi]
+            .as_ref()
+            .expect("behaviour record")
+            .decl_count;
         if values.len() != n + 3 || num_i(&values[n + 2]) != decl_count {
             self.adopt(bi, obj);
             values = self.values(bi, obj, owner);
-            n = self.brecs[bi].as_ref().expect("behaviour record").props.len();
+            n = self.brecs[bi]
+                .as_ref()
+                .expect("behaviour record")
+                .props
+                .len();
             values.resize(n + 3, Variant::nil());
         }
         let reads: Vec<Val> = values[..n].iter().map(make_val).collect();
         let beh = self.behs[bi].as_mut().expect("behaviour");
         beh.est_owner = num_i(&values[n]);
         beh.est_other = num_i(&values[n + 1]);
-        let same = beh
-            .reads
-            .as_ref()
-            .is_some_and(|old| old.len() == n && old.iter().zip(&reads).all(|(a, b)| val_equal(a, b)));
+        let same = beh.reads.as_ref().is_some_and(|old| {
+            old.len() == n && old.iter().zip(&reads).all(|(a, b)| val_equal(a, b))
+        });
         if !same {
             beh.reads = Some(Arc::new(reads));
         }
@@ -484,7 +509,10 @@ impl GSSimNetCore {
             }
             self.custom_reads += 1;
             let pads = if d.may_align() { 8 } else { 1 };
-            let out = items(&obj.call("_native_encode", &[(i as i64).to_variant(), value, (pads as i64).to_variant()]));
+            let out = items(&obj.call(
+                "_native_encode",
+                &[(i as i64).to_variant(), value, (pads as i64).to_variant()],
+            ));
             let mut pre = Pre {
                 pads,
                 data: vec![Vec::new(); pads],
@@ -494,7 +522,11 @@ impl GSSimNetCore {
                 if 2 * p + 1 >= out.len() {
                     break;
                 }
-                let mut bytes = out[2 * p].try_to::<PackedByteArray>().unwrap_or_default().as_slice().to_vec();
+                let mut bytes = out[2 * p]
+                    .try_to::<PackedByteArray>()
+                    .unwrap_or_default()
+                    .as_slice()
+                    .to_vec();
                 bytes.resize(bytes.len() + 8, 0);
                 pre.data[p] = bytes;
                 pre.bits[p] = num_i(&out[2 * p + 1]);
@@ -554,7 +586,10 @@ impl GSSimNetCore {
                     self.ids.len() - 1
                 });
                 self.ids[s] = Some(Ident::default());
-                self.id_meta[s] = Some(IdMeta { obj_id: id, seen: 0 });
+                self.id_meta[s] = Some(IdMeta {
+                    obj_id: id,
+                    seen: 0,
+                });
                 self.id_by_obj.insert(id, s);
                 s
             }
@@ -588,12 +623,16 @@ impl GSSimNetCore {
                 if found_radius && found_far {
                     break;
                 }
-                if !found_radius && let Some((_, r)) = self.icfg.radius_by_tag.iter().find(|(k, _)| k == tag) {
+                if !found_radius
+                    && let Some((_, r)) = self.icfg.radius_by_tag.iter().find(|(k, _)| k == tag)
+                {
                     rec.radius = *r;
                     rec.score_limit = r.max(1.0);
                     found_radius = true;
                 }
-                if !found_far && let Some((_, f)) = self.icfg.far_by_tag.iter().find(|(k, _)| k == tag) {
+                if !found_far
+                    && let Some((_, f)) = self.icfg.far_by_tag.iter().find(|(k, _)| k == tag)
+                {
                     rec.far_dist = *f;
                     found_far = true;
                 }
@@ -631,13 +670,19 @@ impl GSSimNetCore {
     /// `_sweep`.
     fn sweep(&mut self) {
         let dead: Vec<usize> = (0..self.brecs.len())
-            .filter(|&i| self.brecs[i].as_ref().is_some_and(|r| r.seen != self.serial && !alive(r.obj_id)))
+            .filter(|&i| {
+                self.brecs[i]
+                    .as_ref()
+                    .is_some_and(|r| r.seen != self.serial && !alive(r.obj_id))
+            })
             .collect();
         for bi in dead {
             self.drop_behaviour(bi);
         }
         for s in 0..self.id_meta.len() {
-            let gone = self.id_meta[s].as_ref().is_some_and(|m| m.seen != self.serial && !alive(m.obj_id));
+            let gone = self.id_meta[s]
+                .as_ref()
+                .is_some_and(|m| m.seen != self.serial && !alive(m.obj_id));
             if gone {
                 let m = self.id_meta[s].take().expect("identity meta");
                 self.id_by_obj.remove(&m.obj_id);
@@ -650,7 +695,10 @@ impl GSSimNetCore {
     /// The peer for a new job, out of the map; one an unbuilt job holds is built first.
     fn take_peer(&mut self, peer_id: i64) -> Box<Peer> {
         if !self.peers.contains_key(&peer_id)
-            && self.jobs.iter().any(|p| p.peer.as_ref().is_some_and(|q| q.id == peer_id))
+            && self
+                .jobs
+                .iter()
+                .any(|p| p.peer.as_ref().is_some_and(|q| q.id == peer_id))
         {
             self.run_pending();
         }
@@ -776,7 +824,12 @@ impl GSSimNetCore {
             return Some(k.clone());
         }
         let bounds = get("bounds").try_to::<Aabb>().unwrap_or_default();
-        let int32s = |k: &str| ints(&get(k)).iter().map(|&x| x as i32).collect::<Vec<i32>>();
+        let int32s = |k: &str| {
+            ints(&get(k))
+                .iter()
+                .map(|&x| x as i32)
+                .collect::<Vec<i32>>()
+        };
         let g = VisTree {
             serial,
             planes: floats(&get("planes")).iter().map(|&x| x as f32).collect(),
@@ -791,7 +844,11 @@ impl GSSimNetCore {
                 let e = bounds.position + bounds.size;
                 [e.x, e.y, e.z]
             },
-            rows: get("rows").try_to::<PackedByteArray>().unwrap_or_default().as_slice().to_vec(),
+            rows: get("rows")
+                .try_to::<PackedByteArray>()
+                .unwrap_or_default()
+                .as_slice()
+                .to_vec(),
         };
         if !g.valid() {
             godot_error!("GSSimNetCore.set_interest: a malformed vis tree, ignored.");
@@ -824,7 +881,10 @@ impl GSSimNetCore {
         };
         let mut out = VarDictionary::new();
         out.set("acked", &values(&view.acked, view.acked_has).to_variant());
-        out.set("believed", &values(&view.believed, view.believed_has).to_variant());
+        out.set(
+            "believed",
+            &values(&view.believed, view.believed_has).to_variant(),
+        );
         let mut entries = VarArray::new();
         for e in &view.pending {
             let mut entry = VarArray::new();
@@ -835,7 +895,10 @@ impl GSSimNetCore {
         out.set("pending", &entries.to_variant());
         let mut sent = VarDictionary::new();
         for s in (0..64).filter(|s| view.sent_has & (1u64 << s) != 0) {
-            sent.set(&prop(s).to_variant(), &view.last_sent.get(s).copied().unwrap_or(0).to_variant());
+            sent.set(
+                &prop(s).to_variant(),
+                &view.last_sent.get(s).copied().unwrap_or(0).to_variant(),
+            );
         }
         out.set("last_sent_ms", &sent.to_variant());
         out.set("last_ack", &view.last_ack.to_variant());
@@ -879,7 +942,10 @@ impl GSSimNetCore {
         self.authority_shared = at(5, 1);
         let mut read_mode = at(6, 1);
         if !(0..=2).contains(&read_mode) {
-            godot_error!("GSSimNetCore: read mode {} is not 0, 1 or 2; GDScript reads used", read_mode);
+            godot_error!(
+                "GSSimNetCore: read mode {} is not 0, 1 or 2; GDScript reads used",
+                read_mode
+            );
             read_mode = 0;
         }
         self.read_mode = read_mode;
@@ -906,7 +972,13 @@ impl GSSimNetCore {
     }
 
     #[func]
-    fn submit_peer(&mut self, relevant: Variant, info: Variant, accumulators: Variant, starved_ticks: Variant) {
+    fn submit_peer(
+        &mut self,
+        relevant: Variant,
+        info: Variant,
+        accumulators: Variant,
+        starved_ticks: Variant,
+    ) {
         if !self.open {
             godot_error!("GSSimNetCore.submit_peer outside begin_snapshot/finish_snapshot.");
             return;
@@ -934,9 +1006,17 @@ impl GSSimNetCore {
     }
 
     #[func]
-    fn submit_peer_interest(&mut self, observer: Variant, info: Variant, accumulators: Variant, starved_ticks: Variant) {
+    fn submit_peer_interest(
+        &mut self,
+        observer: Variant,
+        info: Variant,
+        accumulators: Variant,
+        starved_ticks: Variant,
+    ) {
         if !self.open {
-            godot_error!("GSSimNetCore.submit_peer_interest outside begin_snapshot/finish_snapshot.");
+            godot_error!(
+                "GSSimNetCore.submit_peer_interest outside begin_snapshot/finish_snapshot."
+            );
             return;
         }
         if !self.icfg.on {
@@ -945,12 +1025,16 @@ impl GSSimNetCore {
         }
         let info = ints(&info);
         if info.len() < 10 {
-            godot_error!("GSSimNetCore.submit_peer_interest: info needs the budget load flag and acked ring size (ABI 4).");
+            godot_error!(
+                "GSSimNetCore.submit_peer_interest: info needs the budget load flag and acked ring size (ABI 4)."
+            );
             return;
         }
         let mut job = job_from(&info);
         let Some(ring) = read_ring(&info, 9) else {
-            godot_error!("GSSimNetCore.submit_peer_interest: the acked ring's size does not match info.");
+            godot_error!(
+                "GSSimNetCore.submit_peer_interest: the acked ring's size does not match info."
+            );
             return;
         };
         job.ring = ring;
@@ -1016,7 +1100,11 @@ impl GSSimNetCore {
             c.far_coherent = get("far_coherent").is_some_and(|v| v.booleanize());
             c.far_tiers = i("far_tiers", 1);
             let cone = f("aim_cone_deg", 0.0);
-            c.aim_cos = if cone > 0.0 { (cone * (std::f64::consts::PI / 180.0)).cos() } else { 1.0 };
+            c.aim_cos = if cone > 0.0 {
+                (cone * (std::f64::consts::PI / 180.0)).cos()
+            } else {
+                1.0
+            };
             c.ticks_per_snapshot = i("ticks_per_snapshot", 1).max(1);
             c.cap = i("cap", 0);
             c.send_budget = i("send_budget", 0);
@@ -1098,7 +1186,9 @@ impl GSSimNetCore {
     #[func]
     fn export_budget(&mut self, peer_id: i64, accumulators: Variant, starved_ticks: Variant) {
         if self.open {
-            godot_error!("GSSimNetCore.export_budget inside a snapshot: the build threads are writing it.");
+            godot_error!(
+                "GSSimNetCore.export_budget inside a snapshot: the build threads are writing it."
+            );
             return;
         }
         let Some(peer) = self.peers.get(&peer_id).filter(|p| p.budget.loaded) else {
@@ -1108,7 +1198,9 @@ impl GSSimNetCore {
             return;
         };
         let (Some(mut acc), Some(mut starved)) = (dict(&accumulators), dict(&starved_ticks)) else {
-            godot_error!("GSSimNetCore.export_budget: accumulators and starved_ticks must be Dictionaries.");
+            godot_error!(
+                "GSSimNetCore.export_budget: accumulators and starved_ticks must be Dictionaries."
+            );
             return;
         };
         let store = &peer.budget;
