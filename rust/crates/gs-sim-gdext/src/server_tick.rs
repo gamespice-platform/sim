@@ -17,7 +17,7 @@ use crate::hulls::GSSimHullWorld;
 use godot::prelude::*;
 use gs_sim_events::{EventTable, FLOATS, IN, IN_B_MODE, IN_B_Y, INTS, kind, slot};
 use gs_sim_players::table::{BEGIN, FLAG_ALIVE, STRIDE, Table};
-use gs_sim_players::{Config, OUT, run_rows};
+use gs_sim_players::{Config, OUT, post_head, run_rows};
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
@@ -41,6 +41,11 @@ pub struct GSSimServerTick {
     motor_rows: i64,
     feet_rows: i64,
     post_rows: i64,
+    /// [`Self::post_head`]'s answer, kept between calls.
+    head_out: Vec<f64>,
+    /// [`Self::post_head`] rows answered from a motor slot, and rows whose slot did not run.
+    head_rows: i64,
+    head_misses: i64,
     /// Seconds stepped since the last [`Self::reset_counters`].
     time: f64,
 }
@@ -50,8 +55,15 @@ impl GSSimServerTick {
     /// The API level: callers check it and the methods they need, and say loudly what is missing.
     /// 3: a tick that derives nothing ends with no events (2 kept the last derived tick's).
     /// 4: [`Self::derive_slots`], event rows filled from the resident motor rows.
+    /// 5: [`Self::post_head`], the players' post-head pass from the resident motor rows.
     #[constant]
-    const API: i64 = 4;
+    const API: i64 = 5;
+    /// Floats per row of [`Self::post_head`]'s input: motor slot, gate, crouch height ratio.
+    #[constant]
+    const POST_HEAD_IN: i64 = post_head::IN as i64;
+    /// Floats per row of [`Self::post_head`]'s answer: valid, skip, height scale, end feet xyz.
+    #[constant]
+    const POST_HEAD_OUT: i64 = post_head::OUT as i64;
     /// Floats per row of [`Self::begin`]'s input: id, motor slot (-1: none), alive (0 or 1), health, weapon.
     #[constant]
     const BEGIN_STRIDE: i64 = BEGIN as i64;
@@ -152,6 +164,41 @@ impl GSSimServerTick {
         self.events.len() as i64
     }
 
+    /// The players' post-head pass (`gs_sim_players::post_head`) over [param count] rows of
+    /// [`Self::POST_HEAD_IN`] floats: each row's skip, hitbox height scale and end feet from its
+    /// motor slot's run in this loop of [`Self::motor`]. A slot that did not run answers valid 0
+    /// (counted in [`Self::counters`]' ninth value). [param slack] is the volume prefilter's.
+    #[func]
+    fn post_head(
+        &mut self,
+        rows: PackedFloat64Array,
+        count: i64,
+        slack: f64,
+    ) -> PackedFloat64Array {
+        let n = usize::try_from(count)
+            .unwrap_or(0)
+            .min(rows.len() / post_head::IN);
+        self.head_out.resize(n * post_head::OUT, 0.0);
+        let motor = self.motor.as_ref().map(|m| m.bind());
+        let ins = rows.as_slice()[..n * post_head::IN]
+            .as_chunks::<{ post_head::IN }>()
+            .0;
+        let outs = self.head_out.as_chunks_mut::<{ post_head::OUT }>().0;
+        for (r, o) in ins.iter().zip(outs.iter_mut()) {
+            let ran = motor
+                .as_ref()
+                .and_then(|m| m.slot_tick(r[0] as i64))
+                .map(|(b, new, _)| (b, new));
+            post_head::row(r, slack, ran, o);
+            if o[0] != 0.0 {
+                self.head_rows += 1;
+            } else {
+                self.head_misses += 1;
+            }
+        }
+        PackedFloat64Array::from(&self.head_out[..])
+    }
+
     /// This tick's events, `[entity, kind, i0, i1]` each (`GSSimTickEvents.ints`).
     #[func]
     fn ints(&self) -> PackedInt32Array {
@@ -235,7 +282,7 @@ impl GSSimServerTick {
 
     /// Steps, rows refreshed from motor rows, rows refreshed from feet, posture rows, event rows
     /// derived, rows filled from motor rows, marker rows missed ([`Self::derive_slots`]), since
-    /// the last reset.
+    /// the last reset, then post-head rows answered and missed ([`Self::post_head`]).
     #[func]
     fn counters(&self) -> PackedInt64Array {
         PackedInt64Array::from(
@@ -247,6 +294,8 @@ impl GSSimServerTick {
                 self.event_rows,
                 self.slot_rows,
                 self.slot_misses,
+                self.head_rows,
+                self.head_misses,
             ][..],
         )
     }
@@ -266,6 +315,8 @@ impl GSSimServerTick {
         self.event_rows = 0;
         self.slot_rows = 0;
         self.slot_misses = 0;
+        self.head_rows = 0;
+        self.head_misses = 0;
         self.time = 0.0;
     }
 }

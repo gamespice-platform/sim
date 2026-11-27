@@ -12,6 +12,7 @@
 //! the speed is the f32 `Vector2(x, z).length()` the script computes.
 
 pub mod hull_grid;
+pub mod post_head;
 pub mod table;
 
 /// Floats per input row.
