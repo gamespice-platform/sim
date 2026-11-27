@@ -29,6 +29,8 @@ mod crowd;
 mod doors;
 #[cfg(feature = "doubt")]
 mod doubt;
+#[cfg(feature = "events")]
+mod events;
 #[cfg(feature = "figure")]
 mod figure;
 #[cfg(feature = "figure")]
@@ -77,6 +79,8 @@ mod route;
 mod seek;
 #[cfg(feature = "senses")]
 mod senses;
+#[cfg(all(feature = "motor", feature = "players", feature = "events"))]
+mod server_tick;
 #[cfg(feature = "brain")]
 mod sight;
 #[cfg(feature = "snapshot")]

@@ -36,6 +36,7 @@ const MODULES := {
 	&"interest": &"GSSimInterestGrid",
 	&"trace": &"GSSimFlatTrace",
 	&"players": &"GSSimPlayerPost",
+	&"server_tick": &"GSSimServerTick",
 	&"present": &"GSSimPresentLod",
 	&"pose": &"GSSimPoseBlend",
 	&"clips": &"GSSimClipPlayer",
@@ -50,6 +51,7 @@ const MODULES := {
 	&"contacts": &"GSSimBotContacts",
 	&"volumes": &"GSSimVolumes",
 	&"unlag": &"GSSimUnlagRing",
+	&"events": &"GSSimTickEvents",
 }
 
 

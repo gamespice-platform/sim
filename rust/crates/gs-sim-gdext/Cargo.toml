@@ -39,6 +39,7 @@ gs-sim-crc = { path = "../gs-sim-crc", optional = true }
 gs-sim-interest = { path = "../gs-sim-interest", optional = true }
 gs-sim-trace = { path = "../gs-sim-trace", optional = true }
 gs-sim-players = { path = "../gs-sim-players", optional = true }
+gs-sim-events = { path = "../gs-sim-events", optional = true }
 gs-sim-present = { path = "../gs-sim-present", optional = true }
 gs-sim-clips = { path = "../gs-sim-clips", optional = true }
 gs-sim-spawn = { path = "../gs-sim-spawn", optional = true }
@@ -56,7 +57,7 @@ gs-sim-unlag = { path = "../gs-sim-unlag", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag", "events"]
 bots = ["dep:gs-sim-bots"]
 brain = ["dep:gs-sim-brain", "bots"]
 snapshot = ["dep:gs-sim-snapshot"]
@@ -87,6 +88,7 @@ interest = ["dep:gs-sim-interest"]
 route = ["dep:gs-sim-route", "dep:gs-sim-math"]
 trace = ["dep:gs-sim-trace"]
 players = ["dep:gs-sim-players"]
+events = ["dep:gs-sim-events"]
 present = ["dep:gs-sim-present", "dep:gs-sim-math"]
 pose = ["dep:gs-sim-math"]
 clips = ["dep:gs-sim-clips", "dep:gs-sim-math"]
