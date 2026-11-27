@@ -38,6 +38,15 @@ pub struct GSSimHullWorld {
     pair_calls: i64,
 }
 
+impl GSSimHullWorld {
+    /// Where slot `slot` stands now (the begin feet, or its last [`Self::moved`]), widened from f32.
+    pub(crate) fn feet_at(&self, slot: usize) -> Option<[f64; 3]> {
+        self.feet
+            .get(slot)
+            .map(|f| [f64::from(f.x), f64::from(f.y), f64::from(f.z)])
+    }
+}
+
 #[godot_api]
 impl GSSimHullWorld {
     /// Starts a players' loop: `ids` the roster in order, `data` per slot x, y, z, radius, stand

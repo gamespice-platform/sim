@@ -59,6 +59,15 @@ pub struct GSSimMotorBatch {
     runs: i64,
 }
 
+impl GSSimMotorBatch {
+    /// Slot `slot`'s resident columns (empty until the script first writes them), for the server
+    /// tick's player table.
+    pub(crate) fn resident_cols(&self, slot: i64) -> Option<&[f64]> {
+        let row = self.slots.get(usize::try_from(slot).ok()?)?;
+        row.synced().then_some(&row.cols[..])
+    }
+}
+
 #[godot_api]
 impl GSSimMotorBatch {
     /// Starts a players' loop: forgets the feet kept for [`Self::rollback`].

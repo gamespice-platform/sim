@@ -77,6 +77,8 @@ mod route;
 mod seek;
 #[cfg(feature = "senses")]
 mod senses;
+#[cfg(all(feature = "motor", feature = "players"))]
+mod server_tick;
 #[cfg(feature = "brain")]
 mod sight;
 #[cfg(feature = "snapshot")]
