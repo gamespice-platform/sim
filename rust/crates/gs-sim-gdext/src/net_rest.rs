@@ -4,33 +4,25 @@
 //! the identity's `always_relevant` and `interest_aim`. The same values the script writes, bit for bit
 //! (gs-sim-snapshot's `net_rest`). What needs the game's own scripts stays with the caller: a player some client
 //! owns gets its `push_exact` and carry mask from the script after this call.
+//!
+//! Cheaper than the script only by crossing less: the exact copy comes from the batch's move rows (no state
+//! reads), and a field is written only when its value differs from what this object last wrote there. That
+//! holds while nothing else writes the fields: the caller says [method forget] for a net its script pulled.
+
+use std::collections::HashMap;
 
 use godot::prelude::*;
 use gs_sim_snapshot::net_rest::{
-    EXACT_FLOATS, challenge_value_wire, challenge_wire, exact_row, health_wire,
+    EXACT_FLOATS, challenge_value_wire, challenge_wire, exact_from_moves, health_wire,
 };
 
 /// `GSCombatNetSync.HEALTH_BITS`.
 const HEALTH_BITS: u32 = 11;
 
-/// The rest of every player's net pull in one call.
-#[derive(GodotClass)]
-#[class(base = RefCounted, init)]
-pub struct GSSimNetRest {
-    /// [`NAMES`] as names, made on the first [method pull_rest].
-    k: Vec<StringName>,
-}
-
 /// Property and method names, indexed by the `N_*` constants.
-const NAMES: [&str; 36] = [
+const NAMES: [&str; 30] = [
     "player",
     "identity",
-    "controller",
-    "state",
-    "_f",
-    "stamina",
-    "stamina_exhausted",
-    "stamina_delay_left",
     "health",
     "armour",
     "alive",
@@ -40,12 +32,12 @@ const NAMES: [&str; 36] = [
     "net_health",
     "net_armour",
     "net_alive",
-    "blinded",
-    "net_blind",
     "challenge",
     "net_challenge",
     "challenge_value",
     "net_challenge_value",
+    "blinded",
+    "net_blind",
     "app_points_on",
     "net_app_points_on",
     "app_points",
@@ -62,48 +54,84 @@ const NAMES: [&str; 36] = [
 ];
 const N_PLAYER: usize = 0;
 const N_IDENTITY: usize = 1;
-const N_CONTROLLER: usize = 2;
-const N_STATE: usize = 3;
-const N_F: usize = 4;
-const N_STAMINA: usize = 5;
-const N_EXHAUSTED: usize = 6;
-const N_DELAY: usize = 7;
-const N_HEALTH_OBJ: usize = 8;
-const N_ARMOUR: usize = 9;
-const N_ALIVE: usize = 10;
-const N_AUTHORITATIVE: usize = 11;
-const N_OWNER: usize = 12;
-const N_NET_EXACT: usize = 13;
-const N_NET_HEALTH: usize = 14;
-const N_NET_ARMOUR: usize = 15;
-const N_NET_ALIVE: usize = 16;
-/// Pairs of (player property, net property) copied unchanged, after the challenge pair.
-const COPIES: [(usize, usize); 6] = [(17, 18), (23, 24), (25, 26), (27, 28), (29, 30), (31, 32)];
-const N_CHALLENGE: usize = 19;
-const N_NET_CHALLENGE: usize = 20;
-const N_CHALLENGE_VALUE: usize = 21;
-const N_NET_CHALLENGE_VALUE: usize = 22;
-const N_BEACON: usize = 27;
-const N_ALWAYS_RELEVANT: usize = 33;
-const N_INTEREST_AIM: usize = 34;
-const N_AIM_DIRECTION: usize = 35;
+const N_HEALTH: usize = 2;
+const N_ARMOUR: usize = 3;
+const N_ALIVE: usize = 4;
+const N_AUTHORITATIVE: usize = 5;
+const N_OWNER: usize = 6;
+const N_NET_EXACT: usize = 7;
+const N_NET_HEALTH: usize = 8;
+const N_NET_ARMOUR: usize = 9;
+const N_NET_ALIVE: usize = 10;
+const N_CHALLENGE: usize = 11;
+const N_NET_CHALLENGE: usize = 12;
+const N_CHALLENGE_VALUE: usize = 13;
+const N_NET_CHALLENGE_VALUE: usize = 14;
+/// (player property, net property), copied unchanged in the script's order.
+const COPIES: [(usize, usize); 6] = [(15, 16), (17, 18), (19, 20), (21, 22), (23, 24), (25, 26)];
+const N_BEACON: usize = 21;
+const N_ALWAYS_RELEVANT: usize = 27;
+const N_INTEREST_AIM: usize = 28;
+const N_AIM_DIRECTION: usize = 29;
 
-fn obj(v: Variant) -> Option<Gd<Object>> {
-    v.try_to::<Gd<Object>>().ok()
+/// Cache slots: what this object last wrote to a field.
+const S_EXACT_EMPTY: usize = 0;
+const S_HEALTH: usize = 1;
+const S_ARMOUR: usize = 2;
+const S_ALIVE: usize = 3;
+const S_CHALLENGE: usize = 4;
+const S_CHALLENGE_VALUE: usize = 5;
+const S_COPIES: usize = 6;
+const S_ALWAYS_RELEVANT: usize = S_COPIES + COPIES.len();
+const SLOTS: usize = S_ALWAYS_RELEVANT + 1;
+
+type Written = [Option<Variant>; SLOTS];
+
+/// The rest of every player's net pull in one call.
+#[derive(GodotClass)]
+#[class(base = RefCounted, init)]
+pub struct GSSimNetRest {
+    /// [`NAMES`] as names, made on the first [method pull_rest_rows].
+    k: Vec<StringName>,
+    /// Per net (instance id): what was last written to each field, and the call that wrote it.
+    written: HashMap<i64, (u64, Written)>,
+    /// Calls to [method pull_rest_rows] so far.
+    calls: u64,
+}
+
+fn obj(v: &Variant) -> Option<Gd<Object>> {
+    if v.get_type() == VariantType::OBJECT {
+        v.try_to::<Gd<Object>>().ok()
+    } else {
+        None
+    }
 }
 
 fn num(v: &Variant) -> f64 {
-    v.try_to::<f64>()
-        .or_else(|_| v.try_to::<i64>().map(|i| i as f64))
-        .unwrap_or(0.0)
+    match v.get_type() {
+        VariantType::FLOAT => v.to::<f64>(),
+        VariantType::INT => v.to::<i64>() as f64,
+        _ => 0.0,
+    }
 }
 
 fn int(v: &Variant) -> i64 {
-    v.try_to::<i64>().unwrap_or(0)
+    match v.get_type() {
+        VariantType::INT => v.to::<i64>(),
+        _ => 0,
+    }
 }
 
 fn truth(v: &Variant) -> bool {
-    v.try_to::<bool>().unwrap_or(false)
+    v.get_type() == VariantType::BOOL && v.to::<bool>()
+}
+
+/// Writes [param value] to [param name] on [param target] unless the slot says it is already there.
+fn put(target: &mut Gd<Object>, name: &StringName, slot: &mut Option<Variant>, value: Variant) {
+    if slot.as_ref() != Some(&value) {
+        target.set(name, &value);
+        *slot = Some(value);
+    }
 }
 
 #[godot_api]
@@ -115,34 +143,71 @@ impl GSSimNetRest {
     }
 
     /// `FcPlayerNet._pull_rest` for every net of [param nets], in order, except what needs the game's scripts.
-    /// Returns, in order, `i` for each net `i` some client owns (not server-owned: the caller runs its
-    /// `push_exact` and carry mask) and `-1 - i` for each net it could not read (no player, controller, state or
-    /// columns: the caller runs the whole script pull for it, which writes nothing here first).
+    /// Row `i` of [param moves] ([param columns] state columns then [param extra] values, `FcNetPullBatch._gather`'s
+    /// rows) is net `i`'s state as the batch read it this tick. Returns, in order, `i` for each net `i` some client
+    /// owns (the caller runs its `push_exact` and carry mask) and `-1 - i` for each net it could not read (no player
+    /// or row: the caller runs the whole script pull for it, which writes nothing here first).
     /// [param interest_aim]: whether gs-net's identity has `interest_aim` (`FcPlayerNet._has_interest_aim`).
     #[func]
-    fn pull_rest(&mut self, nets: Array<Gd<Object>>, interest_aim: bool) -> PackedInt32Array {
+    fn pull_rest_rows(
+        &mut self,
+        nets: Array<Gd<Object>>,
+        interest_aim: bool,
+        moves: PackedFloat64Array,
+        columns: i64,
+        extra: i64,
+    ) -> PackedInt32Array {
         if self.k.is_empty() {
             self.k = NAMES.iter().map(|n| StringName::from(*n)).collect();
         }
+        self.calls += 1;
+        let (columns, extra) = (columns.max(0) as usize, extra.max(0) as usize);
+        let moves = moves.as_slice();
         let mut follow = PackedInt32Array::new();
         for (i, mut net) in nets.iter_shared().enumerate() {
-            match self.pull_one(&mut net, interest_aim) {
-                Some(true) => follow.push(i as i32),
-                Some(false) => {}
+            let id = net.instance_id().to_i64();
+            let mut entry = match self.written.remove(&id) {
+                // Only the last call's values are trusted: a net skipped in between was pulled by its script.
+                Some((call, w)) if call + 1 == self.calls => w,
+                _ => std::array::from_fn(|_| None),
+            };
+            let exact = exact_from_moves(moves, i, columns, extra);
+            match self.pull_one(&mut net, exact, &mut entry, interest_aim) {
+                Some(owned) => {
+                    if owned {
+                        follow.push(i as i32);
+                    }
+                    self.written.insert(id, (self.calls, entry));
+                }
                 None => follow.push(-1 - i as i32),
             }
         }
+        if self.written.len() > nets.len() * 2 + 8 {
+            let calls = self.calls;
+            self.written.retain(|_, (call, _)| *call == calls);
+        }
         follow
+    }
+
+    /// Drops what this object believes is written on [param net]: something else (its script) wrote the fields.
+    #[func]
+    fn forget(&mut self, net: Gd<Object>) {
+        self.written.remove(&net.instance_id().to_i64());
     }
 }
 
 impl GSSimNetRest {
     /// One net's pull: Some(owned by a client), None (nothing written) when it cannot be read.
-    fn pull_one(&self, net: &mut Gd<Object>, interest_aim: bool) -> Option<bool> {
+    fn pull_one(
+        &self,
+        net: &mut Gd<Object>,
+        exact: Option<[f32; EXACT_FLOATS]>,
+        w: &mut Written,
+        interest_aim: bool,
+    ) -> Option<bool> {
         let k = &self.k;
-        let player = obj(net.get(&k[N_PLAYER]))?;
-        let state = obj(obj(player.get(&k[N_CONTROLLER]))?.get(&k[N_STATE]))?;
-        let identity = obj(net.get(&k[N_IDENTITY]));
+        let player = obj(&net.get(&k[N_PLAYER]))?;
+        let identity = obj(&net.get(&k[N_IDENTITY]));
         let authoritative = identity
             .as_ref()
             .is_some_and(|id| truth(&id.get(&k[N_AUTHORITATIVE])));
@@ -153,48 +218,71 @@ impl GSSimNetRest {
 
         // _pull_exact
         if server_owned {
-            let empty = net
-                .get(&k[N_NET_EXACT])
-                .try_to::<PackedFloat32Array>()
-                .is_ok_and(|a| a.is_empty());
-            if !empty {
-                net.set(&k[N_NET_EXACT], &PackedFloat32Array::new().to_variant());
+            if w[S_EXACT_EMPTY].is_none() {
+                let empty = net
+                    .get(&k[N_NET_EXACT])
+                    .try_to::<PackedFloat32Array>()
+                    .is_ok_and(|a| a.is_empty());
+                if !empty {
+                    net.set(&k[N_NET_EXACT], &PackedFloat32Array::new().to_variant());
+                }
+                w[S_EXACT_EMPTY] = Some(true.to_variant());
             }
         } else {
-            let f = state.get(&k[N_F]).try_to::<PackedFloat64Array>().ok()?;
-            let row = exact_row(
-                f.as_slice(),
-                num(&state.get(&k[N_STAMINA])),
-                truth(&state.get(&k[N_EXHAUSTED])),
-                num(&state.get(&k[N_DELAY])),
-            )?;
+            let row = exact?;
             net.set(
                 &k[N_NET_EXACT],
                 &PackedFloat32Array::from(&row[..]).to_variant(),
             );
+            w[S_EXACT_EMPTY] = None;
         }
 
         // GSCombatNetSync.pull
-        if let Some(health) = obj(player.get(&k[N_HEALTH_OBJ])) {
-            let h = health_wire(num(&health.get(&k[N_HEALTH_OBJ])), HEALTH_BITS);
+        if let Some(health) = obj(&player.get(&k[N_HEALTH])) {
+            let h = health_wire(num(&health.get(&k[N_HEALTH])), HEALTH_BITS);
             let a = health_wire(num(&health.get(&k[N_ARMOUR])), HEALTH_BITS);
-            net.set(&k[N_NET_HEALTH], &h.to_variant());
-            net.set(&k[N_NET_ARMOUR], &a.to_variant());
-            net.set(&k[N_NET_ALIVE], &health.get(&k[N_ALIVE]));
+            put(net, &k[N_NET_HEALTH], &mut w[S_HEALTH], h.to_variant());
+            put(net, &k[N_NET_ARMOUR], &mut w[S_ARMOUR], a.to_variant());
+            put(
+                net,
+                &k[N_NET_ALIVE],
+                &mut w[S_ALIVE],
+                health.get(&k[N_ALIVE]),
+            );
         }
 
         let (from, to) = COPIES[0];
-        net.set(&k[to], &player.get(&k[from]));
+        put(net, &k[to], &mut w[S_COPIES], player.get(&k[from]));
         let challenge = challenge_wire(int(&player.get(&k[N_CHALLENGE])));
-        net.set(&k[N_NET_CHALLENGE], &challenge.to_variant());
+        put(
+            net,
+            &k[N_NET_CHALLENGE],
+            &mut w[S_CHALLENGE],
+            challenge.to_variant(),
+        );
         let value = challenge_value_wire(int(&player.get(&k[N_CHALLENGE_VALUE])));
-        net.set(&k[N_NET_CHALLENGE_VALUE], &value.to_variant());
-        for &(from, to) in &COPIES[1..] {
-            net.set(&k[to], &player.get(&k[from]));
+        put(
+            net,
+            &k[N_NET_CHALLENGE_VALUE],
+            &mut w[S_CHALLENGE_VALUE],
+            value.to_variant(),
+        );
+        let mut beacon = Variant::nil();
+        for (n, &(from, to)) in COPIES.iter().enumerate().skip(1) {
+            let v = player.get(&k[from]);
+            if from == N_BEACON {
+                beacon = v.clone();
+            }
+            put(net, &k[to], &mut w[S_COPIES + n], v);
         }
 
         if authoritative && let Some(mut id) = identity {
-            id.set(&k[N_ALWAYS_RELEVANT], &player.get(&k[N_BEACON]));
+            put(
+                &mut id,
+                &k[N_ALWAYS_RELEVANT],
+                &mut w[S_ALWAYS_RELEVANT],
+                beacon,
+            );
             if interest_aim {
                 let mut p = player.clone();
                 let aim = p.call(&k[N_AIM_DIRECTION], &[]);

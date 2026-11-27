@@ -53,6 +53,28 @@ pub fn exact_row(
     ])
 }
 
+/// Values `FcNetPullBatch` appends after a state's columns in each move row: crouch held, then
+/// stamina, exhausted and the delay left ([`exact_from_moves`] reads those three), then the rest.
+pub const MOVE_STAMINA: usize = 1;
+
+/// [`exact_row`] for row [param row] of the batch's move rows ([param columns] state columns then
+/// [param extra] values each): the state's `_f` and its stamina fields as `FcNetPullBatch._gather`
+/// copied them, so nothing is read from the state again. None when the row is out of range.
+pub fn exact_from_moves(
+    moves: &[f64],
+    row: usize,
+    columns: usize,
+    extra: usize,
+) -> Option<[f32; EXACT_FLOATS]> {
+    if extra < MOVE_STAMINA + 3 {
+        return None;
+    }
+    let start = row.checked_mul(columns + extra)?;
+    let r = moves.get(start..start + columns + extra)?;
+    let s = columns + MOVE_STAMINA;
+    exact_row(&r[..columns], r[s], r[s + 1] != 0.0, r[s + 2])
+}
+
 /// `GSCombatNetSync.pull`'s `clampi(int(ceil(value)), 0, (1 << bits) - 1)` for health and armour.
 pub fn health_wire(value: f64, bits: u32) -> i64 {
     to_int(value.ceil()).clamp(0, (1i64 << bits.min(62)) - 1)
@@ -87,6 +109,23 @@ mod tests {
         }
         assert_eq!(exact_row(&f, 1.0, false, 0.0).unwrap()[12], 0.0);
         assert!(exact_row(&f[..30], 1.0, false, 0.0).is_none());
+    }
+
+    #[test]
+    fn exact_from_moves_reads_the_row_and_its_stamina() {
+        let (columns, extra) = (32, 14);
+        let mut moves = vec![0.0f64; (columns + extra) * 2];
+        for (i, x) in moves.iter_mut().enumerate() {
+            *x = 0.25 + i as f64 * 0.5;
+        }
+        let r = columns + extra;
+        moves[r + columns + 2] = 1.0;
+        let f = &moves[r..r + columns];
+        let want = exact_row(f, moves[r + columns + 1], true, moves[r + columns + 3]).unwrap();
+        assert_eq!(exact_from_moves(&moves, 1, columns, extra), Some(want));
+        assert!(exact_from_moves(&moves, 2, columns, extra).is_none());
+        assert!(exact_from_moves(&moves, 0, 30, 16).is_none());
+        assert!(exact_from_moves(&moves, 0, columns, 3).is_none());
     }
 
     #[test]
