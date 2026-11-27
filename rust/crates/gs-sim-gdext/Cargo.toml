@@ -56,13 +56,14 @@ gs-sim-unlag = { path = "../gs-sim-unlag", optional = true }
 godot = { version = "0.5.5", features = ["experimental-threads"] }
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_pack", "net_pull_batch", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_core", "net_pack", "net_pull_batch", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag"]
 bots = ["dep:gs-sim-bots"]
 brain = ["dep:gs-sim-brain", "bots"]
 snapshot = ["dep:gs-sim-snapshot"]
 interp = ["dep:gs-sim-interp"]
 snapshot_batch = ["snapshot", "interp"]
 motor = ["dep:gs-sim-motor"]
+net_core = ["snapshot"]
 net_pack = ["dep:gs-sim-motor"]
 weapon_net = ["dep:gs-sim-motor"]
 net_pull_batch = ["dep:gs-sim-motor"]
