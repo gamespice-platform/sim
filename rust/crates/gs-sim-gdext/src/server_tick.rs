@@ -29,6 +29,8 @@ pub struct GSSimServerTick {
     /// This tick's derived motor edges ([`Self::EVENT_STRIDE`] ints and two floats each).
     events: EventTable,
     event_rows: i64,
+    /// Whether [`Self::derive`] ran since the last [`Self::step`]: a tick that derived nothing has no events.
+    derived: bool,
     export: Vec<f64>,
     steps: i64,
     motor_rows: i64,
@@ -41,8 +43,9 @@ pub struct GSSimServerTick {
 #[godot_api]
 impl GSSimServerTick {
     /// The API level: callers check it and the methods they need, and say loudly what is missing.
+    /// 3: a tick that derives nothing ends with no events (2 kept the last derived tick's).
     #[constant]
-    const API: i64 = 2;
+    const API: i64 = 3;
     /// Floats per row of [`Self::begin`]'s input: id, motor slot (-1: none), alive (0 or 1), health, weapon.
     #[constant]
     const BEGIN_STRIDE: i64 = BEGIN as i64;
@@ -102,6 +105,7 @@ impl GSSimServerTick {
         let n = (usize::try_from(count).unwrap_or(0) * IN).min(rows.len());
         self.events.derive_rows(&rows.as_slice()[..n]);
         self.event_rows += (n / IN) as i64;
+        self.derived = true;
         self.events.len() as i64
     }
 
@@ -130,9 +134,14 @@ impl GSSimServerTick {
     }
 
     /// Ends the players' loop of a tick [param dt] long: each alive row's motor part from its
-    /// resident motor row, its origin from the hull world's feet. The rows refreshed.
+    /// resident motor row, its origin from the hull world's feet. The rows refreshed. A tick with
+    /// no [method derive] since the last step (no motor rows: everyone dead, or none ticked) ends
+    /// with no events, never the last derived tick's.
     #[func]
     fn step(&mut self, dt: f64) -> i64 {
+        if !std::mem::take(&mut self.derived) {
+            self.events.clear();
+        }
         let mut refreshed = 0;
         let motor = self.motor.as_ref().map(|m| m.bind());
         let world = self.world.as_ref().map(|w| w.bind());
@@ -174,7 +183,7 @@ impl GSSimServerTick {
         self.table.digest() as i64
     }
 
-    /// The last [method derive]'s events as [method ints], widened ([constant EVENT_STRIDE] values each).
+    /// This tick's events as [method ints] (none when the tick derived none), widened ([constant EVENT_STRIDE] values each).
     #[func]
     fn events(&self) -> PackedInt64Array {
         let wide: Vec<i64> = self.events.ints.iter().map(|&v| i64::from(v)).collect();
