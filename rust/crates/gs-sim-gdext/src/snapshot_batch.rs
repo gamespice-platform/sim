@@ -8,6 +8,11 @@
 //! declaration, a truncated or mismatched body), is left to the script, with the reader back at
 //! that entity's start and nothing of it applied: the script's errors and logs stay the script's.
 //!
+//! An entry is the identity it was registered from: once that identity is unregistered or any of
+//! its behaviours freed (a game that drops an entity and registers a new one under the same net
+//! id without `GSNetInterpolator.forget`), the entry is dropped at its next snapshot and the
+//! entity left to the script, which reads the registry's identity and offers it to the batch again.
+//!
 //! With `set_skip_unchanged_hooks(true)` a behaviour's hook runs only when a value it decoded
 //! differs from its baseline (type and value), as `GSNetBehaviour._finish_read` does with
 //! `GSNetConfig.skip_unchanged_state_applied`; `last_changed` lists the entities that moved.
@@ -43,6 +48,20 @@ struct Entry {
     /// The interpolator's script track for this entity (`push(tick, values)`); none when the
     /// interpolator keeps its samples natively only.
     track: Option<Gd<Object>>,
+    /// The `GSNetIdentity` the behaviours were registered from (their `identity`), if they had one.
+    identity: Option<Gd<Object>>,
+}
+
+impl Entry {
+    /// Whether the entry still is the entity the registry holds under its net id: every
+    /// behaviour alive and the identity alive and registered. The script reads the registry's
+    /// identity each snapshot; a stale entry would decode into behaviours nobody draws.
+    fn live(&self) -> bool {
+        self.parts.iter().all(|p| p.object.is_instance_valid())
+            && self.identity.as_ref().is_none_or(|identity| {
+                identity.is_instance_valid() && identity.get("_registered").booleanize()
+            })
+    }
 }
 
 #[derive(GodotClass)]
@@ -115,9 +134,17 @@ impl GSSimSnapshotBatch {
                 always: row.len() == 6 && row.at(5).try_to::<bool>().unwrap_or(false),
             });
         }
-        self.entries
-            .borrow_mut()
-            .insert(net_id, Rc::new(Entry { parts: held, track }));
+        let identity = held
+            .first()
+            .and_then(|p| p.object.get("identity").try_to::<Gd<Object>>().ok());
+        self.entries.borrow_mut().insert(
+            net_id,
+            Rc::new(Entry {
+                parts: held,
+                track,
+                identity,
+            }),
+        );
         true
     }
 
@@ -197,6 +224,13 @@ impl GSSimSnapshotBatch {
                     break;
                 }
             };
+            if !entry.live() {
+                // Unregistered or freed since it was held: the script applies the registry's
+                // identity, and holds that one.
+                self.entries.borrow_mut().remove(&net_id);
+                r.bit_pos = start;
+                break;
+            }
 
             flat.clear();
             let mut ends = [0usize; 64];
