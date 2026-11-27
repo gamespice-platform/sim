@@ -379,8 +379,16 @@ fn tick_tun(p: &[f64]) -> TickTun {
         max_air_wish_speed: p[16],
         wall_slide_speed: p[17],
         wall_run_vertical_damping: p[18],
+        edge_friction: p.get(EDGE_TUN_AT).copied().unwrap_or(1.0),
+        edge_friction_reach: p.get(EDGE_TUN_AT + 1).copied().unwrap_or(0.0),
+        edge_friction_drop: p.get(EDGE_TUN_AT + 2).copied().unwrap_or(0.0),
     }
 }
+
+/// Where the whole tick's tun carries the edge friction (gs-player-controller's `edge_friction`,
+/// `edge_friction_reach`, `edge_friction_drop`), after the crouch's six values. A shorter tun (the
+/// tick halves', an older script's) has edge friction off.
+pub const EDGE_TUN_AT: usize = gs_sim_motor::crouch::TUN_AT + gs_sim_motor::crouch::TUN_LEN;
 
 #[inline]
 fn v3(p: &[f64], i: usize) -> V3 {
@@ -1005,6 +1013,14 @@ impl GSSimFpsBody {
     /// in the same air at `_run_speed`'s speed, so the script need not run those ticks itself.
     #[func]
     fn runs_after_wall_jump() -> bool {
+        true
+    }
+
+    /// Whether `motor_tick` (and the batch's runs) apply `GSFpsMotor._apply_friction`'s edge
+    /// friction from the tun's three values at [`EDGE_TUN_AT`], so the script may send a motor with
+    /// `edge_friction` above 1 native.
+    #[func]
+    fn has_edge_friction() -> bool {
         true
     }
 
