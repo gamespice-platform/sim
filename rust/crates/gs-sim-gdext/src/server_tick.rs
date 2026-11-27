@@ -8,12 +8,14 @@
 //! [`GSSimServerTick::begin`] takes the script-owned columns in one packed array,
 //! [`GSSimServerTick::step`] closes the loop and fills the table natively from the resident motor
 //! rows and the hull world's feet, with no script call per player. Later phases move more of the
-//! loop in behind `step`; end-of-tick events come out of [`GSSimServerTick::events`] (filled once
-//! native event rows land, empty until then).
+//! loop in behind `step`. The tick's motor edges are derived here too ([`GSSimServerTick::derive`],
+//! the same table and layout as `GSSimTickEvents`, so gs-player-controller's `GSFpsTickEvents` takes
+//! this object as its native table) and come out of [`GSSimServerTick::events`].
 
 use crate::batch::GSSimMotorBatch;
 use crate::hulls::GSSimHullWorld;
 use godot::prelude::*;
+use gs_sim_events::{EventTable, FLOATS, IN, INTS, kind};
 use gs_sim_players::table::{BEGIN, FLAG_ALIVE, STRIDE, Table};
 use gs_sim_players::{Config, OUT, run_rows};
 
@@ -24,8 +26,9 @@ pub struct GSSimServerTick {
     motor: Option<Gd<GSSimMotorBatch>>,
     world: Option<Gd<GSSimHullWorld>>,
     table: Table,
-    /// Native event rows of this tick ([`Self::EVENT_STRIDE`] values each).
-    events: Vec<i64>,
+    /// This tick's derived motor edges ([`Self::EVENT_STRIDE`] ints and two floats each).
+    events: EventTable,
+    event_rows: i64,
     export: Vec<f64>,
     steps: i64,
     motor_rows: i64,
@@ -39,7 +42,7 @@ pub struct GSSimServerTick {
 impl GSSimServerTick {
     /// The API level: callers check it and the methods they need, and say loudly what is missing.
     #[constant]
-    const API: i64 = 1;
+    const API: i64 = 2;
     /// Floats per row of [`Self::begin`]'s input: id, motor slot (-1: none), alive (0 or 1), health, weapon.
     #[constant]
     const BEGIN_STRIDE: i64 = BEGIN as i64;
@@ -47,9 +50,9 @@ impl GSSimServerTick {
     /// (1 alive, 2 from the motor row, 4 origin from the hull world), health, weapon, motor slot.
     #[constant]
     const TABLE_STRIDE: i64 = STRIDE as i64;
-    /// Values per row of [`Self::events`]: kind, player id, two arguments.
+    /// Values per row of [`Self::events`]: entity, kind, two arguments (`GSSimTickEvents.ints`).
     #[constant]
-    const EVENT_STRIDE: i64 = 4;
+    const EVENT_STRIDE: i64 = INTS as i64;
 
     /// Sets `GSFpsState.Mode.GROUND` and `GSWeaponAccuracyClass.FLINCH_SEC` for the posture lane
     /// (as `GSSimPlayerPost.configure`).
@@ -77,11 +80,41 @@ impl GSSimServerTick {
     }
 
     /// Starts a tick: the roster in order, [constant BEGIN_STRIDE] floats per slot (the same slot
-    /// as the hull world's). Drops last tick's events.
+    /// as the hull world's). This tick's events stay until the next [method derive].
     #[func]
     fn begin(&mut self, rows: PackedFloat64Array) {
         self.table.begin(rows.as_slice());
+    }
+
+    /// `[IN, INTS, FLOATS, kinds]`, as `GSSimTickEvents.layout`: `GSFpsTickEvents` checks it before
+    /// taking this object as its native table.
+    #[func]
+    fn layout(&self) -> PackedInt32Array {
+        PackedInt32Array::from(&[IN as i32, INTS as i32, FLOATS as i32, kind::COUNT][..])
+    }
+
+    /// Replaces this tick's events with those of the first [param count] rows of [param rows]
+    /// (`GSFpsTickEvents`' 18 `IN_*` floats each, in roster order); answers how many there are.
+    /// The same derive as `GSSimTickEvents.derive`.
+    #[func]
+    fn derive(&mut self, rows: PackedFloat64Array, count: i64) -> i64 {
         self.events.clear();
+        let n = (usize::try_from(count).unwrap_or(0) * IN).min(rows.len());
+        self.events.derive_rows(&rows.as_slice()[..n]);
+        self.event_rows += (n / IN) as i64;
+        self.events.len() as i64
+    }
+
+    /// This tick's events, `[entity, kind, i0, i1]` each (`GSSimTickEvents.ints`).
+    #[func]
+    fn ints(&self) -> PackedInt32Array {
+        PackedInt32Array::from(&self.events.ints[..])
+    }
+
+    /// This tick's events' `[f0, f1]` each (`GSSimTickEvents.floats`).
+    #[func]
+    fn floats(&self) -> PackedFloat64Array {
+        PackedFloat64Array::from(&self.events.floats[..])
     }
 
     /// The idle players' posture rows, 10 floats in and out per row, the same to the bit as
@@ -141,18 +174,26 @@ impl GSSimServerTick {
         self.table.digest() as i64
     }
 
-    /// This tick's native event rows ([constant EVENT_STRIDE] values each). Empty until native
-    /// event rows fill it; callers read it after [method step] and handle what is there.
+    /// The last [method derive]'s events as [method ints], widened ([constant EVENT_STRIDE] values each).
     #[func]
     fn events(&self) -> PackedInt64Array {
-        PackedInt64Array::from(&self.events[..])
+        let wide: Vec<i64> = self.events.ints.iter().map(|&v| i64::from(v)).collect();
+        PackedInt64Array::from(&wide[..])
     }
 
-    /// Steps, rows refreshed from motor rows, rows refreshed from feet, posture rows, since the
-    /// last reset.
+    /// Steps, rows refreshed from motor rows, rows refreshed from feet, posture rows, event rows
+    /// derived, since the last reset.
     #[func]
     fn counters(&self) -> PackedInt64Array {
-        PackedInt64Array::from(&[self.steps, self.motor_rows, self.feet_rows, self.post_rows][..])
+        PackedInt64Array::from(
+            &[
+                self.steps,
+                self.motor_rows,
+                self.feet_rows,
+                self.post_rows,
+                self.event_rows,
+            ][..],
+        )
     }
 
     /// Seconds stepped since the last reset.
@@ -167,6 +208,7 @@ impl GSSimServerTick {
         self.motor_rows = 0;
         self.feet_rows = 0;
         self.post_rows = 0;
+        self.event_rows = 0;
         self.time = 0.0;
     }
 }
