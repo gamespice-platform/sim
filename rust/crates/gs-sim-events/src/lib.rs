@@ -133,7 +133,7 @@ impl EventTable {
 
     /// Appends the events of every [`IN`]-float row of `rows`, in row order.
     pub fn derive_rows(&mut self, rows: &[f64]) {
-        for row in rows.chunks_exact(IN) {
+        for row in rows.as_chunks::<IN>().0 {
             self.derive_row(row);
         }
     }
