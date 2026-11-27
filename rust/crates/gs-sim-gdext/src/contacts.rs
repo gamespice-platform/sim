@@ -4,11 +4,13 @@
 //! [method fill_changed] writes the fields a player keeps from tick to tick only when they change;
 //! [method fill_table] writes no object at all, only packed columns for gs-bot's `GSBotContactTable`.
 //! [method fill_arms] writes the weapon in hand (`weapon_class`, `magazine`) from interned classes.
+//! [method loadouts_stale] tells which contacts' loadouts the world must make again.
 
 use godot::prelude::*;
 use gs_sim_contacts::{
     Arms, ROW_FLOATS, STABLE, STRIDE, Stable, contact, lift, row_flags, row_floats,
 };
+use std::collections::HashMap;
 
 /// The contact fields written, in [`GSSimBotContacts::fill`]'s order.
 const FIELDS: [&str; 13] = [
@@ -54,6 +56,11 @@ pub struct GSSimBotContacts {
     arm_names: Option<(StringName, StringName, StringName)>,
     /// Per contact slot: the object [method fill_arms] wrote there last and what it wrote.
     arms_kept: Vec<(InstanceId, (i32, u64))>,
+    /// By contact: the arsenal [method loadouts_stale] last saw beside it and that arsenal's
+    /// `revision()`.
+    loadouts: HashMap<InstanceId, (InstanceId, i64)>,
+    /// `revision`, named once.
+    revision: Option<StringName>,
 }
 
 #[godot_api]
@@ -243,6 +250,58 @@ impl GSSimBotContacts {
         }
         self.arms_kept = kept;
         true
+    }
+
+    /// The indices of [param contacts] whose `loadout` the world must make again this tick: a
+    /// contact new here, beside another arsenal (one per contact, [param arsenals]) than last call,
+    /// or whose arsenal's `revision()` moved; always one whose arsenal is null or has no
+    /// `revision`. The rest hold the loadout the world's revision cache would hand back. Call it
+    /// once per tick and write every index it returns; [method forget_loadouts] after anything
+    /// else wrote the loadouts. Every index when the arrays do not match.
+    #[func]
+    fn loadouts_stale(&mut self, contacts: VarArray, arsenals: VarArray) -> PackedInt32Array {
+        let n = contacts.len();
+        if arsenals.len() != n {
+            self.loadouts.clear();
+            return (0..n as i32).collect();
+        }
+        let revision = self
+            .revision
+            .get_or_insert_with(|| StringName::from("revision"))
+            .clone();
+        let mut seen = HashMap::with_capacity(n);
+        let mut stale = PackedInt32Array::new();
+        for i in 0..n {
+            let contact = contacts.at(i).try_to::<Gd<Object>>().ok();
+            let arsenal = arsenals.at(i).try_to::<Gd<Object>>().ok();
+            let (Some(contact), Some(mut arsenal)) = (contact, arsenal) else {
+                stale.push(i as i32);
+                continue;
+            };
+            let (cid, aid) = (contact.instance_id(), arsenal.instance_id());
+            let before = self.loadouts.get(&cid).copied();
+            // has_method once per arsenal beside a contact: one kept already answered it.
+            if before.is_none_or(|(id, _)| id != aid) && !arsenal.has_method(&revision) {
+                stale.push(i as i32);
+                continue;
+            }
+            let Ok(rev) = arsenal.call(&revision, &[]).try_to::<i64>() else {
+                stale.push(i as i32);
+                continue;
+            };
+            if before != Some((aid, rev)) {
+                stale.push(i as i32);
+            }
+            seen.insert(cid, (aid, rev));
+        }
+        self.loadouts = seen;
+        stale
+    }
+
+    /// Drops what [method loadouts_stale] remembers, so its next call names every contact.
+    #[func]
+    fn forget_loadouts(&mut self) {
+        self.loadouts.clear();
     }
 
     /// Drops what [method fill_changed] remembers writing, so its next call writes every field.

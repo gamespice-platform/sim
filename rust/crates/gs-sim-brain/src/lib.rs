@@ -12,6 +12,7 @@ pub mod fight;
 pub mod hear;
 pub mod num;
 pub mod pickup;
+pub mod style;
 pub mod tricks;
 pub mod unstick;
 

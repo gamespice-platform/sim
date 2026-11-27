@@ -4,12 +4,13 @@
 //! The view comes back as `f64`s, never a `Vector2`, so the script's yaw keeps its precision.
 
 use crate::bots::{GSSimBotSenses, Packed};
-use crate::sight::{GSSimSightRay, SightQuery};
+use crate::sight::{GSSimSightRay, SightConf, SightQuery};
 use godot::prelude::*;
 use gs_sim_bots::{Found, Query, candidates};
 use gs_sim_brain::aim::direction;
 use gs_sim_brain::fight::FirstShot;
 use gs_sim_brain::num::rad_to_deg;
+use gs_sim_brain::style;
 use gs_sim_brain::{
     Aim, AimProfile, FightIn, FightProfile, Strafe, Stream, Vec2 as V2, Vec3 as V3, View, fight,
 };
@@ -119,6 +120,47 @@ impl GSSimBotMind {
             _ => None,
         }
     }
+}
+
+/// The native ray behind `los` when it is a [`GSSimSightRay`]'s unbound `clear` (asked then with
+/// no call into script, the same answer), else `None`.
+fn sight_direct(los: &Callable) -> Option<Arc<SightConf>> {
+    match (los.object(), los.method_name()) {
+        (Some(obj), Some(name)) if name == "clear" && los.get_bound_arguments_count() == 0 => obj
+            .try_cast::<GSSimSightRay>()
+            .ok()
+            .map(|ray| ray.bind().conf()),
+        _ => None,
+    }
+}
+
+/// `los(from, to)`: natively through `direct` when there is one.
+fn sight_ask(
+    direct: &Option<Arc<SightConf>>,
+    query: &mut SightQuery,
+    los: &Callable,
+    from: Vector3,
+    to: Vector3,
+) -> bool {
+    match direct {
+        Some(conf) => conf.clear(query, from, to),
+        None => los.call(&[from.to_variant(), to.to_variant()]).booleanize(),
+    }
+}
+
+fn arr(v: Vector3) -> style::P {
+    [v.x, v.y, v.z]
+}
+
+fn vec(p: style::P) -> Vector3 {
+    Vector3::new(p[0], p[1], p[2])
+}
+
+/// GSBotWorld's `walkable_near(at)` through its `walkable_fn`; INF when it answers none.
+fn walk_near(walk: &Callable, at: style::P) -> style::P {
+    walk.call(&[vec(at).to_variant()])
+        .try_to::<Vector3>()
+        .map_or(style::NONE, arr)
 }
 
 fn gv(v: V3) -> Vector3 {
@@ -868,6 +910,71 @@ impl GSSimBotMind {
         got.map_or(-1, |i| i as i64)
     }
 
+    /// GSBotStyle's `cover_near` (gs-sim-brain `style::cover_near`): the cover spot as x, y, z and
+    /// the style stream's counter after (its `key` and `counter` handed in). `walk`: the world's
+    /// `walkable_fn` (invalid: no snapping); `los(from, to)` the world's sight. Bit for bit the
+    /// script's.
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn style_cover(
+        &mut self,
+        here: Vector3,
+        threat_pos: Vector3,
+        threat_eye: Vector3,
+        key: i64,
+        counter: i64,
+        walk: Callable,
+        los: Callable,
+    ) -> PackedFloat64Array {
+        let mut rng = Stream::new(key, counter);
+        let direct = sight_direct(&los);
+        let query = &mut self.query;
+        let at = style::cover_near(
+            arr(here),
+            arr(threat_pos),
+            &mut rng,
+            walk.is_valid(),
+            |p| walk_near(&walk, p),
+            |to| sight_ask(&direct, query, &los, threat_eye, vec(to)),
+        );
+        PackedFloat64Array::from(&[at[0] as f64, at[1] as f64, at[2] as f64, rng.counter as f64])
+    }
+
+    /// GSBotStyle's `vantage` (gs-sim-brain `style::vantage`) over the world's `points`: found
+    /// (1 or 0), at x, y, z, face x, y, z (INF: none) and the style stream's counter after.
+    #[func]
+    fn style_vantage(
+        &mut self,
+        here: Vector3,
+        away_from: Vector3,
+        points: PackedVector3Array,
+        key: i64,
+        counter: i64,
+        los: Callable,
+    ) -> PackedFloat64Array {
+        let mut rng = Stream::new(key, counter);
+        let direct = sight_direct(&los);
+        let pts: Vec<style::P> = points.as_slice().iter().map(|&v| arr(v)).collect();
+        let query = &mut self.query;
+        let got = style::vantage(arr(here), arr(away_from), &pts, &mut rng, |eye, to| {
+            sight_ask(&direct, query, &los, vec(eye), vec(to))
+        });
+        let (found, at, face) = match got {
+            Some((at, face)) => (1.0, at, face),
+            None => (0.0, style::NONE, style::NONE),
+        };
+        PackedFloat64Array::from(&[
+            found,
+            at[0] as f64,
+            at[1] as f64,
+            at[2] as f64,
+            face[0] as f64,
+            face[1] as f64,
+            face[2] as f64,
+            rng.counter as f64,
+        ])
+    }
+
     /// Whether this library's objects may be called on worker threads (one thread per object at a
     /// time): desktop and server builds bind with godot-rust's thread-safe storage; web builds are
     /// single-threaded and panic off the main thread, so their brains stay in script there.
@@ -977,14 +1084,7 @@ impl GSSimBotMind {
             (visible, target_id)
         };
         // The world's sight as a native ray: asked here, not through a call into script.
-        let direct = match (los.object(), los.method_name()) {
-            (Some(obj), Some(name)) if name == "clear" && los.get_bound_arguments_count() == 0 => {
-                obj.try_cast::<GSSimSightRay>()
-                    .ok()
-                    .map(|ray| ray.bind().conf())
-            }
-            _ => None,
-        };
+        let direct = sight_direct(&los);
         let sees = |mind: &mut Self, row: usize| -> bool {
             let id = table.ids[row];
             // Sight LOD: a far body (never the target) keeps a "not seen" longer.
@@ -1000,12 +1100,7 @@ impl GSSimBotMind {
                 return seen;
             }
             let query = &mut mind.query;
-            let mut ask = |to: V3| match &direct {
-                Some(conf) => conf.clear(query, eye, gv(to)),
-                None => los
-                    .call(&[eye.to_variant(), gv(to).to_variant()])
-                    .booleanize(),
-            };
+            let mut ask = |to: V3| sight_ask(&direct, query, &los, eye, gv(to));
             let seen = ask(table.points[row]) || ask(held.eyes[row]);
             mind.sight.insert(id, (now, seen, stamp));
             seen
