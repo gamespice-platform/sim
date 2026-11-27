@@ -115,15 +115,8 @@ pub fn ammo_fraction(infinite: bool, full: i64, magazine: i64, reserve: i64) -> 
     if infinite {
         return 1.0;
     }
-    let f = magazine.wrapping_add(reserve) as f64 / full.max(1) as f64;
-    // clampf as the engine's CLAMP: below the floor, else above the ceiling, else itself.
-    if f < 0.0 {
-        0.0
-    } else if f > 1.0 {
-        1.0
-    } else {
-        f
-    }
+    // clampf as the engine's CLAMP; the quotient of two ints is never NaN, so f64::clamp is the same.
+    (magazine.wrapping_add(reserve) as f64 / full.max(1) as f64).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
