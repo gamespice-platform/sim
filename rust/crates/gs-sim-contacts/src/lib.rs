@@ -10,8 +10,9 @@
 
 /// Head values before the state columns.
 pub const HEAD: usize = 6;
-/// `GSFpsStateColumns.STRIDE`.
-pub const COLUMNS: usize = 30;
+/// `GSFpsStateColumns.STRIDE` (gs-player-controller 43: 30 motor columns, then the crouch fraction
+/// and held flag, which a contact does not read).
+pub const COLUMNS: usize = 32;
 /// One player's record.
 pub const STRIDE: usize = HEAD + COLUMNS;
 
