@@ -749,7 +749,31 @@ impl GShape {
         entry: impl Fn(V3, V3) -> Option<f64>,
         scratch: &mut Vec<(u32, f64)>,
     ) -> Option<(f32, f32)> {
-        let t0 = entry(self.lo, self.hi)?;
+        self.cast_carried(from, motion, half, aabb, entry, scratch, 1.0)
+            .ok()
+            .map(|(low, hi, _)| (low, hi))
+    }
+
+    /// [`Self::cast`] with Godot's carried whole-motion test. `cast_motion` sets the motion
+    /// shape's motion once, then each shape's bisection overwrites it and nothing resets it, so
+    /// a shape's whole-motion test really sweeps `motion * carried`, `carried` being the last
+    /// fraction the most recent earlier bisecting shape tried (1.0 when none did). Godot's GJK
+    /// can call a long sweep that passes right through a shape separated; the shorter carried
+    /// sweep still finds it. `Ok((safe, unsafe, last))` gives the last fraction tried, to carry
+    /// on; `Err(true)` is a shape skipped only by the whole-motion test (a later carry may still
+    /// find it), `Err(false)` one skipped for good.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cast_carried(
+        &self,
+        from: F3,
+        motion: F3,
+        half: F3,
+        aabb: &Aabb,
+        entry: impl Fn(V3, V3) -> Option<f64>,
+        scratch: &mut Vec<(u32, f64)>,
+        carried: f32,
+    ) -> Result<(f32, f32, f32), bool> {
+        let t0 = entry(self.lo, self.hi).ok_or(false)?;
         let plan = match &self.geom {
             Geom::Box(h) => Plan::Conv(Conv::Box(*h), t0),
             Geom::Hull { verts, extreme } => Plan::Conv(Conv::Hull(verts, extreme), t0),
@@ -762,18 +786,21 @@ impl GShape {
                     }
                 });
                 if scratch.is_empty() {
-                    return None;
+                    return Err(false);
                 }
                 Plan::Faces(faces, scratch)
             }
         };
-        if self.step(&plan, from, half, motion, 1.0) || !self.step(&plan, from, half, [0.0; 3], 0.0)
-        {
-            return None;
+        if !self.step(&plan, from, half, [0.0; 3], 0.0) {
+            return Err(false);
         }
-        let (mut low, mut hi, mut coeff) = (0.0_f32, 1.0_f32, 0.5_f32);
+        if self.step(&plan, from, half, mul(motion, carried), carried) {
+            return Err(true);
+        }
+        let (mut low, mut hi, mut coeff, mut last) = (0.0_f32, 1.0_f32, 0.5_f32, 1.0_f32);
         for j in 0..8 {
             let fraction = low + (hi - low) * coeff;
+            last = fraction;
             if !self.step(&plan, from, half, mul(motion, fraction), fraction) {
                 hi = fraction;
                 coeff = if j == 0 || low > 0.0 { 0.5 } else { 0.25 };
@@ -782,7 +809,7 @@ impl GShape {
                 coeff = if j == 0 || hi < 1.0 { 0.5 } else { 0.75 };
             }
         }
-        Some((low, hi))
+        Ok((low, hi, last))
     }
 
     /// The concave solver's local box from the cast's box (`solve_distance`, hint branch).
