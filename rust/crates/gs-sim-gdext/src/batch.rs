@@ -17,7 +17,7 @@ use godot::prelude::*;
 use gs_sim_motor::Vec3 as V3;
 use gs_sim_motor::cols;
 use gs_sim_motor::crouch;
-use gs_sim_motor::slots::Slots;
+use gs_sim_motor::slots::{Row, Slots};
 use gs_sim_motor::state::{self as mstate, Rest};
 
 const _: () = assert!(TICK_IN_LEN == cols::ROW_IN && TICK_OUT_LEN == cols::ROW_OUT);
@@ -36,11 +36,25 @@ type Src = (Gd<GSSimFpsBody>, PackedFloat64Array);
 /// Per state row: the columns and height its crouch left, when it changed any.
 type Crouched = Option<(Vec<f64>, f64)>;
 
+/// A resident row's tick as the event rows read it (gs-player-controller 55): its columns as the
+/// player's tick started (as the loop began, or as [`GSSimMotorBatch::slot_push_before`] wrote
+/// them), and its new columns and the motor's answer from its last run. Each half counts only in
+/// the loop ([`GSSimMotorBatch::begin`]) whose stamp it holds.
+#[derive(Default)]
+struct SlotTick {
+    before_at: u64,
+    before: Vec<f64>,
+    after_at: u64,
+    new: Vec<f64>,
+    out: Vec<f64>,
+}
+
 /// A resident player's native side beside its columns.
 struct SlotData {
     body: Gd<GSSimFpsBody>,
     tun: PackedFloat64Array,
     state: Gd<GSSimMotorState>,
+    tick: SlotTick,
 }
 
 #[derive(GodotClass)]
@@ -55,6 +69,8 @@ pub struct GSSimMotorBatch {
     rests: Vec<(usize, Gd<GSSimMotorState>, Rest)>,
     /// The players' resident rows ([`Self::slot_add`]).
     slots: Slots<SlotData>,
+    /// Players' loops begun ([`Self::begin`]); stamps a [`SlotTick`].
+    tick: u64,
     rows: i64,
     runs: i64,
 }
@@ -66,6 +82,18 @@ impl GSSimMotorBatch {
         let row = self.slots.get(usize::try_from(slot).ok()?)?;
         row.synced().then_some(&row.cols[..])
     }
+
+    /// Slot `slot`'s tick in this loop, for the server tick's event rows: its columns before
+    /// (as its first run found them), its new columns and the motor's answer (its last run).
+    /// `None` unless the row ran in this loop.
+    pub(crate) fn slot_tick(&self, slot: i64) -> Option<(&[f64], &[f64], &[f64])> {
+        let t = &self.slots.get(usize::try_from(slot).ok()?)?.data.tick;
+        (t.before_at == self.tick && t.after_at == self.tick).then_some((
+            &t.before[..],
+            &t.new[..],
+            &t.out[..],
+        ))
+    }
 }
 
 #[godot_api]
@@ -76,6 +104,7 @@ impl GSSimMotorBatch {
         self.moved.clear();
         self.rests.clear();
         self.slots.begin();
+        self.tick += 1;
     }
 
     /// Ticks rows `from` to `to` (exclusive) in order: `bodies` the `GSSimFpsBody` per row,
@@ -189,7 +218,12 @@ impl GSSimMotorBatch {
         state: Gd<GSSimMotorState>,
         tun: PackedFloat64Array,
     ) -> i64 {
-        self.slots.add(SlotData { body, tun, state }) as i64
+        self.slots.add(SlotData {
+            body,
+            tun,
+            state,
+            tick: SlotTick::default(),
+        }) as i64
     }
 
     /// Drops a player's row; false when there was none.
@@ -207,8 +241,44 @@ impl GSSimMotorBatch {
     /// 32 values long.
     #[func]
     fn slot_push(&mut self, slot: i64, cols: PackedFloat64Array) -> bool {
-        cols.len() == crouch::COLS_LEN
-            && usize::try_from(slot).is_ok_and(|s| self.slots.push(s, cols.as_slice()))
+        let tick = self.tick;
+        if cols.len() != crouch::COLS_LEN {
+            return false;
+        }
+        let Some(r) = usize::try_from(slot)
+            .ok()
+            .and_then(|s| self.slots.get_mut(s))
+        else {
+            return false;
+        };
+        // A write in the loop changes the columns after the player's tick started: those stay its before.
+        keep_before(r, tick);
+        r.cols.clear();
+        r.cols.extend_from_slice(cols.as_slice());
+        true
+    }
+
+    /// [`Self::slot_push`] at the player's tick start (gs-player-controller 55): these columns are
+    /// also its before for the server tick's event rows (`GSSimServerTick.derive_slots`).
+    #[func]
+    fn slot_push_before(&mut self, slot: i64, cols: PackedFloat64Array) -> bool {
+        let tick = self.tick;
+        if cols.len() != crouch::COLS_LEN {
+            return false;
+        }
+        let Some(r) = usize::try_from(slot)
+            .ok()
+            .and_then(|s| self.slots.get_mut(s))
+        else {
+            return false;
+        };
+        r.cols.clear();
+        r.cols.extend_from_slice(cols.as_slice());
+        let t = &mut r.data.tick;
+        t.before.clear();
+        t.before.extend_from_slice(cols.as_slice());
+        t.before_at = tick;
+        true
     }
 
     /// Sets a player's tunables (when its motor's changed); false when there is no such row.
@@ -464,6 +534,9 @@ impl GSSimMotorBatch {
             let Some(slot) = usize::try_from(slots[row]).ok() else {
                 break;
             };
+            if let Some(r) = self.slots.get_mut(slot) {
+                keep_before(r, self.tick);
+            }
             let Some(sr) = self
                 .slots
                 .get(slot)
@@ -499,10 +572,29 @@ impl GSSimMotorBatch {
             let old = state_answer(&mut state, &sr.cols, crouched.as_ref(), &new, e, o);
             self.rests.push((row, state, old));
             self.slots.ticked(row, *slot, &new);
+            if let Some(r) = self.slots.get_mut(*slot) {
+                let t = &mut r.data.tick;
+                t.new.clear();
+                t.new.extend_from_slice(&new);
+                t.out.clear();
+                t.out.extend_from_slice(o);
+                t.after_at = self.tick;
+            }
             answer.extend_from_slice(o);
             answer.extend_from_slice(&new);
         }
         PackedFloat64Array::from(&answer[..])
+    }
+}
+
+/// Keeps `r`'s columns as its before in loop `tick` unless it has one there already: the first
+/// write or run of the loop finds them as the loop began.
+fn keep_before(r: &mut Row<SlotData>, tick: u64) {
+    let t = &mut r.data.tick;
+    if t.before_at != tick {
+        t.before.clear();
+        t.before.extend_from_slice(&r.cols);
+        t.before_at = tick;
     }
 }
 
