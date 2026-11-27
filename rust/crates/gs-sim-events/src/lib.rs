@@ -13,6 +13,8 @@
 //!
 //! The script twin is `GSFpsTickEvents` (gs-player-controller 50); the two agree to the bit.
 
+pub mod slot;
+
 /// Floats per input row.
 pub const IN: usize = 18;
 /// The entity index the game gave the controller (its roster index).

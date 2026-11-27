@@ -15,7 +15,7 @@
 use crate::batch::GSSimMotorBatch;
 use crate::hulls::GSSimHullWorld;
 use godot::prelude::*;
-use gs_sim_events::{EventTable, FLOATS, IN, INTS, kind};
+use gs_sim_events::{EventTable, FLOATS, IN, IN_B_MODE, IN_B_Y, INTS, kind, slot};
 use gs_sim_players::table::{BEGIN, FLAG_ALIVE, STRIDE, Table};
 use gs_sim_players::{Config, OUT, run_rows};
 
@@ -29,6 +29,11 @@ pub struct GSSimServerTick {
     /// This tick's derived motor edges ([`Self::EVENT_STRIDE`] ints and two floats each).
     events: EventTable,
     event_rows: i64,
+    /// Rows [`Self::derive_slots`] filled from a motor row, and marker rows it found no motor row for.
+    slot_rows: i64,
+    slot_misses: i64,
+    /// [`Self::derive_slots`]' row being filled, kept between calls.
+    scratch: Vec<f64>,
     /// Whether [`Self::derive`] ran since the last [`Self::step`]: a tick that derived nothing has no events.
     derived: bool,
     export: Vec<f64>,
@@ -44,8 +49,9 @@ pub struct GSSimServerTick {
 impl GSSimServerTick {
     /// The API level: callers check it and the methods they need, and say loudly what is missing.
     /// 3: a tick that derives nothing ends with no events (2 kept the last derived tick's).
+    /// 4: [`Self::derive_slots`], event rows filled from the resident motor rows.
     #[constant]
-    const API: i64 = 3;
+    const API: i64 = 4;
     /// Floats per row of [`Self::begin`]'s input: id, motor slot (-1: none), alive (0 or 1), health, weapon.
     #[constant]
     const BEGIN_STRIDE: i64 = BEGIN as i64;
@@ -104,6 +110,43 @@ impl GSSimServerTick {
         self.events.clear();
         let n = (usize::try_from(count).unwrap_or(0) * IN).min(rows.len());
         self.events.derive_rows(&rows.as_slice()[..n]);
+        self.event_rows += (n / IN) as i64;
+        self.derived = true;
+        self.events.len() as i64
+    }
+
+    /// [`Self::derive`] where a row may be a marker (gs-player-controller 55's
+    /// `GSFpsTickEvents.record_slot`): `IN_B_MODE` below zero, its motor slot in `IN_B_Y`, its
+    /// entity, flags and step height as any row. A marker's before and after values come from that
+    /// slot's run in this loop of [`Self::motor`] (`gs_sim_events::slot`), the same values the
+    /// controller would have recorded; a marker whose slot did not run gives no events and counts
+    /// a miss ([`Self::counters`]' sixth value).
+    #[func]
+    fn derive_slots(&mut self, rows: PackedFloat64Array, count: i64) -> i64 {
+        self.events.clear();
+        let n = (usize::try_from(count).unwrap_or(0) * IN).min(rows.len());
+        let motor = self.motor.as_ref().map(|m| m.bind());
+        let mut row = std::mem::take(&mut self.scratch);
+        for r in rows.as_slice()[..n].as_chunks::<IN>().0 {
+            if r[IN_B_MODE] >= 0.0 {
+                self.events.derive_row(r);
+                continue;
+            }
+            let ran = motor
+                .as_ref()
+                .and_then(|m| m.slot_tick(r[IN_B_Y] as i64))
+                .and_then(|(b, new, out)| Some((slot::before(b)?, slot::after(new, out)?)));
+            let Some((b, a)) = ran else {
+                self.slot_misses += 1;
+                continue;
+            };
+            row.clear();
+            row.extend_from_slice(r);
+            slot::fill(&mut row, &b, &a);
+            self.events.derive_row(&row);
+            self.slot_rows += 1;
+        }
+        self.scratch = row;
         self.event_rows += (n / IN) as i64;
         self.derived = true;
         self.events.len() as i64
@@ -191,7 +234,8 @@ impl GSSimServerTick {
     }
 
     /// Steps, rows refreshed from motor rows, rows refreshed from feet, posture rows, event rows
-    /// derived, since the last reset.
+    /// derived, rows filled from motor rows, marker rows missed ([`Self::derive_slots`]), since
+    /// the last reset.
     #[func]
     fn counters(&self) -> PackedInt64Array {
         PackedInt64Array::from(
@@ -201,6 +245,8 @@ impl GSSimServerTick {
                 self.feet_rows,
                 self.post_rows,
                 self.event_rows,
+                self.slot_rows,
+                self.slot_misses,
             ][..],
         )
     }
@@ -218,6 +264,8 @@ impl GSSimServerTick {
         self.feet_rows = 0;
         self.post_rows = 0;
         self.event_rows = 0;
+        self.slot_rows = 0;
+        self.slot_misses = 0;
         self.time = 0.0;
     }
 }
