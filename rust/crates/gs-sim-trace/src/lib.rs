@@ -7,6 +7,7 @@
 //! `maxf`/`minf` (`a > b ? a : b`, `a < b ? a : b`), so the chosen box is the script's to the bit.
 
 pub mod bake;
+pub mod gjk;
 pub mod mirror;
 pub mod piece;
 
