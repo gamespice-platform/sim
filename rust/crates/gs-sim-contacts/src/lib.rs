@@ -168,6 +168,37 @@ pub fn lift(at: [f32; 3], h: f64) -> [f32; 3] {
     [at[0] + 0.0 * h, at[1] + h, at[2] + 0.0 * h]
 }
 
+/// The weapon in hand of a contact for gs-bot's play styles: its interned style class (an index
+/// into the caller's class names; [`NO_CLASS`] for no weapon) and the slot's rounds and the
+/// definition's magazine size, as `GSWeaponSlot.magazine` and `GSWeaponDef.magazine` hold them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Arms {
+    pub class: i32,
+    pub rounds: i64,
+    pub size: i64,
+}
+
+/// [`Arms::class`] of a contact with no weapon (`weapon_class` `&""`, magazine -1).
+pub const NO_CLASS: i32 = -1;
+
+impl Arms {
+    /// How full the magazine is, as the script's
+    /// `float(slot.magazine) / float(def.magazine) if def.magazine > 0 else -1.0`
+    /// (an f64 division of the two ints), and -1 with no weapon.
+    pub fn magazine(&self) -> f64 {
+        if self.class < 0 || self.size <= 0 {
+            return -1.0;
+        }
+        self.rounds as f64 / self.size as f64
+    }
+
+    /// The written pair: the class (negative is no weapon) and the magazine ratio's bits, so two
+    /// writes compare to the bit.
+    pub fn written(&self) -> (i32, u64) {
+        (self.class.max(NO_CLASS), self.magazine().to_bits())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +313,59 @@ mod tests {
         let l = lift([-0.0, 0.0, -0.0], -1.0);
         assert!(l[0].is_sign_negative());
         assert_eq!(lift([0.0; 3], 1.0 / 3.0)[1], (1.0f64 / 3.0) as f32);
+    }
+
+    #[test]
+    fn arms_magazine_is_the_scripts_ratio() {
+        let a = Arms {
+            class: 2,
+            rounds: 7,
+            size: 30,
+        };
+        assert_eq!(a.magazine().to_bits(), (7.0f64 / 30.0).to_bits());
+        assert_eq!(
+            Arms {
+                class: 0,
+                rounds: 0,
+                size: 12
+            }
+            .magazine(),
+            0.0
+        );
+        // No magazine (a knife) and no weapon are -1.
+        assert_eq!(
+            Arms {
+                class: 1,
+                rounds: 0,
+                size: 0
+            }
+            .magazine(),
+            -1.0
+        );
+        assert_eq!(
+            Arms {
+                class: NO_CLASS,
+                rounds: 5,
+                size: 10
+            }
+            .magazine(),
+            -1.0
+        );
+        assert_eq!(
+            Arms {
+                class: -7,
+                rounds: 5,
+                size: 10
+            }
+            .written(),
+            (NO_CLASS, (-1.0f64).to_bits())
+        );
+        let b = Arms {
+            class: 2,
+            rounds: 8,
+            size: 30,
+        };
+        assert_ne!(a.written(), b.written());
+        assert_eq!(a.written(), Arms { ..a }.written());
     }
 }

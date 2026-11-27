@@ -3,9 +3,12 @@
 //! per-tick `GSBotContact` field and keeps the rows a native world's `set_rows` takes;
 //! [method fill_changed] writes the fields a player keeps from tick to tick only when they change;
 //! [method fill_table] writes no object at all, only packed columns for gs-bot's `GSBotContactTable`.
+//! [method fill_arms] writes the weapon in hand (`weapon_class`, `magazine`) from interned classes.
 
 use godot::prelude::*;
-use gs_sim_contacts::{ROW_FLOATS, STABLE, STRIDE, Stable, contact, lift, row_flags, row_floats};
+use gs_sim_contacts::{
+    Arms, ROW_FLOATS, STABLE, STRIDE, Stable, contact, lift, row_flags, row_floats,
+};
 
 /// The contact fields written, in [`GSSimBotContacts::fill`]'s order.
 const FIELDS: [&str; 13] = [
@@ -45,6 +48,12 @@ pub struct GSSimBotContacts {
     flags: PackedInt32Array,
     /// Per contact slot: the object written there last and the kept fields it was given.
     kept: Vec<(InstanceId, Stable)>,
+    /// The style classes [method intern_class] gave out, by index.
+    classes: Vec<StringName>,
+    /// `weapon_class` and `magazine`, named once.
+    arm_names: Option<(StringName, StringName, StringName)>,
+    /// Per contact slot: the object [method fill_arms] wrote there last and what it wrote.
+    arms_kept: Vec<(InstanceId, (i32, u64))>,
 }
 
 #[godot_api]
@@ -160,6 +169,80 @@ impl GSSimBotContacts {
     #[func]
     fn flags(&self) -> PackedInt32Array {
         self.flags.clone()
+    }
+
+    /// The index of style class [param name] for [method fill_arms], the same for the same name.
+    #[func]
+    fn intern_class(&mut self, name: StringName) -> i64 {
+        if let Some(i) = self.classes.iter().position(|c| *c == name) {
+            return i as i64;
+        }
+        self.classes.push(name);
+        (self.classes.len() - 1) as i64
+    }
+
+    /// Writes each of [param contacts]' weapon in hand, as the script's `_weapon_of` does:
+    /// `weapon_class` is the [method intern_class] name at [param classes] (negative: `&""`) and
+    /// `magazine` is `rounds / size` as f64 from [param rounds] (two ints per contact: the slot's
+    /// rounds, the definition's magazine size), -1 with no weapon or no magazine. With
+    /// [param changed_only], a contact is written only when it differs from what this object last
+    /// wrote to the same object in the same place; pass false after anything else wrote them.
+    /// False when the arrays do not match the contacts, a class was never interned or a contact
+    /// is not an object.
+    #[func]
+    fn fill_arms(
+        &mut self,
+        contacts: VarArray,
+        classes: PackedInt32Array,
+        rounds: PackedInt64Array,
+        changed_only: bool,
+    ) -> bool {
+        let n = contacts.len();
+        let (cl, ro) = (classes.as_slice(), rounds.as_slice());
+        if cl.len() != n
+            || ro.len() != n * 2
+            || cl.iter().any(|&c| c as i64 >= self.classes.len() as i64)
+        {
+            self.arms_kept.clear();
+            return false;
+        }
+        let (klass, mag, none) = self
+            .arm_names
+            .get_or_insert_with(|| {
+                (
+                    StringName::from("weapon_class"),
+                    StringName::from("magazine"),
+                    StringName::default(),
+                )
+            })
+            .clone();
+        let mut kept = Vec::with_capacity(n);
+        for (i, &class) in cl.iter().enumerate() {
+            let Ok(mut obj) = contacts.at(i).try_to::<Gd<Object>>() else {
+                self.arms_kept.clear();
+                return false;
+            };
+            let arms = Arms {
+                class,
+                rounds: ro[i * 2],
+                size: ro[i * 2 + 1],
+            };
+            let now = arms.written();
+            let id = obj.instance_id();
+            let same = changed_only && self.arms_kept.get(i) == Some(&(id, now));
+            if !same {
+                let name = if now.0 < 0 {
+                    &none
+                } else {
+                    &self.classes[now.0 as usize]
+                };
+                obj.set(&klass, &name.to_variant());
+                obj.set(&mag, &arms.magazine().to_variant());
+            }
+            kept.push((id, now));
+        }
+        self.arms_kept = kept;
+        true
     }
 
     /// Drops what [method fill_changed] remembers writing, so its next call writes every field.
