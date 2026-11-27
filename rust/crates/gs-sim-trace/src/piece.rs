@@ -418,29 +418,46 @@ impl Piece {
     /// every box axis crossed with every piece edge. Returns the first contact fraction, the
     /// normal facing the box, and whether the box starts overlapping (fraction 0 then).
     pub fn sweep(&self, from: V3, delta: V3, half: V3) -> Option<(f64, V3, bool)> {
+        let (enter, exit, normal) = self.overlap_span(from, delta, half)?;
+        if enter > 1.0 || exit < 0.0 {
+            return None;
+        }
+        if enter <= 0.0 {
+            return Some((0.0, normal, true));
+        }
+        Some((enter, normal, false))
+    }
+
+    /// The whole interval of motion fractions over which the swept box overlaps the piece
+    /// (unbounded either way, a convex pair overlaps over one interval), with the normal facing
+    /// the box at the entry; `None` when the box never touches the piece along the line.
+    pub fn overlap_span(&self, from: V3, delta: V3, half: V3) -> Option<(f64, f64, V3)> {
         const AXES: [V3; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
         let mut span = Span {
             enter: f64::NEG_INFINITY,
             exit: f64::INFINITY,
             normal: [0.0, 1.0, 0.0],
         };
-        let mut axes: Vec<V3> = AXES.to_vec();
-        axes.extend(self.planes.iter().map(normal_of));
-        for e in &self.edges {
-            axes.extend(AXES.iter().filter_map(|a| unit(cross(*a, *e))));
-        }
-        for a in axes {
+        for a in AXES {
             if !span.axis(self, a, from, delta, half) {
                 return None;
             }
         }
-        if span.enter > 1.0 || span.exit < 0.0 {
-            return None;
+        for plane in &self.planes {
+            if !span.axis(self, normal_of(plane), from, delta, half) {
+                return None;
+            }
         }
-        if span.enter <= 0.0 {
-            return Some((0.0, span.normal, true));
+        for e in &self.edges {
+            for a in AXES {
+                if let Some(axis) = unit(cross(a, *e))
+                    && !span.axis(self, axis, from, delta, half)
+                {
+                    return None;
+                }
+            }
         }
-        Some((span.enter, span.normal, false))
+        Some((span.enter, span.exit, span.normal))
     }
 }
 
