@@ -36,6 +36,7 @@ const MODULES := {
 	&"interest": &"GSSimInterestGrid",
 	&"trace": &"GSSimFlatTrace",
 	&"players": &"GSSimPlayerPost",
+	&"player_head": &"GSSimPlayerHead",
 	&"present": &"GSSimPresentLod",
 	&"pose": &"GSSimPoseBlend",
 	&"clips": &"GSSimClipPlayer",

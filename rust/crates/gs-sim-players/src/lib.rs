@@ -8,8 +8,12 @@
 //! takes as `still`).
 //!
 //! Rows are packed f64: [`IN`] floats in per player (the `IN_*` columns), [`OUT`] floats out (the
-//! posture row, then [`OUT_STILL`]). Velocity components are the engine's f32 values widened, so
+//! posture row, then [`OUT_STILL`]).
+//!
+//! [`head`] is the head of `tick_post_head`: the hit-zone squeeze and the map-volume skip. Velocity components are the engine's f32 values widened, so
 //! the speed is the f32 `Vector2(x, z).length()` the script computes.
+
+pub mod head;
 
 /// Floats per input row.
 pub const IN: usize = 10;

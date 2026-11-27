@@ -2,9 +2,11 @@
 //! `gs_sim_players`' packed columns: the posture row gs-weapon's spread reads and the settled,
 //! flinch-free flag, the same to the bit as the script (FC's `headless_posture_native_parity`
 //! runs both over seeded states). `GSSim.has(&"players")` switches it; the script stays the
-//! fallback on the web and wherever the library is absent.
+//! fallback on the web and wherever the library is absent. `GSSimPlayerHead` is the head of
+//! `tick_post_head` (`GSSim.has(&"player_head")`).
 
 use godot::prelude::*;
+use gs_sim_players::head::{HeadIn, Reach, head};
 use gs_sim_players::{Config, OUT, POSTURE, PostIn, idle_row, run_rows};
 
 /// A player's post-motor posture (stage 1 of the native player table).
@@ -70,5 +72,60 @@ impl GSSimPlayerPost {
         let mut out = vec![0.0; rows * OUT];
         run_rows(input.as_slice(), &self.cfg, &mut out);
         PackedFloat64Array::from(&out[..])
+    }
+}
+
+/// The head of FC's `tick_post_head` (`gs_sim_players::head`): the hit-zone squeeze factor and
+/// the map-volume skip in one call, the same to the bit as the script (FC's
+/// `headless_head_native_parity`).
+#[derive(GodotClass)]
+#[class(base = RefCounted, init)]
+pub struct GSSimPlayerHead {
+    reach: Reach,
+}
+
+#[godot_api]
+impl GSSimPlayerHead {
+    /// `FcVolumePrefilter`'s `SLACK`, `BELOW` and `ABOVE`; until then 1, (3, 3, 3) and (3, 5, 3).
+    #[func]
+    fn configure(&mut self, slack: f64, below: Vector3, above: Vector3) {
+        self.reach = Reach {
+            slack,
+            below: [below.x, below.y, below.z],
+            above: [above.x, above.y, above.z],
+        };
+    }
+
+    /// FC's `fit_hitboxes_to_crouch` factor, negated when `_volumes_skip` holds ([param marked]:
+    /// the prefilter marked the player clear on this tick); NaN when the factor is not above
+    /// zero (run the script).
+    #[func]
+    #[allow(clippy::too_many_arguments)]
+    fn head(
+        &self,
+        crouch: f64,
+        crouch_height: f64,
+        fit_stand_height: f64,
+        radius: f64,
+        ladder_reach: f64,
+        stand_height: f64,
+        waist: f64,
+        start: Vector3,
+        position: Vector3,
+        marked: bool,
+    ) -> f64 {
+        let p = HeadIn {
+            crouch,
+            crouch_height,
+            fit_stand_height,
+            radius,
+            ladder_reach,
+            stand_height,
+            waist,
+            start: [start.x, start.y, start.z],
+            position: [position.x, position.y, position.z],
+            marked,
+        };
+        head(&p, &self.reach)
     }
 }
