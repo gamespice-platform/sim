@@ -167,7 +167,7 @@ pub fn tick<S: Space>(
 }
 
 /// `Vector3.limit_length`: divided by its length, then scaled, where longer than `max`.
-fn limit_length(v: Vec3, max: f32) -> Vec3 {
+pub(crate) fn limit_length(v: Vec3, max: f32) -> Vec3 {
     let l = v.length();
     if l > 0.0 && max < l {
         let d = Vec3::new(v.x / l, v.y / l, v.z / l);
@@ -177,7 +177,7 @@ fn limit_length(v: Vec3, max: f32) -> Vec3 {
 }
 
 /// `GSFpsMotor._view_basis`'s forward and right: angles in `f64`, each component rounded to `f32`.
-fn view_basis(yaw_degrees: f64, pitch_degrees: f64) -> (Vec3, Vec3) {
+pub(crate) fn view_basis(yaw_degrees: f64, pitch_degrees: f64) -> (Vec3, Vec3) {
     let yaw = yaw_degrees * (std::f64::consts::PI / 180.0);
     let pitch = pitch_degrees * (std::f64::consts::PI / 180.0);
     let forward = Vec3::new(
@@ -190,7 +190,11 @@ fn view_basis(yaw_degrees: f64, pitch_degrees: f64) -> (Vec3, Vec3) {
 }
 
 /// `GSFpsMotor.move_and_slide(state, delta)` without the step: true where the slide ran out.
-fn move_and_slide<S: Space>(mover: &mut Mover<'_, S>, s: &mut State, delta: f64) -> bool {
+pub(crate) fn move_and_slide<S: Space>(
+    mover: &mut Mover<'_, S>,
+    s: &mut State,
+    delta: f64,
+) -> bool {
     let motion = s.velocity.scale(delta);
     if motion.length_squared() <= 0.0 {
         return false;
