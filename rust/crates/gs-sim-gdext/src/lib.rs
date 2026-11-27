@@ -93,6 +93,8 @@ mod threat;
 mod tier;
 #[cfg(feature = "timer")]
 mod timer;
+#[cfg(feature = "trace")]
+mod trace_mirror;
 #[cfg(feature = "unlag")]
 mod unlag;
 #[cfg(feature = "volumes")]
