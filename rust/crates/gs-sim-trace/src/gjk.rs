@@ -246,10 +246,15 @@ pub struct Faces {
 
 impl Faces {
     fn new(verts: Vec<F3>) -> Option<Faces> {
-        if verts.is_empty() || verts.len() % 3 != 0 {
+        if verts.is_empty() || !verts.len().is_multiple_of(3) {
             return None;
         }
-        let leaves: Vec<Aabb> = verts.chunks_exact(3).map(Aabb::of_face).collect();
+        let leaves: Vec<Aabb> = verts
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|c| Aabb::of_face(c))
+            .collect();
         let mut f = Faces {
             order: (0..leaves.len() as u32).collect(),
             leaves,
@@ -593,7 +598,11 @@ fn separated(probe: &Probe, conv: Conv, tb: &Xf) -> bool {
     let mut cur = 0;
     let guess = sub(tb.origin, probe.from);
     let sqrl = lsq(guess);
-    sim[0][0] = support(if sqrl > 0.0 { neg(guess) } else { [1.0, 0.0, 0.0] });
+    sim[0][0] = support(if sqrl > 0.0 {
+        neg(guess)
+    } else {
+        [1.0, 0.0, 0.0]
+    });
     rank[0] = 1;
     let mut ray = sim[0][0];
     let mut lastw = [ray; 4];
@@ -710,7 +719,7 @@ impl GShape {
         let world: Vec<F3> = self.geom.points().iter().map(|p| xf.xform(*p)).collect();
         [self.lo, self.hi] = bounds(&world);
         self.face_bounds = match self.geom {
-            Geom::Faces(_) => world.chunks_exact(3).map(bounds).collect(),
+            Geom::Faces(_) => world.as_chunks::<3>().0.iter().map(|c| bounds(c)).collect(),
             _ => Vec::new(),
         };
     }

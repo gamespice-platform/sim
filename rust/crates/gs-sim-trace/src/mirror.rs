@@ -170,7 +170,10 @@ impl Mirror {
 
     /// Replaces the dynamic shapes (posed); their piece ranges index the dynamic pieces.
     pub fn set_dynamic_shapes(&self, shapes: Vec<GShape>) {
-        *self.dynamic_shapes.write().unwrap_or_else(|e| e.into_inner()) = shapes;
+        *self
+            .dynamic_shapes
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = shapes;
     }
 
     /// How many static pieces.
@@ -282,7 +285,10 @@ impl Mirror {
     /// ignored, so `start_solid` stays false for a box the mirror's shapes all came from. With
     /// shapes the fraction is Godot's safe fraction and the normal the pieces' contact normal.
     pub fn sweep(&self, from: V3, motion: V3, half: V3, mask: u32) -> Option<Hit> {
-        let dynamic_shapes = self.dynamic_shapes.read().unwrap_or_else(|e| e.into_inner());
+        let dynamic_shapes = self
+            .dynamic_shapes
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         if self.shapes.is_empty() && dynamic_shapes.is_empty() {
             drop(dynamic_shapes);
             return self.sweep_pieces(from, motion, half, mask);

@@ -39,7 +39,13 @@ fn main() {
             origin: narrow(origin),
             ..Xf::IDENTITY
         };
-        shapes.push(GShape::new(Geom::Box([half as f32; 3]), xf, 1, id, [k, k + 1]));
+        shapes.push(GShape::new(
+            Geom::Box([half as f32; 3]),
+            xf,
+            1,
+            id,
+            [k, k + 1],
+        ));
     }
     let floor: Vec<F3> = vec![
         [-100.0, 0.0, -100.0],
@@ -50,7 +56,7 @@ fn main() {
         [100.0, 0.0, 100.0],
     ];
     let k = pieces.len() as u32;
-    for t in floor.chunks_exact(3) {
+    for t in floor.as_chunks::<3>().0 {
         let w = |p: F3| p.map(f64::from);
         pieces.push(Piece::triangle(w(t[0]), w(t[1]), w(t[2]), 1).expect("a face"));
     }
