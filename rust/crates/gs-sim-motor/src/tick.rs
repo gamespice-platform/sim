@@ -1,5 +1,5 @@
 //! The rest of `GSFpsMotor._simulate` around the slide, for a plain walker (GROUND or AIR, no
-//! surfaces, no edge friction): the ground check at the start of the tick
+//! surfaces): the ground check at the start of the tick
 //! ([`pre`]), then friction, the wish move, gravity, the clamp, the slide and the ground check at
 //! the end ([`post`]). The script keeps the jump, the wall moves, launches, slides and crouch, which
 //! run between the two and only write state.
@@ -54,6 +54,10 @@ pub struct TickTun {
     pub max_air_wish_speed: f64,
     pub wall_slide_speed: f64,
     pub wall_run_vertical_damping: f64,
+    /// `tunables.edge_friction`; 1 or less is off (and `Default`'s 0 is off).
+    pub edge_friction: f64,
+    pub edge_friction_reach: f64,
+    pub edge_friction_drop: f64,
 }
 
 /// What the script decided for this tick before [`post`] runs, already multiplied out where the
@@ -345,17 +349,44 @@ pub fn pre<S: Space>(
     }
 }
 
-/// `GSFpsMotor._apply_friction` with no edge friction.
-fn apply_friction(s: &mut State, tt: &TickTun, p: &Post) {
+/// `GSFpsMotor._apply_friction`.
+fn apply_friction<S: Space>(m: &mut Mover<'_, S>, s: &mut State, tt: &TickTun, p: &Post) {
     let speed = s.velocity.length() as f64;
     if speed <= 0.0 {
         return;
     }
     let control = maxf(speed, tt.stop_speed);
-    let edge = 1.0f64;
+    let mut edge = 1.0f64;
+    if tt.edge_friction > 1.0 && near_ledge(m, s, tt) {
+        edge = tt.edge_friction;
+    }
     let drop = control * p.friction_base * p.surface_friction * p.effect_friction * edge * p.delta;
     let scale = maxf(speed - drop, 0.0) / speed;
     s.velocity = s.velocity.scale(scale);
+}
+
+/// `GSFpsMotor._near_ledge`: a thin capsule past the player's radius finds no floor below.
+fn near_ledge<S: Space>(m: &mut Mover<'_, S>, s: &State, tt: &TickTun) -> bool {
+    let horizontal = Vec3::new(s.velocity.x, 0.0, s.velocity.z);
+    if (horizontal.length_squared() as f64) < 1e-6 {
+        return false;
+    }
+    let _site = crate::site::stage(crate::site::EDGE);
+    let radius = m.t.radius;
+    let ahead = s.position
+        + horizontal
+            .normalized()
+            .scale(radius + tt.edge_friction_reach);
+    let probe_radius = minf(0.05, radius * 0.25);
+    let probe_height = probe_radius * 2.0;
+    let centre = ahead + UP.scale(probe_height * 0.5 + 0.02);
+    let hit = m.body_sweep(
+        centre,
+        DOWN.scale(tt.edge_friction_drop),
+        probe_height,
+        probe_radius,
+    );
+    !hit.hit
 }
 
 /// `GSFpsMotor._apply_air_friction`.
@@ -560,7 +591,7 @@ pub fn post<S: Space>(
     c: &mut TickCounters,
 ) -> PostOut {
     if s.mode == GROUND && !p.jumped {
-        apply_friction(s, tt, p);
+        apply_friction(m, s, tt, p);
     } else if tt.air_friction > 0.0 {
         apply_air_friction(s, tt, p);
     }
@@ -668,6 +699,9 @@ mod tests {
         max_air_wish_speed: 0.8,
         wall_slide_speed: 0.0,
         wall_run_vertical_damping: 0.0,
+        edge_friction: 1.0,
+        edge_friction_reach: 0.4,
+        edge_friction_drop: 0.6,
     };
 
     fn post_in(delta: f64) -> Post {
@@ -747,5 +781,51 @@ mod tests {
         s.velocity.y = f32::NAN;
         assert!(clamp_velocity(&mut s, &TT));
         assert_eq!(s.velocity, Vec3::default());
+    }
+
+    #[test]
+    fn edge_friction_multiplies_the_drop_only_over_a_ledge() {
+        let mut body = Body::default();
+        let mut space = Floor;
+        let masks = Masks {
+            collision: 1,
+            pass_out: 0,
+        };
+        let mut m = Mover::new(&mut body, &mut space, masks, None, TUN);
+        let p = post_in(1.0 / 64.0);
+        let start = State {
+            mode: GROUND,
+            ground_normal: UP,
+            height: 1.8,
+            velocity: Vec3::new(4.0, 0.0, 0.0),
+            ..State::default()
+        };
+        let edged = TickTun {
+            edge_friction: 4.0,
+            edge_friction_reach: 0.6,
+            ..TT
+        };
+        let (mut plain, mut over) = (start, start);
+        apply_friction(&mut m, &mut plain, &TT, &p);
+        apply_friction(&mut m, &mut over, &edged, &p);
+        // Open space: the probe finds no floor ahead, so the drop is four times the plain one.
+        let speed = 4.0f64;
+        let drop = maxf(speed, TT.stop_speed) * 6.0 * (1.0 / 64.0);
+        assert_eq!(
+            plain.velocity,
+            start.velocity.scale(maxf(speed - drop, 0.0) / speed)
+        );
+        assert_eq!(
+            over.velocity,
+            start.velocity.scale(maxf(speed - drop * 4.0, 0.0) / speed)
+        );
+        // Standing still nothing is probed: no horizontal speed means no ledge.
+        let mut up = State {
+            velocity: Vec3::new(0.0, 2.0, 0.0),
+            ..start
+        };
+        assert!(!near_ledge(&mut m, &up, &edged));
+        apply_friction(&mut m, &mut up, &edged, &p);
+        assert!(up.velocity.y < 2.0);
     }
 }

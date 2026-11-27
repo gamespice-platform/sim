@@ -309,6 +309,9 @@ mod tests {
         max_air_wish_speed: 0.8,
         wall_slide_speed: 0.0,
         wall_run_vertical_damping: 0.0,
+        edge_friction: 1.0,
+        edge_friction_reach: 0.4,
+        edge_friction_drop: 0.6,
     };
 
     const M: Masks = Masks {

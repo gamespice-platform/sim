@@ -1,5 +1,5 @@
 //! The whole of `GSFpsMotor._simulate` from the start ground check to the end one, for a plain
-//! walker (GROUND or AIR, no surfaces, no edge friction): [`tick::pre`], the jump, the wall moves,
+//! walker (GROUND or AIR, no surfaces): [`tick::pre`], the jump, the wall moves,
 //! the launch, the dash, the slide and the wall run, then [`tick::post`]. The script keeps the
 //! effects, noclip, crouch and the idle tick, which run before it, and the timers unless the
 //! caller hands them to [`advance_timers`].
