@@ -54,13 +54,25 @@ fn box_lands_on_a_box_shape() {
     let hit = m.sweep([0.0, 2.0, 0.0], [0.0, -3.0, 0.0], [0.5; 3], 1);
     lands(hit.map(|h| h.fraction), 0.5);
     assert_eq!(hit.unwrap().normal, [0.0, 1.0, 0.0]);
-    assert!(m.sweep([3.0, 2.0, 0.0], [0.0, -3.0, 0.0], [0.5; 3], 1).is_none());
-    assert!(m.sweep([0.0, 2.0, 0.0], [0.0, -3.0, 0.0], [0.5; 3], 2).is_none());
+    assert!(
+        m.sweep([3.0, 2.0, 0.0], [0.0, -3.0, 0.0], [0.5; 3], 1)
+            .is_none()
+    );
+    assert!(
+        m.sweep([0.0, 2.0, 0.0], [0.0, -3.0, 0.0], [0.5; 3], 2)
+            .is_none()
+    );
 }
 
 #[test]
 fn box_lands_on_a_trimesh_and_a_hull() {
-    let faces = GShape::new(Geom::faces(floor_faces(0.0)).unwrap(), Xf::IDENTITY, 1, 0, [0, 0]);
+    let faces = GShape::new(
+        Geom::faces(floor_faces(0.0)).unwrap(),
+        Xf::IDENTITY,
+        1,
+        0,
+        [0, 0],
+    );
     let m = Mirror::with_shapes(Vec::new(), vec![faces]);
     let hit = m.sweep([0.3, 2.0, 0.2], [0.0, -3.0, 0.0], [0.5; 3], 1);
     lands(hit.map(|h| h.fraction), 0.5);
@@ -84,7 +96,10 @@ fn a_shape_the_box_starts_in_is_ignored() {
     let mut pieces = Vec::new();
     let s = cube([0.0; 3], 1.0, 0, &mut pieces);
     let m = Mirror::with_shapes(pieces, vec![s]);
-    assert!(m.sweep([0.0, 0.5, 0.0], [0.0, -3.0, 0.0], [0.5; 3], 1).is_none());
+    assert!(
+        m.sweep([0.0, 0.5, 0.0], [0.0, -3.0, 0.0], [0.5; 3], 1)
+            .is_none()
+    );
 }
 
 fn rng(state: &mut u64) -> f64 {
@@ -110,7 +125,13 @@ fn scene(seed: u64) -> Mirror {
         rows: [[1.0, 0.0, 0.0], [0.0, 0.96, -0.28], [0.0, 0.28, 0.96]],
         origin: [0.0, -4.0, 0.0],
     };
-    shapes.push(GShape::new(Geom::faces(floor_faces(0.0)).unwrap(), tilted, 1, 300, [0, 0]));
+    shapes.push(GShape::new(
+        Geom::faces(floor_faces(0.0)).unwrap(),
+        tilted,
+        1,
+        300,
+        [0, 0],
+    ));
     Mirror::with_shapes(pieces, shapes)
 }
 
@@ -188,7 +209,9 @@ fn a_baked_blob_writes_back_the_same_bytes() {
 
 #[test]
 fn a_version_2_blob_still_loads() {
-    let m = Mirror::new(vec![Piece::triangle([0.0; 3], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], 2).unwrap()]);
+    let m = Mirror::new(vec![
+        Piece::triangle([0.0; 3], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], 2).unwrap(),
+    ]);
     let mut v2 = m.to_bytes();
     v2.truncate(v2.len() - 4);
     v2[4..8].copy_from_slice(&2u32.to_le_bytes());
