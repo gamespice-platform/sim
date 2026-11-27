@@ -217,7 +217,10 @@ mod tests {
         r[IN_B_MODE] = 1.0;
         r[IN_B_VY] = -7.25;
         t.derive_row(&r);
-        assert_eq!(t.ints, vec![5, kind::MODE_CHANGED, 1, 0, 5, kind::LANDED, 0, 0]);
+        assert_eq!(
+            t.ints,
+            vec![5, kind::MODE_CHANGED, 1, 0, 5, kind::LANDED, 0, 0]
+        );
         assert_eq!(t.floats[2], 7.25);
     }
 
@@ -286,7 +289,10 @@ mod tests {
         b[IN_B_BITS] = 1.0;
         let rows: Vec<f64> = a.iter().chain(b.iter()).copied().collect();
         t.derive_rows(&rows);
-        assert_eq!(t.ints, vec![9, kind::CROUCH_CHANGED, 1, 0, 4, kind::CROUCH_CHANGED, 0, 0]);
+        assert_eq!(
+            t.ints,
+            vec![9, kind::CROUCH_CHANGED, 1, 0, 4, kind::CROUCH_CHANGED, 0, 0]
+        );
         assert_eq!(t.len(), 2);
     }
 }
