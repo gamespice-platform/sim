@@ -20,6 +20,7 @@ pub mod slide;
 pub mod slots;
 pub mod state;
 pub mod tick;
+pub mod trace;
 pub mod weapon_net;
 
 /// `Vector3.UP`.
@@ -132,8 +133,8 @@ pub struct Body {
     pub flipped_normals: i64,
     /// Rest queries answered from the in-tick memo.
     pub rest_memo_hits: i64,
-    /// A `GSFpsFlatBody`'s world: every query is answered from it and no space is asked.
-    flat: Option<flat::FlatWorld>,
+    /// The trace provider in place of the space ([`trace`]): every query is answered from it.
+    world: Option<trace::SharedWorld>,
 }
 
 impl Default for Body {
@@ -162,19 +163,30 @@ impl Default for Body {
             query_count: 0,
             flipped_normals: 0,
             rest_memo_hits: 0,
-            flat: None,
+            world: None,
         }
     }
 }
 
 impl Body {
-    /// Opens a motor tick: the rest memo is live until [`Body::end_tick`].
     /// The flat world every query is answered from (see [`flat`]); `None` goes back to the space.
     pub fn set_flat(&mut self, world: Option<flat::FlatWorld>) {
-        self.flat = world;
+        self.set_world(world.map(|w| std::sync::Arc::new(w) as trace::SharedWorld));
+    }
+
+    /// The trace world every query is answered from ([`trace::TraceWorld`]); `None` goes back to
+    /// the engine's space.
+    pub fn set_world(&mut self, world: Option<trace::SharedWorld>) {
+        self.world = world;
         self.invalidate();
     }
 
+    /// Whether a trace world answers in place of the space.
+    pub fn has_world(&self) -> bool {
+        self.world.is_some()
+    }
+
+    /// Opens a motor tick: the rest memo is live until [`Body::end_tick`].
     pub fn begin_tick(&mut self) {
         self.in_tick = true;
         self.rm_valid = false;
@@ -235,8 +247,8 @@ impl Body {
         if (motion.length_squared() as f64) <= 0.0 {
             return result;
         }
-        if let Some(f) = &self.flat {
-            return f.sweep(from, motion, height, radius);
+        if let Some(w) = &self.world {
+            return w.sweep(from, motion, height, radius, m);
         }
         self.configure(s, height, radius, m);
         self.query_count += 1;
@@ -429,8 +441,8 @@ impl Body {
         radius: f64,
         m: Masks,
     ) -> Hit {
-        if let Some(f) = &self.flat {
-            return f.rest_contact(at, height, radius);
+        if let Some(w) = &self.world {
+            return w.rest_contact(at, height, radius, m);
         }
         site::step(site::REST_CONTACT);
         let Some(mut result) = self.raw_rest_or_none(s, at, height, radius, m) else {
@@ -568,8 +580,8 @@ impl Body {
         radius: f64,
         m: Masks,
     ) -> bool {
-        if let Some(f) = &self.flat {
-            return f.overlaps(at, height, radius);
+        if let Some(w) = &self.world {
+            return w.overlaps(at, height, radius, m);
         }
         self.configure(s, height, radius, m);
         self.query_count += 1;
@@ -780,5 +792,52 @@ mod tests {
         );
         assert_eq!(s.asked[0], "overlap");
         assert_eq!(s.asked[1], "cast");
+    }
+
+    #[test]
+    fn a_trace_world_answers_in_place_of_the_space() {
+        let mut s = Floor::default();
+        let mut b = Body::default();
+        b.set_flat(Some(flat::FlatWorld {
+            floor_y: 0.0,
+            ..Default::default()
+        }));
+        assert!(b.has_world());
+        let h = b.sweep(
+            &mut s,
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, -0.5, 0.0),
+            1.8,
+            0.4,
+            M,
+        );
+        assert!(h.hit);
+        assert_eq!(h.collider_id, flat::FLOOR_ID);
+        assert!(
+            b.rest_contact(&mut s, Vec3::new(0.0, 0.85, 0.0), 1.8, 0.4, M)
+                .hit
+        );
+        assert!(b.overlaps(&mut s, Vec3::new(0.0, 0.85, 0.0), 1.8, 0.4, M));
+        assert!(s.asked.is_empty());
+        b.set_world(None);
+        b.overlaps(&mut s, Vec3::new(0.0, 0.85, 0.0), 1.8, 0.4, M);
+        assert_eq!(s.asked, ["overlap"]);
+    }
+
+    #[test]
+    fn a_flat_world_ray_stops_on_the_floor() {
+        let w: trace::SharedWorld = std::sync::Arc::new(flat::FlatWorld {
+            floor_y: 0.0,
+            ..Default::default()
+        });
+        let c = w
+            .ray(Vec3::new(0.0, 2.0, 0.0), Vec3::new(0.0, -2.0, 0.0), -1)
+            .unwrap();
+        assert_eq!(c.normal, UP);
+        assert_eq!(c.collider_id, flat::FLOOR_ID);
+        assert!(
+            w.ray(Vec3::new(0.0, 2.0, 0.0), Vec3::new(0.0, 1.0, 0.0), -1)
+                .is_none()
+        );
     }
 }

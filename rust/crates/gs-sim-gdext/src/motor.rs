@@ -16,7 +16,9 @@ use gs_sim_motor::full::{self, FullIn, FullTun, MoveCounters, Moves};
 use gs_sim_motor::memo::MemoSpace;
 use gs_sim_motor::slide::{Aabb as SlideBox, Mover, Tun};
 use gs_sim_motor::tick::{self, Post, State, TickCounters, TickTun};
+use gs_sim_motor::trace::SharedWorld;
 use gs_sim_motor::{Body, Contact, Hit, Masks, Space, Vec3 as V3, site};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
@@ -143,6 +145,12 @@ impl GSSimFpsBody {
             pass_out: pass_out_mask,
         };
         self.body.overlaps(&mut self.space, at, height, radius, m)
+    }
+
+    /// The trace provider every query of this body is answered from in place of the physics
+    /// space; `None` goes back to the space. A collision-model mirror of the map plugs in here.
+    pub(crate) fn set_trace_world(&mut self, world: Option<SharedWorld>) {
+        self.body.set_world(world);
     }
 }
 
@@ -645,13 +653,19 @@ impl GSSimFpsBody {
                 })
                 .collect(),
         };
-        self.body.set_flat(Some(world));
+        self.set_trace_world(Some(Arc::new(world)));
     }
 
     /// Back to the physics space after [`GSSimFpsBody::set_flat_world`].
     #[func]
     fn clear_flat_world(&mut self) {
-        self.body.set_flat(None);
+        self.set_trace_world(None);
+    }
+
+    /// Whether a trace world (flat or collision model) answers in place of the physics space.
+    #[func]
+    fn has_trace_world(&self) -> bool {
+        self.body.has_world()
     }
 
     /// Whether a motor tick may answer a repeated rest query from memory (`GSFpsBody.perf_caches`).
