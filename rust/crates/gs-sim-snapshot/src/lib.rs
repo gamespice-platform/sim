@@ -12,6 +12,7 @@
 
 mod bits;
 pub mod net_core;
+pub mod net_rest;
 #[cfg(test)]
 mod tests;
 

@@ -63,6 +63,8 @@ mod net_core;
 mod net_pack;
 #[cfg(feature = "net_pull_batch")]
 mod net_pull_batch;
+#[cfg(feature = "net_core")]
+mod net_rest;
 #[cfg(feature = "npc_ai_senses")]
 mod npc_ai_senses;
 #[cfg(feature = "zombie")]
