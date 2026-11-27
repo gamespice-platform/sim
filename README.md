@@ -1,5 +1,7 @@
 Optional native (Rust GDExtension) versions of hot simulation code from the GameSpice addons. Each module gives the same answers as the script it replaces. A game without the library, and every web export, simply runs the script.
 
+This is a GameSpice addon (MIT, built with Claude Code). `examples/sim_selftest.tscn` is the headless suite, and `cargo test` in `rust/` covers the kernels. The games in [Zee's Games](https://zeesgames.com) run on GameSpice addons and live servers, and they load this library where a build ships it. Bug reports go to the [issue tracker](https://github.com/gamespice-platform/sim/issues).
+
 | Module | Replaces |
 | --- | --- |
 | bots | The sight scan of GameSpice Bot's brain |
@@ -21,8 +23,27 @@ Link the sibling addons (`addons/gs_core`, `addons/gs_bot`), install a library, 
 
 Design and numbers: [docs/design.md](docs/design.md). Writing a native twin and its parity suite for any addon: [GameSpice Core native-twins](../gs-core/docs/native-twins.md).
 
-## Status and licence
+## Used by
 
-Part of the [**GameSpice**](https://gamespice.net) platform: a family of Godot addons. Written with Claude Code and maintained by `gamemann`. Every addon has headless tests, but little of this has been played by real users yet, so expect rough edges and please [open an issue](https://github.com/gamespice-platform/sim/issues) when you hit one.
+All of these games from Zee's Games vendor this addon:
+
+- [Fatal Contact](https://zeesgames.com/fatal-contact)
+- [Airdrift](https://zeesgames.com/airdrift)
+- [Playlot](https://zeesgames.com/playlot)
+- [Hungario](https://zeesgames.com/hungario)
+- [Buses From Hell](https://zeesgames.com/buses-from-hell)
+- [Smash Copter](https://zeesgames.com/smash-copter)
+- [Zombie Zone](https://zeesgames.com/zombie-zone)
+- [Hide n Seek](https://zeesgames.com/hide-n-seek)
+- [Prop Hunt](https://zeesgames.com/prop-hunt)
+- [Murder Mystery](https://zeesgames.com/murder-mystery)
+- [Deathrun](https://zeesgames.com/deathrun)
+- [Wipeout](https://zeesgames.com/wipeout)
+- [Dangerous Delivery](https://zeesgames.com/dangerous-delivery)
+- [Look At Me](https://zeesgames.com/look-at-me)
+
+The whole collection is at [zeesgames.com](https://zeesgames.com).
+
+## Licence
 
 MIT licence, see [LICENSE](LICENSE). The only closed part of the [**GameSpice**](https://gamespice.net) platform is the web back end; you can use your own instead of GameSpice's.
