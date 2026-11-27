@@ -3,7 +3,10 @@
 //! physics server. [method load_scene] walks the map's collision bodies once at map load; a baked
 //! blob ([method to_bytes], [method load_bytes]) is the hook for doing that at convert time.
 //! Moving bodies (`AnimatableBody3D`, or any body in the `trace_dynamic` group) are kept as
-//! body-space pieces and re-posed by [method sync_dynamic]. Answers match Godot Physics within
+//! body-space pieces, re-posed in place once a tick from one batch of transforms
+//! ([method update_movers], in [method mover_ids] order) or by reading the bodies
+//! ([method sync_dynamic]); the motor's world sees them and names the body a contact is on.
+//! Answers match Godot Physics within
 //! float noise (fraction 1e-3, normal 1 degree), which the game's parity suite checks.
 
 use godot::classes::{
@@ -13,7 +16,7 @@ use godot::classes::{
 use godot::prelude::*;
 use gs_sim_motor::mirror_world::MirrorWorld;
 use gs_sim_motor::trace::SharedWorld;
-use gs_sim_trace::mirror::{Hit, Mirror};
+use gs_sim_trace::mirror::{Hit, Mirror, XFORM_FLOATS};
 use gs_sim_trace::piece::{Piece, V3, Xform};
 use std::sync::Arc;
 
@@ -188,6 +191,17 @@ impl GSSimTraceMirror {
         }
     }
 
+    /// Hands the movers (body-space pieces, ids = body instance ids) to the mirror; they sit at
+    /// the identity until posed.
+    fn register_movers(&self) {
+        self.mirror.set_movers(
+            self.movers
+                .iter()
+                .map(|m| (m.body.to_i64(), m.pieces.clone()))
+                .collect(),
+        );
+    }
+
     fn hit_dict(from: V3, to: V3, hit: Option<Hit>) -> VarDictionary {
         let mut out = VarDictionary::new();
         if let Some(h) = hit {
@@ -247,22 +261,46 @@ impl GSSimTraceMirror {
     #[func]
     fn build(&mut self) {
         self.mirror = Arc::new(Mirror::new(std::mem::take(&mut self.staged)));
+        self.register_movers();
     }
 
-    /// Re-poses the moving bodies from their current transforms; a freed body drops out. Call it
-    /// on the main thread once a tick, before the tick's queries.
+    /// Re-poses the moving bodies from their current transforms; a freed body drops out (and
+    /// [method mover_ids] changes). Call it on the main thread once a tick, before the tick's
+    /// queries.
     #[func]
     fn sync_dynamic(&mut self) {
-        let mut posed = Vec::new();
+        let before = self.movers.len();
+        let mut batch = Vec::with_capacity(before * XFORM_FLOATS);
         self.movers.retain(|m| {
             let Ok(body) = Gd::<CollisionObject3D>::try_from_instance_id(m.body) else {
                 return false;
             };
-            let x = xform(body.get_global_transform());
-            posed.extend(m.pieces.iter().map(|p| p.transformed(&x)));
+            let t = body.get_global_transform();
+            for c in [t.basis.col_a(), t.basis.col_b(), t.basis.col_c(), t.origin] {
+                batch.extend([c.x, c.y, c.z]);
+            }
             true
         });
-        self.mirror.set_dynamic(posed);
+        if self.movers.len() != before {
+            self.register_movers();
+        }
+        self.mirror.pose_movers(&batch);
+    }
+
+    /// Re-poses the moving bodies from one batch of [param xforms]: twelve floats a mover, in
+    /// [method mover_ids] order, its global transform's basis columns x, y, z then origin. The
+    /// per-tick call: the caller fills one reused array, the mirror re-poses in place. A short
+    /// batch poses the first movers only. Returns how many movers were posed.
+    #[func]
+    fn update_movers(&self, xforms: PackedFloat32Array) -> i64 {
+        self.mirror.pose_movers(xforms.as_slice()) as i64
+    }
+
+    /// The moving bodies' instance ids, in the order [method update_movers] reads them; a contact
+    /// on a mover reports its id.
+    #[func]
+    fn mover_ids(&self) -> PackedInt64Array {
+        self.movers.iter().map(|m| m.body.to_i64()).collect()
     }
 
     /// The static pieces as a bake blob (`GSCM` v1), for a map converter to store.
@@ -277,6 +315,7 @@ impl GSSimTraceMirror {
         match Mirror::from_bytes(bytes.as_slice()) {
             Some(m) => {
                 self.mirror = Arc::new(m);
+                self.register_movers();
                 true
             }
             None => false,

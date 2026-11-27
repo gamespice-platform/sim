@@ -139,6 +139,78 @@ fn dynamic_pieces_are_hit_and_reposed() {
     assert!(m.ray([0.0; 3], [4.0, 0.0, 0.0], 1).is_none());
 }
 
+/// A transform batch entry: basis columns x, y, z, then origin.
+fn xform_floats(cols: [[f32; 3]; 3], origin: [f32; 3]) -> [f32; 12] {
+    let mut f = [0.0; 12];
+    for (c, col) in cols.iter().enumerate() {
+        f[c * 3..c * 3 + 3].copy_from_slice(col);
+    }
+    f[9..].copy_from_slice(&origin);
+    f
+}
+
+const I3: [[f32; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+#[test]
+fn movers_pose_from_one_batch_and_report_their_ids() {
+    let m = Mirror::new(vec![unit_box([0.0, -1.0, 0.0], [10.0, 1.0, 10.0])]);
+    let door = unit_box([0.0; 3], [0.1, 1.0, 1.0]);
+    let lift = unit_box([0.0; 3], [1.0, 0.1, 1.0]);
+    m.set_movers(vec![(77, vec![door.clone()]), (88, vec![lift.clone()])]);
+    assert_eq!(m.mover_ids(), vec![77, 88]);
+    assert_eq!(m.dynamic_len(), 2);
+    let mut batch = Vec::new();
+    batch.extend(xform_floats(I3, [2.0, 1.0, 0.0]));
+    batch.extend(xform_floats(I3, [-5.0, 0.5, 0.0]));
+    assert_eq!(m.pose_movers(&batch), 2);
+    // Posing in place gives Piece::transformed's answer.
+    let moved = door.transformed(&Xform {
+        origin: [2.0, 1.0, 0.0],
+        ..Xform::IDENTITY
+    });
+    let h = m.ray([0.0, 1.0, 0.0], [4.0, 1.0, 0.0], 1).unwrap();
+    assert!(near(h.fraction, 1.9 / 4.0));
+    assert_eq!(h.piece, 1);
+    assert_eq!(m.dynamic_collider(h.piece - m.len()), 77);
+    let mut seen = Vec::new();
+    m.dynamic_near([1.0, 0.0, -1.0], [3.0, 2.0, 1.0], 1, |p, id| {
+        assert_eq!(p, &moved);
+        seen.push(id);
+    });
+    assert_eq!(seen, vec![77]);
+    // The lift raised: a ray down onto its top meets it higher.
+    let down = |m: &Mirror| m.ray([-5.0, 5.0, 0.0], [-5.0, -5.0, 0.0], 1).unwrap();
+    assert!(near(down(&m).fraction, (5.0 - 0.6) / 10.0));
+    assert_eq!(m.dynamic_collider(down(&m).piece - m.len()), 88);
+    batch[9..12].copy_from_slice(&[20.0, 1.0, 0.0]);
+    batch[21..24].copy_from_slice(&[-5.0, 2.5, 0.0]);
+    assert_eq!(m.pose_movers(&batch), 2);
+    assert!(near(down(&m).fraction, (5.0 - 2.6) / 10.0));
+    // The door swung away: the corridor is clear, and the point inside it is empty.
+    let h = m.ray([0.0, 1.0, 0.0], [4.0, 1.0, 0.0], 1);
+    assert!(h.is_none());
+    assert_eq!(m.point_contents([2.0, 1.0, 0.0], 1), 0);
+    assert_eq!(m.point_contents([20.0, 1.0, 0.0], 1), 1);
+    // A short batch poses the first movers only; set_dynamic drops the movers.
+    assert_eq!(m.pose_movers(&batch[..12]), 1);
+    m.set_dynamic(vec![]);
+    assert!(m.mover_ids().is_empty());
+    assert_eq!(m.pose_movers(&batch), 0);
+}
+
+#[test]
+fn rotated_mover_planes_follow_its_basis() {
+    let m = Mirror::new(vec![]);
+    m.set_movers(vec![(5, vec![unit_box([0.0; 3], [0.1, 1.0, 1.0])])]);
+    // Turned 90 degrees about y: the thin slab now lies across z.
+    let turned = [[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]];
+    assert_eq!(m.pose_movers(&xform_floats(turned, [0.0, 0.0, 3.0])), 1);
+    let h = m.ray([0.0; 3], [0.0, 0.0, 6.0], 1).unwrap();
+    assert!(near(h.fraction, 2.9 / 6.0), "{}", h.fraction);
+    assert!(near(h.normal[2], -1.0));
+    assert!(m.ray([0.0; 3], [6.0, 0.0, 0.0], 1).is_none());
+}
+
 #[test]
 fn rotated_box_planes_follow() {
     let c = std::f64::consts::FRAC_1_SQRT_2;

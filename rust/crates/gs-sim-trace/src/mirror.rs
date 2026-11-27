@@ -1,11 +1,13 @@
 //! A map's static collision as a bounding-volume hierarchy over convex pieces: ray, box sweep and
 //! point contents without a physics server. Built once at map load from the scene's shapes (or
 //! read back from a baked blob, [`Mirror::to_bytes`]), then read-only and shared across threads.
-//! Moving bodies (doors, platforms) are a short dynamic list, re-posed per tick and tested
-//! linearly. Answers match Godot Physics within float noise, not to the bit: hit or miss,
+//! Moving bodies (doors, platforms) are a short dynamic list of movers: each mover's pieces are
+//! held in body space, re-posed in place from one batch of transforms per tick
+//! ([`Mirror::pose_movers`]) and tested behind the mover's own bounds, so a query pays only for
+//! the movers it passes near. Answers match Godot Physics within float noise, not to the bit: hit or miss,
 //! fraction within 1e-3 and normal within a degree is the gate.
 
-use crate::piece::{Piece, V3, add, scale, sub};
+use crate::piece::{Piece, V3, Xform, add, scale, sub};
 use std::sync::RwLock;
 
 const LEAF: usize = 4;
@@ -33,13 +35,48 @@ struct Node {
     count: usize,
 }
 
+/// One mover's run of dynamic pieces and their posed bounds.
+#[derive(Clone, Copy, Debug)]
+struct Group {
+    /// The caller's id for the mover (the engine's body instance id), 0 for anonymous pieces.
+    id: i64,
+    first: usize,
+    count: usize,
+    lo: V3,
+    hi: V3,
+}
+
+/// Floats per mover transform in [`Mirror::pose_movers`]: basis columns x, y, z, then origin.
+pub const XFORM_FLOATS: usize = 12;
+
+#[derive(Debug, Default)]
+struct Dynamic {
+    /// World-space pieces; hit index `statics + k` for piece `k`.
+    posed: Vec<Piece>,
+    /// The movers' pieces in body space, parallel to `posed` (empty after [`Mirror::set_dynamic`]).
+    local: Vec<Piece>,
+    groups: Vec<Group>,
+}
+
+fn bounds_of(pieces: &[Piece]) -> (V3, V3) {
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for p in pieces {
+        for a in 0..3 {
+            lo[a] = lo[a].min(p.lo[a]);
+            hi[a] = hi[a].max(p.hi[a]);
+        }
+    }
+    (lo, hi)
+}
+
 /// A map's collision mirror.
 #[derive(Debug, Default)]
 pub struct Mirror {
     pieces: Vec<Piece>,
     nodes: Vec<Node>,
     order: Vec<usize>,
-    dynamic: RwLock<Vec<Piece>>,
+    dynamic: RwLock<Dynamic>,
 }
 
 /// The parameter of the segment `from + t * delta` where it enters the box, if it does within
@@ -77,7 +114,7 @@ impl Mirror {
             order: (0..pieces.len()).collect(),
             pieces,
             nodes: Vec::new(),
-            dynamic: RwLock::new(Vec::new()),
+            dynamic: RwLock::new(Dynamic::default()),
         };
         if !m.pieces.is_empty() {
             let n = m.pieces.len();
@@ -133,14 +170,123 @@ impl Mirror {
         &self.pieces
     }
 
-    /// Replaces the dynamic pieces (already posed in world space).
+    fn read_dynamic(&self) -> std::sync::RwLockReadGuard<'_, Dynamic> {
+        self.dynamic.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn write_dynamic(&self) -> std::sync::RwLockWriteGuard<'_, Dynamic> {
+        self.dynamic.write().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Replaces the dynamic pieces with `pieces`, already posed in world space, as one anonymous
+    /// group (collider id 0) that [`Mirror::pose_movers`] does not move. Drops any movers.
     pub fn set_dynamic(&self, pieces: Vec<Piece>) {
-        *self.dynamic.write().unwrap_or_else(|e| e.into_inner()) = pieces;
+        let mut d = self.write_dynamic();
+        let (lo, hi) = bounds_of(&pieces);
+        d.groups.clear();
+        if !pieces.is_empty() {
+            d.groups.push(Group {
+                id: 0,
+                first: 0,
+                count: pieces.len(),
+                lo,
+                hi,
+            });
+        }
+        d.posed = pieces;
+        d.local.clear();
+    }
+
+    /// Replaces the dynamic pieces with `movers`: each an id (the engine's body instance id, what
+    /// [`Mirror::dynamic_collider`] answers) and its pieces in body space, posed at the identity
+    /// until the first [`Mirror::pose_movers`].
+    pub fn set_movers(&self, movers: Vec<(i64, Vec<Piece>)>) {
+        let mut d = self.write_dynamic();
+        d.groups.clear();
+        d.local.clear();
+        for (id, pieces) in movers {
+            let (lo, hi) = bounds_of(&pieces);
+            let first = d.local.len();
+            d.groups.push(Group {
+                id,
+                first,
+                count: pieces.len(),
+                lo,
+                hi,
+            });
+            d.local.extend(pieces);
+        }
+        d.posed = d.local.clone();
+    }
+
+    /// Re-poses the movers from one batch of transforms, [`XFORM_FLOATS`] per mover in
+    /// [`Mirror::set_movers`] order (basis columns x, y, z, then origin, as Godot's `Transform3D`
+    /// reads). In place: no allocation once each posed piece has its size. A short batch poses
+    /// the first movers only. How many movers were posed.
+    pub fn pose_movers(&self, xforms: &[f32]) -> usize {
+        let mut d = self.write_dynamic();
+        if d.local.len() != d.posed.len() {
+            return 0;
+        }
+        let n = d.groups.len().min(xforms.len() / XFORM_FLOATS);
+        let Dynamic {
+            posed,
+            local,
+            groups,
+        } = &mut *d;
+        for (g, f) in groups.iter_mut().zip(xforms.as_chunks::<XFORM_FLOATS>().0).take(n) {
+            let v = |i: usize| [f64::from(f[i]), f64::from(f[i + 1]), f64::from(f[i + 2])];
+            let x = Xform {
+                cols: [v(0), v(3), v(6)],
+                origin: v(9),
+            };
+            let run = g.first..g.first + g.count;
+            for (src, out) in local[run.clone()].iter().zip(posed[run.clone()].iter_mut()) {
+                src.pose_into(&x, out);
+            }
+            (g.lo, g.hi) = bounds_of(&posed[run]);
+        }
+        n
+    }
+
+    /// The movers' ids, in [`Mirror::set_movers`] order (anonymous pieces are not a mover).
+    pub fn mover_ids(&self) -> Vec<i64> {
+        let d = self.read_dynamic();
+        if d.local.is_empty() {
+            return Vec::new();
+        }
+        d.groups.iter().map(|g| g.id).collect()
     }
 
     /// How many dynamic pieces.
     pub fn dynamic_len(&self) -> usize {
-        self.dynamic.read().unwrap_or_else(|e| e.into_inner()).len()
+        self.read_dynamic().posed.len()
+    }
+
+    /// The id of the mover dynamic piece `k` belongs to (a hit's `piece - statics`), 0 for an
+    /// anonymous piece or none.
+    pub fn dynamic_collider(&self, k: usize) -> i64 {
+        let d = self.read_dynamic();
+        d.groups
+            .iter()
+            .find(|g| k >= g.first && k < g.first + g.count)
+            .map_or(0, |g| g.id)
+    }
+
+    /// Every posed dynamic piece on `mask` whose box meets `lo`..`hi`, with its mover's id.
+    pub fn dynamic_near(&self, lo: V3, hi: V3, mask: u32, mut f: impl FnMut(&Piece, i64)) {
+        let meets = |a: V3, b: V3| (0..3).all(|i| a[i] <= hi[i] && b[i] >= lo[i]);
+        let d = self.read_dynamic();
+        for g in &d.groups {
+            if !meets(g.lo, g.hi) {
+                continue;
+            }
+            for p in &d.posed[g.first..g.first + g.count] {
+                if p.layer & mask != 0 && meets(p.lo, p.hi) {
+                    f(p, g.id);
+                }
+            }
+        }
     }
 
     /// Walks the leaves whose box (grown by `grow`) the segment enters before the best hit so far;
@@ -180,13 +326,19 @@ impl Mirror {
                 top += 2;
             }
         }
-        let dynamic = self.dynamic.read().unwrap_or_else(|e| e.into_inner());
-        for (k, p) in dynamic.iter().enumerate() {
-            if p.layer & mask != 0
-                && seg_box(from, inv, sub(p.lo, grow), add(p.hi, grow), best).is_some()
-                && let Some(t) = test(self.pieces.len() + k, p, best)
-            {
-                best = t;
+        let d = self.read_dynamic();
+        for g in &d.groups {
+            if seg_box(from, inv, sub(g.lo, grow), add(g.hi, grow), best).is_none() {
+                continue;
+            }
+            for k in g.first..g.first + g.count {
+                let p = &d.posed[k];
+                if p.layer & mask != 0
+                    && seg_box(from, inv, sub(p.lo, grow), add(p.hi, grow), best).is_some()
+                    && let Some(t) = test(self.pieces.len() + k, p, best)
+                {
+                    best = t;
+                }
             }
         }
     }
@@ -274,10 +426,15 @@ impl Mirror {
                 top += 2;
             }
         }
-        let dynamic = self.dynamic.read().unwrap_or_else(|e| e.into_inner());
-        for q in dynamic.iter() {
-            if q.layer & mask != 0 && q.contains(p) {
-                layers |= q.layer & mask;
+        let d = self.read_dynamic();
+        for g in &d.groups {
+            if !inside(g.lo, g.hi) {
+                continue;
+            }
+            for q in &d.posed[g.first..g.first + g.count] {
+                if q.layer & mask != 0 && q.contains(p) {
+                    layers |= q.layer & mask;
+                }
             }
         }
         layers

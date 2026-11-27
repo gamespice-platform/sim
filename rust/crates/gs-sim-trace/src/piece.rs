@@ -331,6 +331,37 @@ impl Piece {
         moved
     }
 
+    /// [`Piece::transformed`] written into `out`, reusing its buffers: a mover re-posed every
+    /// tick allocates nothing once its posed copy has the right sizes. Same math, same answer.
+    pub fn pose_into(&self, xform: &Xform, out: &mut Piece) {
+        out.verts.clear();
+        out.verts.extend(self.verts.iter().map(|v| xform.point(*v)));
+        out.planes.clear();
+        out.planes.extend(self.planes.iter().map(|p| {
+            let n0 = normal_of(p);
+            let n = xform.normal(n0);
+            let on = xform.point(scale(n0, p[3]));
+            [n[0], n[1], n[2], dot(n, on)]
+        }));
+        out.edges.clear();
+        out.edges.extend(
+            self.edges
+                .iter()
+                .map(|e| unit(xform.vector(*e)).unwrap_or(*e)),
+        );
+        out.solid = self.solid;
+        out.layer = self.layer;
+        out.shape = self.shape;
+        out.lo = [f64::INFINITY; 3];
+        out.hi = [f64::NEG_INFINITY; 3];
+        for v in &out.verts {
+            for (a, c) in v.iter().enumerate() {
+                out.lo[a] = out.lo[a].min(*c);
+                out.hi[a] = out.hi[a].max(*c);
+            }
+        }
+    }
+
     /// Whether `p` is inside the solid (on a face counts); always false for a triangle.
     pub fn contains(&self, p: V3) -> bool {
         self.solid

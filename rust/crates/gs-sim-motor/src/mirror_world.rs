@@ -18,7 +18,10 @@
 //!
 //! Distances come from GJK between the capsule's core segment and a piece's vertices. A capsule
 //! deeper than its radius is pushed out along the piece's face plane that needs the least travel.
-//! The mirror's dynamic pieces are private to it, so movers are not seen here.
+//! Movers (doors, platforms) are the mirror's dynamic pieces, posed by the caller once a tick
+//! ([`Mirror::pose_movers`]); every query sees them where they were last posed. A mover's
+//! contacts carry its id (the engine body's instance id), so a motor standing on one probes it as
+//! ground and rides it, as it does over the engine.
 
 use std::sync::Arc;
 
@@ -115,14 +118,17 @@ impl<'a> Probe<'a> {
         }
     }
 
-    fn near(&self, lo: V3, hi: V3, mut f: impl FnMut(&Piece)) {
+    /// Every piece on the mask whose box meets `lo`..`hi`, static then movers, with the collider
+    /// id a contact on it reports.
+    fn near(&self, lo: V3, hi: V3, mut f: impl FnMut(&Piece, i64)) {
         let pieces = self.w.pieces();
         self.w.bvh.query(lo, hi, |i| {
             let p = &pieces[i];
             if p.layer & self.mask != 0 {
-                f(p);
+                f(p, collider_id(p));
             }
         });
+        self.w.mirror.dynamic_near(lo, hi, self.mask, f);
     }
 }
 
@@ -147,13 +153,14 @@ impl Space for Probe<'_> {
         let (lo2, hi2) = c.bounds(to);
         let lo = [lo[0].min(lo2[0]), lo[1].min(lo2[1]), lo[2].min(lo2[2])];
         let hi = [hi[0].max(hi2[0]), hi[1].max(hi2[1]), hi[2].max(hi2[2])];
-        // Per engine shape: (id, started inside, first contact).
-        let mut shapes: Vec<(u32, bool, f64)> = Vec::new();
-        self.near(lo, hi, |p| {
-            let k = match shapes.iter().position(|s| s.0 == p.shape) {
+        // Per engine shape (collider, shape): (key, started inside, first contact).
+        let mut shapes: Vec<((i64, u32), bool, f64)> = Vec::new();
+        self.near(lo, hi, |p, id| {
+            let key = (id, p.shape);
+            let k = match shapes.iter().position(|s| s.0 == key) {
                 Some(k) => k,
                 None => {
-                    shapes.push((p.shape, false, f64::INFINITY));
+                    shapes.push((key, false, f64::INFINITY));
                     shapes.len() - 1
                 }
             };
@@ -187,12 +194,12 @@ impl Space for Probe<'_> {
         let at = v3(at);
         let (lo, hi) = c.bounds(at);
         let mut best: Option<(f64, V3, V3, i64)> = None;
-        self.near(lo, hi, |p| {
+        self.near(lo, hi, |p, id| {
             if let Some((n, point, depth)) = c.contact(at, p)
                 && depth > MIN_REST_DEPTH
                 && best.is_none_or(|b| depth > b.0)
             {
-                best = Some((depth, n, point, collider_id(p)));
+                best = Some((depth, n, point, id));
             }
         });
         best.map(|(_, n, point, id)| Contact {
@@ -207,7 +214,7 @@ impl Space for Probe<'_> {
         let at = v3(at);
         let (lo, hi) = c.bounds(at);
         let mut any = false;
-        self.near(lo, hi, |p| {
+        self.near(lo, hi, |p, _| {
             if !any && c.closest(at, p).dist < c.radius {
                 any = true;
             }
@@ -221,7 +228,10 @@ impl Space for Probe<'_> {
         Some(Contact {
             normal: vec(h.normal),
             point: vec(Mirror::at(a, b, h.fraction)),
-            collider_id: self.w.pieces().get(h.piece).map_or(0, collider_id),
+            collider_id: match self.w.pieces().get(h.piece) {
+                Some(p) => collider_id(p),
+                None => self.w.mirror.dynamic_collider(h.piece - self.w.pieces().len()),
+            },
         })
     }
 }
@@ -796,5 +806,110 @@ mod tests {
             .ray(Vec3::new(0.0, 5.0, 0.0), Vec3::new(0.0, -5.0, 0.0), 1)
             .unwrap();
         assert!(c.point.y.abs() < 1e-4 && c.normal.y > 0.999, "{c:?}");
+    }
+
+    /// One mover's transform batch entry at `origin`, unrotated.
+    fn at(origin: [f32; 3]) -> [f32; 12] {
+        let mut f = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0];
+        f[9..].copy_from_slice(&origin);
+        f
+    }
+
+    const LIFT: i64 = 4_000_000_001;
+    const DOOR: i64 = 4_000_000_002;
+
+    /// The floor plus a lift (a 2 m square slab 0.2 thick) and a door (a slab across x), both in
+    /// body space, posed through the batch.
+    fn with_movers() -> MirrorWorld {
+        let w = floor();
+        w.mirror.set_movers(vec![
+            (LIFT, vec![cuboid([0.0; 3], [1.0, 0.1, 1.0])]),
+            (DOOR, vec![cuboid([0.0; 3], [0.1, 1.5, 2.0])]),
+        ]);
+        w
+    }
+
+    #[test]
+    fn lift_raised_under_a_capsule_carries_it() {
+        let w = with_movers();
+        let mut batch = [0.0f32; 24];
+        batch[..12].copy_from_slice(&at([5.0, 0.5, 0.0]));
+        batch[12..].copy_from_slice(&at([-8.0, 1.5, 0.0]));
+        assert_eq!(w.mirror.pose_movers(&batch), 2);
+        // Resting on the lift's top (y 0.6): the contact names the lift, so the motor rides it.
+        let r = w.rest_contact(Vec3::new(5.0, 0.6 + 0.89, 0.0), 1.8, 0.4, M);
+        assert!(r.hit && (r.normal.y - 1.0).abs() < 1e-5, "{r:?}");
+        assert_eq!(r.collider_id, LIFT);
+        // The lift rises 0.3: the capsule that rested on it is now inside it, and a fall onto it
+        // lands 0.3 higher.
+        batch[..12].copy_from_slice(&at([5.0, 0.8, 0.0]));
+        assert_eq!(w.mirror.pose_movers(&batch), 2);
+        let r = w.rest_contact(Vec3::new(5.0, 0.6 + 0.89, 0.0), 1.8, 0.4, M);
+        assert!(r.hit && r.depth > 0.29 && r.collider_id == LIFT, "{r:?}");
+        let h = w.sweep(
+            Vec3::new(5.0, 3.0, 0.0),
+            Vec3::new(0.0, -3.0, 0.0),
+            1.8,
+            0.4,
+            M,
+        );
+        assert!(h.hit && h.collider_id == LIFT, "{h:?}");
+        assert!((h.point.y - 0.9).abs() < 1e-2, "{h:?}");
+        // Beside the lift there is only the floor.
+        let r = w.rest_contact(Vec3::new(0.0, 0.89, 0.0), 1.8, 0.4, M);
+        assert!(r.hit && r.collider_id == 1, "{r:?}");
+    }
+
+    #[test]
+    fn door_posed_in_the_path_blocks_and_swung_away_clears() {
+        let w = with_movers();
+        let mut batch = [0.0f32; 24];
+        batch[..12].copy_from_slice(&at([-8.0, 0.5, 0.0]));
+        batch[12..].copy_from_slice(&at([2.0, 1.5, 0.0]));
+        w.mirror.pose_movers(&batch);
+        let walk = |w: &MirrorWorld| {
+            w.sweep(
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(4.0, 0.0, 0.0),
+                1.8,
+                0.4,
+                M,
+            )
+        };
+        let h = walk(&w);
+        assert!(h.hit && h.collider_id == DOOR, "{h:?}");
+        // The capsule's side (0.4 out) meets the door's face at x 1.9 after 1.5 of 4 metres.
+        assert!((h.fraction - 1.5 / 4.0).abs() < 2.0 / 256.0, "{h:?}");
+        assert!((h.normal.x + 1.0).abs() < 1e-4, "{h:?}");
+        let c = w
+            .ray(Vec3::new(0.0, 1.0, 0.0), Vec3::new(4.0, 1.0, 0.0), 1)
+            .unwrap();
+        assert_eq!(c.collider_id, DOOR);
+        assert!(w.overlaps(Vec3::new(2.0, 1.0, 0.0), 1.8, 0.4, M));
+        // Swung open (slid 5 m aside): the corridor is clear again.
+        batch[12..].copy_from_slice(&at([2.0, 1.5, 5.0]));
+        w.mirror.pose_movers(&batch);
+        assert!(!walk(&w).hit);
+        assert!(
+            w.ray(Vec3::new(0.0, 1.0, 0.0), Vec3::new(4.0, 1.0, 0.0), 1)
+                .is_none()
+        );
+        // Off the motor's mask a mover is not there.
+        batch[12..].copy_from_slice(&at([2.0, 1.5, 0.0]));
+        w.mirror.pose_movers(&batch);
+        let off = Masks {
+            collision: 2,
+            pass_out: 0,
+        };
+        assert!(
+            !w.sweep(
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(4.0, 0.0, 0.0),
+                1.8,
+                0.4,
+                off
+            )
+            .hit
+        );
     }
 }
