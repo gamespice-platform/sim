@@ -12,6 +12,8 @@ mod batch;
 mod body_sight;
 #[cfg(feature = "brain")]
 mod bot_drops;
+#[cfg(feature = "brain")]
+mod bot_finish;
 #[cfg(feature = "bots")]
 mod bots;
 #[cfg(feature = "brain")]
@@ -91,6 +93,8 @@ mod snapshot_batch;
 mod spawn;
 #[cfg(feature = "zombie")]
 mod think;
+#[cfg(feature = "brain")]
+mod think_mt;
 #[cfg(feature = "threat")]
 mod threat;
 #[cfg(feature = "bots")]

@@ -9,6 +9,7 @@
 pub mod act;
 pub mod aim;
 pub mod fight;
+pub mod finish;
 pub mod hear;
 pub mod num;
 pub mod pickup;

@@ -6,10 +6,15 @@
 //! order, skipping the mover, a slot without a controller, one farther than the reach (the
 //! squared distance in `f32`, as `Vector3.distance_squared_to`), a dead one and a pair the
 //! pair callable lets pass; each box `AABB(feet - Vector3(r, 0, r), Vector3(r * 2, h, r * 2))`.
+//!
+//! It also files the players in FC's hull grid (`FcHullGrid`, [`hull_grid`]) for the script gathers
+//! of lag-compensated movers: filed where each stood at `begin`, re-filed where its own turn left it
+//! (`refile`, `turn`), never by a batch running a motor ahead; `near` is the grid's answer.
 
 use godot::prelude::*;
 use gs_sim_motor::Vec3 as V3;
 use gs_sim_motor::slide::Aabb as SlideBox;
+use gs_sim_players::hull_grid;
 
 /// Per slot in [`GSSimHullWorld::begin`]'s data: x, y, z, radius, stand height, flags.
 const SLOT_LEN: usize = 6;
@@ -36,6 +41,9 @@ pub struct GSSimHullWorld {
     memo: Vec<u8>,
     gathers: i64,
     pair_calls: i64,
+    /// Per slot the hull grid cell it is filed in ([`hull_grid::UNFILED`]: not present).
+    filed: Vec<i64>,
+    near_buf: Vec<i64>,
 }
 
 impl GSSimHullWorld {
@@ -68,6 +76,7 @@ impl GSSimHullWorld {
         self.radius.clear();
         self.height.clear();
         self.flags.clear();
+        self.filed.clear();
         for (i, &id) in ids.iter().enumerate().take(n) {
             let s = &d[i * SLOT_LEN..(i + 1) * SLOT_LEN];
             self.ids.push(id);
@@ -76,6 +85,11 @@ impl GSSimHullWorld {
             self.radius.push(s[3]);
             self.height.push(s[4]);
             self.flags.push(s[5] as i64);
+            self.filed.push(if (s[5] as i64) & PRESENT != 0 {
+                hull_grid::key_at(s[0] as f32, s[2] as f32)
+            } else {
+                hull_grid::UNFILED
+            });
         }
         self.memo.clear();
         self.memo.resize(n * n, 0);
@@ -104,6 +118,41 @@ impl GSSimHullWorld {
         {
             *f = if alive { *f | ALIVE } else { *f & !ALIVE };
         }
+    }
+
+    /// Slot `slot`'s turn left it at `x, _, z`: re-filed in the hull grid (`FcHullGrid.moved`).
+    #[func]
+    fn refile(&mut self, slot: i64, x: f64, z: f64) {
+        if let Some(k) = usize::try_from(slot)
+            .ok()
+            .and_then(|s| self.filed.get_mut(s))
+        {
+            *k = hull_grid::key_at(x as f32, z as f32);
+        }
+    }
+
+    /// The end of slot `slot`'s turn in one call: re-filed at `x, y, z` (`refile`), standing there
+    /// for the gathers when `move_feet` (`moved`), and not alive any more when `dead` (`set_alive`).
+    #[func]
+    fn turn(&mut self, slot: i64, x: f64, y: f64, z: f64, move_feet: bool, dead: bool) {
+        self.refile(slot, x, z);
+        if move_feet {
+            self.moved(slot, x, y, z);
+        }
+        if dead {
+            self.set_alive(slot, false);
+        }
+    }
+
+    /// The hull grid's answer for an asker at `x, _, z` (`FcHullGrid.near`): every filed slot in a
+    /// cell the square of half side `sqrt(reach_sq)` touches, ascending.
+    #[func]
+    fn near(&mut self, x: f64, z: f64, reach_sq: f64) -> PackedInt64Array {
+        let mut buf = std::mem::take(&mut self.near_buf);
+        hull_grid::near(&self.filed, x as f32, z as f32, reach_sq, &mut buf);
+        let out = PackedInt64Array::from(&buf[..]);
+        self.near_buf = buf;
+        out
     }
 
     /// The loop is over: a motor tick asking from now on gets no answer and gathers by script.

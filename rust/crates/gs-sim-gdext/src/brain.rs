@@ -4,8 +4,10 @@
 //! The view comes back as `f64`s, never a `Vector2`, so the script's yaw keeps its precision.
 
 use crate::bots::{GSSimBotSenses, Packed};
+use crate::sight::SightConf;
 use crate::sight::{GSSimSightRay, SightQuery};
 use godot::prelude::*;
+use gs_sim_bots::choose::{Pick, choose};
 use gs_sim_bots::{Found, Query, candidates};
 use gs_sim_brain::aim::direction;
 use gs_sim_brain::fight::FirstShot;
@@ -20,7 +22,7 @@ use std::sync::Arc;
 const SIGHT_REUSE: f64 = 0.045;
 
 /// How close a body is felt from outside the view cone (GSBotBrain.CLOSE_NOTICE).
-const CLOSE_NOTICE: f64 = 2.0;
+pub(crate) const CLOSE_NOTICE: f64 = 2.0;
 
 /// The `io` layout of [`GSSimBotMind::fight`] (and GSBotBrain's packing of it).
 mod io {
@@ -51,7 +53,7 @@ mod io {
     pub const LEN: usize = PUSH + 1;
 }
 
-fn v3(v: Vector3) -> V3 {
+pub(crate) fn v3(v: Vector3) -> V3 {
     V3::new(v.x, v.y, v.z)
 }
 
@@ -83,15 +85,15 @@ pub struct GSSimBotMind {
     aim: Aim,
     brain_key: i64,
     /// Per target id: when sight was last asked, the answer and the world's sight stamp then.
-    sight: HashMap<i64, (f64, bool, i64)>,
+    pub(crate) sight: HashMap<i64, (f64, bool, i64)>,
     /// Sight LOD (`set_sight_lod`): beyond `far` m (0 = off) a "not seen" is held `far_reuse` s.
-    far: f64,
-    far_reuse: f64,
-    found: Found,
+    pub(crate) far: f64,
+    pub(crate) far_reuse: f64,
+    pub(crate) found: Found,
     /// The tick's bodies handed over on the main thread (`hold_senses`) for `perceive_held`.
-    held: Option<Arc<Packed>>,
+    pub(crate) held: Option<Arc<Packed>>,
     /// The query this mind asks a [`GSSimSightRay`] with, when that is its `los`.
-    query: SightQuery,
+    pub(crate) query: SightQuery,
     /// GSBotTricks' state, kept here between steps ([`Self::tricks_step`]).
     trick: gs_sim_brain::tricks::Resident,
     unstick: gs_sim_brain::unstick::Unstick,
@@ -108,20 +110,82 @@ impl GSSimBotMind {
     /// [`Self::sight_held`] with the sight LOD: a "not seen" is also good for `far_reuse` s
     /// (never a "seen"; 0 or less holds nothing longer).
     fn sight_held_far(&self, id: i64, now: f64, stamp: i64, far_reuse: f64) -> Option<bool> {
-        match self.sight.get(&id) {
-            Some(&(at, seen, st)) if st == stamp && now >= at => {
-                if now - at < SIGHT_REUSE || (!seen && now - at < far_reuse) {
-                    Some(seen)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
+        held_far(&self.sight, id, now, stamp, far_reuse)
     }
 }
 
-fn gv(v: V3) -> Vector3 {
+/// A sight cache's good answer about `id` (see [`GSSimBotMind::sight_held_far`]), `None` when
+/// sight must be asked.
+pub(crate) fn held_far(
+    sight: &HashMap<i64, (f64, bool, i64)>,
+    id: i64,
+    now: f64,
+    stamp: i64,
+    far_reuse: f64,
+) -> Option<bool> {
+    match sight.get(&id) {
+        Some(&(at, seen, st)) if st == stamp && now >= at => {
+            if now - at < SIGHT_REUSE || (!seen && now - at < far_reuse) {
+                Some(seen)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// How long a "not seen" about `row` is held under the sight LOD: `far_reuse` for a body (never
+/// the target) beyond `far` m of `eye`, else 0.
+pub(crate) fn lod_reuse(
+    held: &Packed,
+    row: usize,
+    eye: V3,
+    target_id: i64,
+    far: f64,
+    far_reuse: f64,
+) -> f64 {
+    if far > 0.0 && held.table.ids[row] != target_id {
+        let p = held.positions[row];
+        let (dx, dy, dz) = (eye.x - p.x, eye.y - p.y, eye.z - p.z);
+        if ((dx * dx + dy * dy + dz * dz) as f64) > far * far {
+            return far_reuse;
+        }
+    }
+    0.0
+}
+
+/// The world's sight as a native ray, when `los` is a [`GSSimSightRay`]'s `clear` with nothing bound.
+pub(crate) fn direct_conf(los: &Callable) -> Option<Arc<SightConf>> {
+    match (los.object(), los.method_name()) {
+        (Some(obj), Some(name)) if name == "clear" && los.get_bound_arguments_count() == 0 => obj
+            .try_cast::<GSSimSightRay>()
+            .ok()
+            .map(|ray| ray.bind().conf()),
+        _ => None,
+    }
+}
+
+/// Whether the bot at `eye` sees the body at `row`: its chest, then its head (main thread: `los`
+/// may call into script).
+pub(crate) fn ask_row(
+    query: &mut SightQuery,
+    direct: &Option<Arc<SightConf>>,
+    los: &Callable,
+    eye: Vector3,
+    held: &Packed,
+    row: usize,
+) -> bool {
+    let mut ask = |to: V3| match direct {
+        Some(conf) => conf.clear(query, eye, gv(to)),
+        None => los
+            .call(&[eye.to_variant(), gv(to).to_variant()])
+            .booleanize(),
+    };
+    ask(held.table.points[row]) || ask(held.eyes[row])
+}
+
+pub(crate) fn gv(v: V3) -> Vector3 {
     Vector3::new(v.x, v.y, v.z)
 }
 
@@ -977,73 +1041,21 @@ impl GSSimBotMind {
             (visible, target_id)
         };
         // The world's sight as a native ray: asked here, not through a call into script.
-        let direct = match (los.object(), los.method_name()) {
-            (Some(obj), Some(name)) if name == "clear" && los.get_bound_arguments_count() == 0 => {
-                obj.try_cast::<GSSimSightRay>()
-                    .ok()
-                    .map(|ray| ray.bind().conf())
-            }
-            _ => None,
-        };
-        let sees = |mind: &mut Self, row: usize| -> bool {
+        let direct = direct_conf(&los);
+        let pick = choose(&mut found, table, target_id, visible, through, |row| {
             let id = table.ids[row];
-            // Sight LOD: a far body (never the target) keeps a "not seen" longer.
-            let mut reuse = 0.0;
-            if far > 0.0 && id != target_id {
-                let p = held.positions[row];
-                let (dx, dy, dz) = (eye3.x - p.x, eye3.y - p.y, eye3.z - p.z);
-                if ((dx * dx + dy * dy + dz * dz) as f64) > far * far {
-                    reuse = far_reuse;
-                }
+            let reuse = lod_reuse(held, row, eye3, target_id, far, far_reuse);
+            if let Some(seen) = self.sight_held_far(id, now, stamp, reuse) {
+                return Some(seen);
             }
-            if let Some(seen) = mind.sight_held_far(id, now, stamp, reuse) {
-                return seen;
-            }
-            let query = &mut mind.query;
-            let mut ask = |to: V3| match &direct {
-                Some(conf) => conf.clear(query, eye, gv(to)),
-                None => los
-                    .call(&[eye.to_variant(), gv(to).to_variant()])
-                    .booleanize(),
-            };
-            let seen = ask(table.points[row]) || ask(held.eyes[row]);
-            mind.sight.insert(id, (now, seen, stamp));
-            seen
+            let seen = ask_row(&mut self.query, &direct, &los, eye, held, row);
+            self.sight.insert(id, (now, seen, stamp));
+            Some(seen)
+        });
+        let chosen = match pick {
+            Pick::Chosen(row) => row,
+            Pick::Need(_) => -1,
         };
-        let mut chosen: i32 = -1;
-        let mut current = false;
-        if visible {
-            for i in 0..found.index.len() {
-                let row = found.index[i] as usize;
-                if table.ids[row] == target_id {
-                    if through || sees(self, row) {
-                        chosen = found.index[i];
-                        current = true;
-                    }
-                    found.scores[i] = f32::INFINITY;
-                    break;
-                }
-            }
-        }
-        if !current {
-            loop {
-                let mut bi: Option<usize> = None;
-                let mut best = f64::INFINITY;
-                for (i, s) in found.scores.iter().enumerate() {
-                    if (*s as f64) < best {
-                        best = *s as f64;
-                        bi = Some(i);
-                    }
-                }
-                let Some(bi) = bi else { break };
-                let row = found.index[bi] as usize;
-                if through || sees(self, row) {
-                    chosen = found.index[bi];
-                    break;
-                }
-                found.scores[bi] = f32::INFINITY;
-            }
-        }
         let dead = found.target_dead as i32;
         self.found = found;
         PackedInt32Array::from(&[chosen, dead][..])

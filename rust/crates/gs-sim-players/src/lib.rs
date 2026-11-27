@@ -11,6 +11,7 @@
 //! posture row, then [`OUT_STILL`]). Velocity components are the engine's f32 values widened, so
 //! the speed is the f32 `Vector2(x, z).length()` the script computes.
 
+pub mod hull_grid;
 pub mod table;
 
 /// Floats per input row.
