@@ -1,0 +1,9 @@
+[package]
+name = "gs-sim-events"
+description = "A tick's event rows: a player's motor edges (mode, landing, jump, step, crouch, slide, launch, dash, wall run, view turn) derived from packed before and after rows in the controller's order, pure Rust."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]

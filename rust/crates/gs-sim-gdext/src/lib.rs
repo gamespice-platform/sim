@@ -29,6 +29,8 @@ mod crowd;
 mod doors;
 #[cfg(feature = "doubt")]
 mod doubt;
+#[cfg(feature = "events")]
+mod events;
 #[cfg(feature = "figure")]
 mod figure;
 #[cfg(feature = "figure")]
