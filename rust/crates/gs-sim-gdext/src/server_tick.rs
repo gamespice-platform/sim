@@ -17,7 +17,7 @@ use crate::hulls::GSSimHullWorld;
 use godot::prelude::*;
 use gs_sim_events::{EventTable, FLOATS, IN, IN_B_MODE, IN_B_Y, INTS, kind, slot};
 use gs_sim_players::table::{BEGIN, FLAG_ALIVE, STRIDE, Table};
-use gs_sim_players::{Config, OUT, post_head, run_rows};
+use gs_sim_players::{Config, OUT, post_head, pre, run_rows};
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
@@ -46,6 +46,11 @@ pub struct GSSimServerTick {
     /// [`Self::post_head`] rows answered from a motor slot, and rows whose slot did not run.
     head_rows: i64,
     head_misses: i64,
+    /// [`Self::pre`]'s answer, kept between calls.
+    pre_out: Vec<f64>,
+    /// [`Self::pre`] rows answered, and of those the rows that sat the tick out.
+    pre_rows: i64,
+    pre_skips: i64,
     /// Seconds stepped since the last [`Self::reset_counters`].
     time: f64,
 }
@@ -57,7 +62,14 @@ impl GSSimServerTick {
     /// 4: [`Self::derive_slots`], event rows filled from the resident motor rows.
     /// 5: [`Self::post_head`], the players' post-head pass from the resident motor rows.
     #[constant]
-    const API: i64 = 5;
+    /// 6: [`Self::pre`], the players' pre-motor pass (body gate and ladder wish).
+    const API: i64 = 6;
+    /// Floats per row of [`Self::pre`]'s input (`gs_sim_players::pre::IN`).
+    #[constant]
+    const PRE_IN: i64 = pre::IN as i64;
+    /// Floats per row of [`Self::pre`]'s answer: kind (0 reset, 1 run, 2 skip), delta, wish x, wish z.
+    #[constant]
+    const PRE_OUT: i64 = pre::OUT as i64;
     /// Floats per row of [`Self::post_head`]'s input: motor slot, gate, crouch height ratio.
     #[constant]
     const POST_HEAD_IN: i64 = post_head::IN as i64;
@@ -199,6 +211,28 @@ impl GSSimServerTick {
         PackedFloat64Array::from(&self.head_out[..])
     }
 
+    /// The players' pre-motor pass for `count` packed rows ([constant PRE_IN] floats each, see
+    /// `gs_sim_players::pre`): FC's body gate and ladder wish, [constant PRE_OUT] floats per row.
+    /// `max_gap` is the longest gap made up; the ground mode is [method configure]'s.
+    #[func]
+    fn pre(&mut self, rows: PackedFloat64Array, count: i64, max_gap: i64) -> PackedFloat64Array {
+        let n = usize::try_from(count)
+            .unwrap_or(0)
+            .min(rows.len() / pre::IN);
+        self.pre_out.resize(n * pre::OUT, 0.0);
+        let ground = self.cfg.ground_mode;
+        let ins = rows.as_slice()[..n * pre::IN].as_chunks::<{ pre::IN }>().0;
+        let outs = self.pre_out.as_chunks_mut::<{ pre::OUT }>().0;
+        for (r, o) in ins.iter().zip(outs.iter_mut()) {
+            pre::row(r, max_gap, ground, o);
+            if o[0] == pre::SKIP {
+                self.pre_skips += 1;
+            }
+        }
+        self.pre_rows += n as i64;
+        PackedFloat64Array::from(&self.pre_out[..])
+    }
+
     /// This tick's events, `[entity, kind, i0, i1]` each (`GSSimTickEvents.ints`).
     #[func]
     fn ints(&self) -> PackedInt32Array {
@@ -282,7 +316,8 @@ impl GSSimServerTick {
 
     /// Steps, rows refreshed from motor rows, rows refreshed from feet, posture rows, event rows
     /// derived, rows filled from motor rows, marker rows missed ([`Self::derive_slots`]), since
-    /// the last reset, then post-head rows answered and missed ([`Self::post_head`]).
+    /// the last reset, then post-head rows answered and missed ([`Self::post_head`]), then pre rows
+    /// answered and skipped ([`Self::pre`]).
     #[func]
     fn counters(&self) -> PackedInt64Array {
         PackedInt64Array::from(
@@ -296,6 +331,8 @@ impl GSSimServerTick {
                 self.slot_misses,
                 self.head_rows,
                 self.head_misses,
+                self.pre_rows,
+                self.pre_skips,
             ][..],
         )
     }
@@ -317,6 +354,8 @@ impl GSSimServerTick {
         self.slot_misses = 0;
         self.head_rows = 0;
         self.head_misses = 0;
+        self.pre_rows = 0;
+        self.pre_skips = 0;
         self.time = 0.0;
     }
 }
