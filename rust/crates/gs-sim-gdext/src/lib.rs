@@ -10,6 +10,8 @@ mod audio;
 mod batch;
 #[cfg(feature = "seek")]
 mod body_sight;
+#[cfg(feature = "brain")]
+mod bot_drops;
 #[cfg(feature = "bots")]
 mod bots;
 #[cfg(feature = "brain")]
