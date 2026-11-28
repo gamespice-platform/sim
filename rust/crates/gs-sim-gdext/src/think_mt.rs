@@ -7,11 +7,13 @@
 //! bit, whatever the thread count.
 
 use crate::bots::Packed;
-use crate::brain::{CLOSE_NOTICE, GSSimBotMind, ask_row, direct_conf, held_far, lod_reuse, v3};
+use crate::brain::{
+    CLOSE_NOTICE, GSSimBotMind, ask_pair, ask_row, direct_conf, held_far, lod_reuse, v3,
+};
 use crate::sight::SightQuery;
 use godot::prelude::*;
 use gs_sim_bots::choose::{Pick, choose};
-use gs_sim_bots::{Found, Query, candidates};
+use gs_sim_bots::{Found, Query, candidates_grid};
 use gs_sim_brain::aim::direction;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -71,7 +73,18 @@ impl GSSimBotThinkMt {
             let mut asked = false;
             for (w, query) in works.iter_mut().zip(queries.iter_mut()) {
                 if let Some(Pick::Need(row)) = w.pick {
-                    let seen = ask_row(query, &direct, &los, w.eye, &w.held, row);
+                    // Pair sight (flag 4) answers from the tick's pair cache when another bot asked
+                    // first; it is asked here, not on the pool, so the sight cache fills as in
+                    // `perceive_held`.
+                    let seen = if w.pair {
+                        let me_row = w.held.row_of(w.query.me_id);
+                        let me_id = w.query.me_id;
+                        ask_pair(
+                            query, &direct, &los, me_id, w.eye, me_row, &w.held, row, w.stamp,
+                        )
+                    } else {
+                        ask_row(query, &direct, &los, w.eye, &w.held, row)
+                    };
                     w.sight
                         .insert(w.held.table.ids[row], (w.now, seen, w.stamp));
                     w.pick = None;
@@ -91,6 +104,7 @@ impl GSSimBotThinkMt {
             let mut m = mind.bind_mut();
             m.sight = w.sight;
             m.found = w.found;
+            m.rows = w.rows;
             m.query = query;
         }
         PackedInt32Array::from(out.as_slice())
@@ -102,6 +116,7 @@ struct Work {
     held: Arc<Packed>,
     sight: HashMap<i64, (f64, bool, i64)>,
     found: Found,
+    rows: Vec<u32>,
     query: Query,
     eye: Vector3,
     far: f64,
@@ -109,6 +124,7 @@ struct Work {
     target_id: i64,
     visible: bool,
     through: bool,
+    pair: bool,
     now: f64,
     stamp: i64,
     scanned: bool,
@@ -142,6 +158,7 @@ fn take(mind: &mut GSSimBotMind, r: &[f64]) -> Option<(Work, SightQuery)> {
         held,
         sight: std::mem::take(&mut mind.sight),
         found: std::mem::take(&mut mind.found),
+        rows: std::mem::take(&mut mind.rows),
         query,
         eye,
         far: mind.far,
@@ -149,6 +166,7 @@ fn take(mind: &mut GSSimBotMind, r: &[f64]) -> Option<(Work, SightQuery)> {
         target_id,
         visible,
         through: flags & 2 != 0,
+        pair: flags & 4 != 0,
         now: r[11],
         stamp: r[12] as i64,
         scanned: false,
@@ -165,7 +183,13 @@ impl Work {
         }
         let held = &*self.held;
         if !self.scanned {
-            candidates(&held.table, &self.query, &mut self.found);
+            candidates_grid(
+                &held.table,
+                &held.grid,
+                &self.query,
+                &mut self.found,
+                &mut self.rows,
+            );
             self.scanned = true;
             // A dead visible target is forgotten before the choice (the script's _forget_target).
             if self.found.target_dead {

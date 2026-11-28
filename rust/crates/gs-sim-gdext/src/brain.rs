@@ -8,7 +8,7 @@ use crate::sight::SightConf;
 use crate::sight::{GSSimSightRay, SightQuery};
 use godot::prelude::*;
 use gs_sim_bots::choose::{Pick, choose};
-use gs_sim_bots::{Found, Query, candidates};
+use gs_sim_bots::{Found, Query, candidates_grid};
 use gs_sim_brain::aim::direction;
 use gs_sim_brain::fight::FirstShot;
 use gs_sim_brain::num::rad_to_deg;
@@ -90,6 +90,8 @@ pub struct GSSimBotMind {
     pub(crate) far: f64,
     pub(crate) far_reuse: f64,
     pub(crate) found: Found,
+    /// The grid scan's scratch rows.
+    pub(crate) rows: Vec<u32>,
     /// The tick's bodies handed over on the main thread (`hold_senses`) for `perceive_held`.
     pub(crate) held: Option<Arc<Packed>>,
     /// The query this mind asks a [`GSSimSightRay`] with, when that is its `los`.
@@ -185,6 +187,42 @@ pub(crate) fn ask_row(
     ask(held.table.points[row]) || ask(held.eyes[row])
 }
 
+/// Pair sight (perceive flag 4): whether the bot `me_id` at `eye` and the body at `row` see each
+/// other, one ray between their eyes, cast from the lower id's eye to the higher id's, so both
+/// ask the same ray and the tick's [`PairCache`](crate::bots::PairCache) answers the second.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn ask_pair(
+    query: &mut SightQuery,
+    direct: &Option<Arc<SightConf>>,
+    los: &Callable,
+    me_id: i64,
+    eye: Vector3,
+    me_row: Option<usize>,
+    held: &Packed,
+    row: usize,
+    stamp: i64,
+) -> bool {
+    if let Some(me) = me_row
+        && let Some(seen) = held.pairs.get(me, row, stamp)
+    {
+        return seen;
+    }
+    let other = gv(held.eyes[row]);
+    let (from, to) = if me_id < held.table.ids[row] {
+        (eye, other)
+    } else {
+        (other, eye)
+    };
+    let seen = match direct {
+        Some(conf) => conf.clear(query, from, to),
+        None => los.call(&[from.to_variant(), to.to_variant()]).booleanize(),
+    };
+    if let Some(me) = me_row {
+        held.pairs.put(me, row, stamp, seen);
+    }
+    seen
+}
+
 pub(crate) fn gv(v: V3) -> Vector3 {
     Vector3::new(v.x, v.y, v.z)
 }
@@ -199,6 +237,7 @@ impl IRefCounted for GSSimBotMind {
             far: 0.0,
             far_reuse: 0.0,
             found: Found::default(),
+            rows: Vec::new(),
             held: None,
             query: SightQuery::default(),
             trick: gs_sim_brain::tricks::Resident::default(),
@@ -842,7 +881,8 @@ impl GSSimBotMind {
     /// target kept while in sight, else the best score seen (`los(from, to) -> bool`, the world's
     /// line of sight, asked of the chest then the head, through the sight cache; a
     /// [`GSSimSightRay`]'s `clear` is asked natively, the same answer). `flags`: 1 the
-    /// target is visible, 2 the bot sees through walls. Returns
+    /// target is visible, 2 the bot sees through walls, 4 pair sight (one eye-to-eye ray per pair
+    /// of bodies, from the lower id, shared through the tick's pair cache: [`ask_pair`]). Returns
     /// [chosen row or -1, 1 when the visible target was found dead], or nothing when `senses`
     /// has no eyes for its rows (the script then perceives).
     #[func]
@@ -1020,6 +1060,8 @@ impl GSSimBotMind {
         let (far, far_reuse) = (self.far, self.far_reuse);
         let visible = flags & 1 != 0;
         let through = flags & 2 != 0;
+        let pair = flags & 4 != 0;
+        let me_row = if pair { held.row_of(me_id) } else { None };
         let eye3 = v3(eye);
         let q = Query {
             me_id,
@@ -1033,7 +1075,7 @@ impl GSSimBotMind {
             visible,
         };
         let mut found = std::mem::take(&mut self.found);
-        candidates(table, &q, &mut found);
+        candidates_grid(table, &held.grid, &q, &mut found, &mut self.rows);
         // A dead visible target is forgotten before the choice (the script's _forget_target).
         let (visible, target_id) = if found.target_dead {
             (false, -1)
@@ -1048,7 +1090,21 @@ impl GSSimBotMind {
             if let Some(seen) = self.sight_held_far(id, now, stamp, reuse) {
                 return Some(seen);
             }
-            let seen = ask_row(&mut self.query, &direct, &los, eye, held, row);
+            let seen = if pair {
+                ask_pair(
+                    &mut self.query,
+                    &direct,
+                    &los,
+                    me_id,
+                    eye,
+                    me_row,
+                    held,
+                    row,
+                    stamp,
+                )
+            } else {
+                ask_row(&mut self.query, &direct, &los, eye, held, row)
+            };
             self.sight.insert(id, (now, seen, stamp));
             Some(seen)
         });
