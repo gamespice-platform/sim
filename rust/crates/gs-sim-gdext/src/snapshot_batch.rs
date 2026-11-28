@@ -41,6 +41,10 @@ struct Part {
     hooked: bool,
     /// Whether the hook runs on every snapshot even when nothing it decoded changed.
     always: bool,
+    /// Group bit (0..63) per declaration index; empty: the behaviour does not group its state.
+    /// When set, the batch writes the mask of groups whose values changed to `_changed_groups`
+    /// before the hook, as `GSNetBehaviour._apply_read` does.
+    groups: Vec<u8>,
 }
 
 struct Entry {
@@ -85,7 +89,8 @@ impl GSSimSnapshotBatch {
     /// null for one with no declarations; `props` an `Array` of property names by declaration
     /// index; `interpolated` a `PackedByteArray`, 1 for an interpolated declaration; `hooked`
     /// whether it overrides `_net_state_applied`; `always`, optional (false), whether its hook
-    /// runs on unchanged snapshots too), and the entity's script track (null when
+    /// runs on unchanged snapshots too; `groups`, optional (empty), a `PackedByteArray` group bit
+    /// per declaration index, for `_changed_groups`), and the entity's script track (null when
     /// `GSSimInterpolator` holds the samples alone). Returns
     /// false, holding nothing, if anything is not as described.
     #[func]
@@ -95,7 +100,7 @@ impl GSSimSnapshotBatch {
             let Ok(row) = row.try_to::<VarArray>() else {
                 return false;
             };
-            if row.len() != 5 && row.len() != 6 {
+            if !(5..=7).contains(&row.len()) {
                 return false;
             }
             let Ok(object) = row.at(0).try_to::<Gd<Object>>() else {
@@ -114,6 +119,19 @@ impl GSSimSnapshotBatch {
             if names.len() != decls.len() || flags.len() != decls.len() {
                 return false;
             }
+            let groups: Vec<u8> = if row.len() == 7 {
+                let Ok(groups) = row.at(6).try_to::<PackedByteArray>() else {
+                    return false;
+                };
+                if !groups.is_empty()
+                    && (groups.len() != decls.len() || groups.as_slice().iter().any(|&g| g > 62))
+                {
+                    return false;
+                }
+                groups.to_vec()
+            } else {
+                Vec::new()
+            };
             let (Ok(baseline), Ok(read_now)) = (
                 object.get("_baseline").try_to::<VarDictionary>(),
                 object.get("_read_now").try_to::<VarDictionary>(),
@@ -131,7 +149,8 @@ impl GSSimSnapshotBatch {
                 baseline,
                 read_now,
                 hooked: row.at(4).try_to::<bool>().unwrap_or(false),
-                always: row.len() == 6 && row.at(5).try_to::<bool>().unwrap_or(false),
+                always: row.len() >= 6 && row.at(5).try_to::<bool>().unwrap_or(false),
+                groups,
             });
         }
         let identity = held
@@ -145,6 +164,13 @@ impl GSSimSnapshotBatch {
                 identity,
             }),
         );
+        true
+    }
+
+    /// True: `register` takes a row's seventh element, the behaviour's state groups, and `apply`
+    /// writes `_changed_groups` before its hook. Scripts test for this method.
+    #[func]
+    fn takes_state_groups(&self) -> bool {
         true
     }
 
@@ -264,20 +290,27 @@ impl GSSimSnapshotBatch {
                 let mut baseline = part.baseline.clone();
                 read_now.clear();
                 let mut part_changed = false;
+                let mut changed_groups = 0i64;
                 for (_, index, value) in &flat[at..ends[p]] {
                     let variant = to_variant(value);
                     let prop = &part.props[*index];
                     // What GSNetBehaviour._apply_read counts as a change: absent, another type, or unequal.
-                    part_changed = part_changed
-                        || baseline.get(prop).is_none_or(|old| {
-                            old.get_type() != variant.get_type() || old != variant
-                        });
+                    let differs = baseline
+                        .get(prop)
+                        .is_none_or(|old| old.get_type() != variant.get_type() || old != variant);
+                    part_changed |= differs;
+                    if differs && let Some(&g) = part.groups.get(*index) {
+                        changed_groups |= 1i64 << g;
+                    }
                     object.set(prop, &variant);
                     baseline.set(prop, &variant);
                     read_now.set(prop, true);
                 }
                 at = ends[p];
                 object.set("_read_tick", &tick_v);
+                if !part.groups.is_empty() {
+                    object.set("_changed_groups", &changed_groups.to_variant());
+                }
                 entity_changed |= part_changed;
                 if part.hooked {
                     if !skip_unchanged || part.always || part_changed {
