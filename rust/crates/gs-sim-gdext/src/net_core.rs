@@ -21,6 +21,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+#[path = "net_core_batch.rs"]
+mod batch;
+
 const ABI: i64 = 5;
 /// `GSNetVar.MAX_STRING_BYTES`.
 const MAX_STRING_BYTES: usize = 1024;
@@ -1013,54 +1016,8 @@ impl GSSimNetCore {
         accumulators: Variant,
         starved_ticks: Variant,
     ) {
-        if !self.open {
-            godot_error!(
-                "GSSimNetCore.submit_peer_interest outside begin_snapshot/finish_snapshot."
-            );
-            return;
-        }
-        if !self.icfg.on {
-            godot_error!("GSSimNetCore.submit_peer_interest without set_interest.");
-            return;
-        }
         let info = ints(&info);
-        if info.len() < 10 {
-            godot_error!(
-                "GSSimNetCore.submit_peer_interest: info needs the budget load flag and acked ring size (ABI 4)."
-            );
-            return;
-        }
-        let mut job = job_from(&info);
-        let Some(ring) = read_ring(&info, 9) else {
-            godot_error!(
-                "GSSimNetCore.submit_peer_interest: the acked ring's size does not match info."
-            );
-            return;
-        };
-        job.ring = ring;
-        let acc = dict(&accumulators).unwrap_or_default();
-        let starved = dict(&starved_ticks).unwrap_or_default();
-        let mut peer = self.take_peer(job.peer_id);
-        if info[8] != 0 {
-            if !Self::load_budget(&mut peer, &acc, &starved) {
-                godot_error!(
-                    "GSSimNetCore.submit_peer_interest: a budget key is not an int net_id; that peer's budget starts empty."
-                );
-            }
-        } else if !peer.budget.loaded {
-            godot_error!(
-                "GSSimNetCore.submit_peer_interest: load = 0 for a peer whose budget was never loaded (forgotten?); loading it now from dictionaries that may be stale."
-            );
-            Self::load_budget(&mut peer, &acc, &starved);
-        }
-        job.interest = true;
-        if let Some(mut obs) = object(&observer) {
-            job.has_observer = true;
-            job.obs_pos = v3(&obs.call("world_position", &[]));
-            job.obs_owner = num_i(&obs.get("owner_peer_id"));
-            job.obs_aim = v3(&obs.get("interest_aim"));
-        }
-        self.queue(job, peer, None);
+        self.submit_interest(&observer, &info, &accumulators, &starved_ticks);
     }
 
     #[func]
