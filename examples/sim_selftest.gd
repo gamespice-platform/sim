@@ -6,6 +6,8 @@ extends Node
 const CHANNEL := "gs.sim.selftest"
 
 const NetExactChecks := preload("res://examples/net_exact_checks.gd")
+const ServerTickChecks := preload("res://examples/server_tick_checks.gd")
+const ShotsChecks := preload("res://examples/shots_checks.gd")
 
 ## Random sight scans compared one by one.
 const SCANS := 3000
@@ -56,9 +58,9 @@ func _run() -> void:
 	if GSSim.has(&"navjoin"):
 		_test_navjoin_parity()
 	if GSSim.has(&"shots"):
-		_test_shots()
+		ShotsChecks.run(_check)
 	if ClassDB.class_exists(&"GSSimServerTick") and ClassDB.class_has_method(&"GSSimServerTick", &"pre"):
-		_test_server_tick_pre()
+		ServerTickChecks.run(_check)
 	NetExactChecks.run(_check)
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -743,125 +745,3 @@ static func _navjoin_mesh(rng: RandomNumberGenerator) -> NavigationMesh:
 	for polygon in polygons:
 		mesh.add_polygon(polygon)
 	return mesh
-
-
-## GSSimShots' rows, end to end through the class: a cached box set posed for a shot, a world wall answered by a
-## Callable, a round that stops at it and one that passes it (the reverse ray finds the exit). The walk's rules
-## themselves are gs-sim-weapon's cargo tests and FC's headless_native_shots (against GSPelletTracer, to the bit).
-func _test_shots() -> void:
-	var shots: Object = ClassDB.instantiate(&"GSSimShots")
-	var ident := [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-	# One set (entity 7, one box): bounds at the root, radius 2, local transform identity.
-	var set_row := PackedFloat64Array([7.0, 1.0, 0.0, 0.0, 0.0, 2.0, 0.0] + ident + [0.0, 0.0, 0.0, 0.0])
-	# A half-metre cube (shape 1), group 0, never crouch-fitted (stand_y, stand_h NaN), at the set's origin.
-	var box_row := PackedFloat64Array([1.0, 0.0, 0.0, 0.5, 0.5, 0.5, 1.0, 0.0, 0.0, NAN, NAN] + ident + [0.0, 0.0, 0.0, 0.0])
-	_check(not bool(shots.call(&"set_boxes", set_row, PackedFloat64Array([1.0]))), "GSSimShots refuses box rows that do not add up")
-	_check(bool(shots.call(&"set_boxes", set_row, box_row)) and int(shots.call(&"set_count")) == 1, "GSSimShots caches one set of one box")
-	_check(bool(shots.call(&"set_poses", PackedFloat64Array([1.0] + ident + [0.0, 1.0, -10.0, -1.0]))), "and poses it 10 m ahead")
-	var stride := int(ClassDB.class_get_integer_constant(&"GSSimShots", &"STRIDE"))
-	var origin := Vector3(0.0, 1.0, 0.0)
-
-	var rows: PackedFloat64Array = shots.call(&"walk", 3, origin, Vector3.FORWARD, 100.0, PackedInt32Array())
-	_check(rows.size() == 2 * stride and rows[0] == 2.0 and rows[1] == 3.0 and rows[8] == 0.0 and is_equal_approx(rows[4], -9.5) and is_equal_approx(rows[10], 9.5)
-			and rows[stride] == 1.0 and is_equal_approx(rows[stride + 4], -9.5),
-		"an open shot is a body row (pellet 3, set 0, the near face at 9.5 m), then its impact there", str(rows))
-	rows = shots.call(&"walk", 0, origin, Vector3.FORWARD, 100.0, PackedInt32Array([0]))
-	_check(rows.size() == stride and rows[0] == 1.0 and is_equal_approx(rows[4], -100.0), "a skipped set is not hit: an impact at full range", str(rows))
-
-	shots.call(&"set_world", _shots_slab)
-	shots.call(&"clear_pen")
-	rows = shots.call(&"walk", 0, origin, Vector3.FORWARD, 100.0, PackedInt32Array())
-	_check(rows.size() == stride and rows[0] == 1.0 and is_equal_approx(rows[4], -5.0), "a round that cannot penetrate stops at the wall's face", str(rows))
-
-	# power, max_depth, body_cost, speed, reference_speed, min_damage, max_passes, ricochet angle, keep, max, on, players
-	shots.call(&"set_pen", PackedFloat64Array([2.0, 1.0, 0.3, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 1.0]), PackedFloat64Array([1.0]))
-	rows = shots.call(&"walk", 0, origin, Vector3.FORWARD, 100.0, PackedInt32Array())
-	var passed := rows.size() == 3 * stride and rows[0] == 3.0 and is_equal_approx(rows[7], -5.2) and is_equal_approx(rows[15], 0.2)
-	var body := rows.size() == 3 * stride and rows[stride] == 2.0 and rows[stride + 12] == 1.0 and rows[stride + 13] == 1.0 and rows[2 * stride] == 1.0
-	_check(passed and body, "a penetrating round passes the 0.2 m wall (exit from the reverse ray), then hits the box after one wall, and stops there", str(rows))
-
-
-## A 0.2 m wall from z = -5 to -5.2 as GSSimShots' world ray: `[distance, point, normal, material 4, resistance 1,
-## ricochet 0, sheet 0, pane 0]`, a face only from outside (as a ray starting inside a convex body sees none).
-func _shots_slab(from: Vector3, dir: Vector3, max_distance: float) -> PackedFloat64Array:
-	var plane := 0.0
-	var normal := 0.0
-	if dir.z < 0.0 and from.z > -5.0:
-		plane = -5.0
-		normal = 1.0
-	elif dir.z > 0.0 and from.z < -5.2:
-		plane = -5.2
-		normal = -1.0
-	else:
-		return PackedFloat64Array()
-	var t := (plane - from.z) / dir.z
-	if t < 0.0 or t > max_distance:
-		return PackedFloat64Array()
-	var p := from + dir * t
-	return PackedFloat64Array([t, p.x, p.y, p.z, 0.0, 0.0, normal, 4.0, 1.0, 0.0, 0.0, 0.0])
-
-
-## GSSimServerTick.pre against FC's body gate and ladder wish written in script (FcPlayerBody.body_delta,
-## tick_pre with GSFpsMotor._view_basis at pitch 0): every row the same to the bit.
-func _test_server_tick_pre() -> void:
-	const ROWS := 4000
-	const MAX_GAP := 8
-	const GROUND := 0
-	var st: Object = ClassDB.instantiate(&"GSSimServerTick")
-	st.call(&"configure", GROUND, 0.4)
-	var stride: int = st.get(&"PRE_IN")
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 2611
-	var rows := PackedFloat64Array()
-	rows.resize(ROWS * stride)
-	var want := PackedFloat64Array()
-	for i: int in ROWS:
-		var tick := rng.randi_range(0, 40)
-		var last := rng.randi_range(-2, 44)
-		var every := rng.randi_range(1, 4)
-		var delta := 1.0 / rng.randi_range(30, 128)
-		var buttons := rng.randi_range(0, 3)
-		var prev := buttons if rng.randf() < 0.8 else rng.randi_range(0, 3)
-		var ext := 1.0 if rng.randf() < 0.1 else 0.0
-		var mode := GROUND if rng.randf() < 0.8 else rng.randi_range(1, 4)
-		var slide := -1.0 if rng.randf() < 0.9 else rng.randf()
-		var wall := -1.0 if rng.randf() < 0.9 else rng.randf()
-		var yaw := rng.randf_range(-720.0, 720.0)
-		var mv := Vector2(rng.randf_range(-1.0, 1.0), rng.randf_range(-1.0, 1.0))
-		if rng.randf() < 0.1:
-			mv = Vector2.ZERO
-		var row := [tick, last, every, delta, buttons, prev, ext, mode, slide, wall, yaw, mv.x, mv.y]
-		for j: int in stride:
-			rows[i * stride + j] = float(row[j])
-		# FcPlayerBody.body_delta.
-		var gap := tick - last
-		var kind := 2.0
-		var d := 0.0
-		if last < 0 or gap <= 0 or gap > MAX_GAP:
-			kind = 0.0
-			d = delta
-		elif gap >= every or buttons != prev or ext != 0.0 or mode != GROUND or slide >= 0.0 or wall >= 0.0:
-			kind = 1.0
-			d = delta * float(gap)
-		# FcPlayerBody.tick_pre's ladder wish.
-		var r := deg_to_rad(yaw)
-		var forward := Vector3(-sin(r) * cos(0.0), sin(0.0), -cos(r) * cos(0.0))
-		var right := Vector3(cos(r), 0.0, -sin(r))
-		var intent: Vector3 = right * mv.x + forward * mv.y
-		var w := Vector3(intent.x, 0.0, intent.z).normalized()
-		want.append_array([kind, d, w.x, w.z])
-	var got: PackedFloat64Array = st.call(&"pre", rows, ROWS, MAX_GAP)
-	var first := -1
-	for i: int in want.size():
-		if got.size() != want.size() or got[i] != want[i]:
-			first = i
-			break
-	_check(first < 0, "GSSimServerTick.pre: %d rows of body gate and ladder wish match the script to the bit" % ROWS,
-			"" if first < 0 else "value %d: %s vs %s" % [first, got[first] if first < got.size() else "missing", want[first]])
-	var kinds := [0, 0, 0]
-	for i: int in ROWS:
-		kinds[int(want[i * 4])] += 1
-	_check(kinds[0] > 0 and kinds[1] > 0 and kinds[2] > 0, "the rows reset, run and skip", str(kinds))
-	var counters: PackedInt64Array = st.call(&"counters")
-	_check(counters[counters.size() - 2] == ROWS and counters[counters.size() - 1] == kinds[2],
-			"the counters count the rows and the skips", str(counters))
