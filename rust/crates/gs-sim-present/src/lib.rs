@@ -7,6 +7,8 @@
 //! What stays in the script is the one thing that is not arithmetic: the occluder ray, asked only of a body
 //! [`OCCLUSION_CANDIDATE`] names.
 
+pub mod render;
+
 use gs_sim_math::Vec3;
 
 /// Tier 0: presented in full every frame, no animation gate.

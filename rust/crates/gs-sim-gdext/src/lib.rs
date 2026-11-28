@@ -81,6 +81,8 @@ mod present;
 mod pvs;
 #[cfg(feature = "ragdoll")]
 mod ragdoll;
+#[cfg(feature = "remote_render")]
+mod remote_render;
 #[cfg(feature = "road")]
 mod road;
 #[cfg(feature = "route")]

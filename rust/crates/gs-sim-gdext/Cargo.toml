@@ -59,7 +59,7 @@ godot = { version = "0.5.5", features = ["experimental-threads"] }
 rayon = "1.12"
 
 [features]
-default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "pose", "clips", "timer", "figure", "navjoin", "net_core", "net_pack", "net_pull_batch", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag", "events", "coast"]
+default = ["bots", "brain", "snapshot", "interp", "snapshot_batch", "motor", "arms", "audio", "ragdoll", "killview", "crowd", "weapon", "senses", "zombie", "doors", "grid2d", "witches", "doubt", "hazards", "road", "pvs", "route", "seek", "crc", "interest", "trace", "players", "present", "remote_render", "pose", "clips", "timer", "figure", "navjoin", "net_core", "net_pack", "net_pull_batch", "weapon_net", "threat", "spawn", "contacts", "npc_ai_senses", "volumes", "unlag", "events", "coast"]
 bots = ["dep:gs-sim-bots"]
 coast = ["bots", "weapon"]
 brain = ["dep:gs-sim-brain", "bots"]
@@ -95,6 +95,7 @@ trace = ["dep:gs-sim-trace"]
 players = ["dep:gs-sim-players"]
 events = ["dep:gs-sim-events"]
 present = ["dep:gs-sim-present", "dep:gs-sim-math"]
+remote_render = ["dep:gs-sim-present"]
 pose = ["dep:gs-sim-math"]
 clips = ["dep:gs-sim-clips", "dep:gs-sim-math"]
 timer = ["dep:gs-sim-timer"]
