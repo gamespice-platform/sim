@@ -65,5 +65,6 @@ static func run(check: Callable) -> void:
 		kinds[int(want[i * 4])] += 1
 	check.call(kinds[0] > 0 and kinds[1] > 0 and kinds[2] > 0, "the rows reset, run and skip", str(kinds))
 	var counters: PackedInt64Array = st.call(&"counters")
-	check.call(counters[counters.size() - 2] == ROWS and counters[counters.size() - 1] == kinds[2],
+	# pre rows and skips: values 9 and 10 (GSSimServerTick.counters).
+	check.call(counters[9] == ROWS and counters[10] == kinds[2],
 			"the counters count the rows and the skips", str(counters))
