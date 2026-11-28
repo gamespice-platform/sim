@@ -70,6 +70,10 @@ pub struct GSSimInterpolator {
     /// Behaviour instance id -> the copy that replaces its `_net_interpolated` (`bind_mirror`).
     mirrors: HashMap<InstanceId, Mirror>,
     mirrored: i64,
+    /// `set_mirror_same_skip`: a mirror leaves the node alone when it already stands where the
+    /// state says (on by default).
+    #[init(val = true)]
+    same_skip: bool,
 }
 
 /// `bind_mirror`: what a behaviour's `_net_interpolated` does, done here instead of a script call.
@@ -242,7 +246,7 @@ impl GSSimInterpolator {
                         .flatten()
                         .map(|(_, v)| to_variant(v))
                 };
-                mirror.run(&behaviour, drawn);
+                mirror.run(&behaviour, drawn, self.same_skip);
                 self.mirrored += 1;
             } else {
                 behaviour.call("_net_interpolated", std::slice::from_ref(tick));
@@ -290,7 +294,12 @@ impl GSSimInterpolator {
 impl Mirror {
     /// FC's `_net_interpolated`, step for step: nothing without the node, the pairs in order,
     /// then `node.global_position = state.position`.
-    fn run(&self, behaviour: &Gd<Object>, drawn: impl Fn(u32) -> Option<Variant>) {
+    ///
+    /// With `same_skip`, a position equal to the node's own global position is not written again:
+    /// a standing player's position repeats, and each write re-sends the move through every node
+    /// under the player. The comparison reads the node itself, not a remembered last write, so a
+    /// teleport, respawn or reparent done by anything else is never mistaken for "unchanged".
+    fn run(&self, behaviour: &Gd<Object>, drawn: impl Fn(u32) -> Option<Variant>, same_skip: bool) {
         let Ok(mut node) = Gd::<Node3D>::try_from_instance_id(self.node) else {
             return;
         };
@@ -315,6 +324,9 @@ impl Mirror {
             _ => state.get(&self.position),
         };
         if let Ok(p) = position.try_to::<Vector3>() {
+            if same_skip && node.get_global_position() == p {
+                return;
+            }
             node.set_global_position(p);
         }
     }
@@ -457,6 +469,19 @@ impl GSSimInterpolator {
     #[func]
     fn set_settled_skip(&mut self, on: bool) {
         self.settle = on;
+    }
+
+    /// On by default: a bound mirror skips `node.global_position = position` when the node's
+    /// global position already equals it (exact compare, read from the node). Off: always set,
+    /// as the script's `_net_interpolated` did before.
+    #[func]
+    fn set_mirror_same_skip(&mut self, on: bool) {
+        self.same_skip = on;
+    }
+
+    #[func]
+    fn mirror_same_skip(&self) -> bool {
+        self.same_skip
     }
 
     /// Entities `apply_all` left alone as settled since the last `reset_counts`.

@@ -21,6 +21,7 @@ pub struct GSSimPresentLod {
     codes: Vec<i32>,
     sched: Scheduler,
     hidden: Vec<i32>,
+    ids: Vec<i64>,
 }
 
 fn v3(v: Vector3) -> V3 {
@@ -43,41 +44,50 @@ impl GSSimPresentLod {
         frustum: Array<Plane>,
         settings: PackedFloat64Array,
     ) -> PackedInt32Array {
-        let s = settings.as_slice();
-        if s.len() < 10 {
-            godot_error!("GSSimPresentLod.classify: {} settings, need 10", s.len());
-            return PackedInt32Array::new();
-        }
-        let cfg = Config {
-            near2: s[0],
-            cone: s[1],
-            radius: s[2],
-            farthest2: s[3],
-            far2: s[4],
-            anim_far2: s[5],
-            anim_near2: s[6],
-            figure2: s[7],
-            frustum_on: s[8] != 0.0,
-            occlusion: s[9] != 0.0,
-        };
-        self.planes.clear();
-        self.planes.extend(frustum.iter_shared().map(|p| P {
-            normal: V3::new(p.normal.x, p.normal.y, p.normal.z),
-            d: p.d,
-        }));
         self.flat.clear();
         for p in positions.as_slice() {
             self.flat.extend_from_slice(&[p.x, p.y, p.z]);
         }
-        classify(
-            &cfg,
-            &self.flat,
-            v3(eye),
-            v3(forward),
-            &self.planes,
-            &mut self.codes,
-        );
-        PackedInt32Array::from(self.codes.as_slice())
+        self.judge(eye, forward, &frustum, &settings)
+    }
+
+    /// [method classify] with the gather done here: each of [param bodies] (`Node3D`s) gives its `global_position`,
+    /// and its instance id goes to [method gathered_ids], 0 for a body whose `camera` property is set (the viewer's
+    /// own, never thinned), as the script's loop read them. A slot that is not a `Node3D` stands at the origin with id 0.
+    #[func]
+    fn classify_nodes(
+        &mut self,
+        bodies: AnyArray,
+        eye: Vector3,
+        forward: Vector3,
+        frustum: Array<Plane>,
+        settings: PackedFloat64Array,
+    ) -> PackedInt32Array {
+        self.flat.clear();
+        self.ids.clear();
+        let camera = StringName::from("camera");
+        for v in bodies.iter_shared() {
+            match v.try_to::<Gd<Node3D>>() {
+                Ok(body) => {
+                    let p = body.get_global_position();
+                    self.flat.extend_from_slice(&[p.x, p.y, p.z]);
+                    let own = !body.get(&camera).is_nil();
+                    self.ids
+                        .push(if own { 0 } else { body.instance_id().to_i64() });
+                }
+                Err(_) => {
+                    self.flat.extend_from_slice(&[0.0, 0.0, 0.0]);
+                    self.ids.push(0);
+                }
+            }
+        }
+        self.judge(eye, forward, &frustum, &settings)
+    }
+
+    /// One id per body of the last [method classify_nodes]: its instance id, 0 for the viewer's own.
+    #[func]
+    fn gathered_ids(&self) -> PackedInt64Array {
+        PackedInt64Array::from(self.ids.as_slice())
     }
 
     /// Indices of the bodies the last [method classify] marked for the occluder ray.
@@ -166,5 +176,48 @@ impl GSSimPresentLod {
     #[func]
     fn reset(&mut self) {
         self.sched.clear();
+    }
+}
+
+impl GSSimPresentLod {
+    /// The shared half of [method classify] and [method classify_nodes], on positions already in `flat`.
+    fn judge(
+        &mut self,
+        eye: Vector3,
+        forward: Vector3,
+        frustum: &Array<Plane>,
+        settings: &PackedFloat64Array,
+    ) -> PackedInt32Array {
+        let s = settings.as_slice();
+        if s.len() < 10 {
+            godot_error!("GSSimPresentLod.classify: {} settings, need 10", s.len());
+            return PackedInt32Array::new();
+        }
+        let cfg = Config {
+            near2: s[0],
+            cone: s[1],
+            radius: s[2],
+            farthest2: s[3],
+            far2: s[4],
+            anim_far2: s[5],
+            anim_near2: s[6],
+            figure2: s[7],
+            frustum_on: s[8] != 0.0,
+            occlusion: s[9] != 0.0,
+        };
+        self.planes.clear();
+        self.planes.extend(frustum.iter_shared().map(|p| P {
+            normal: V3::new(p.normal.x, p.normal.y, p.normal.z),
+            d: p.d,
+        }));
+        classify(
+            &cfg,
+            &self.flat,
+            v3(eye),
+            v3(forward),
+            &self.planes,
+            &mut self.codes,
+        );
+        PackedInt32Array::from(self.codes.as_slice())
     }
 }
