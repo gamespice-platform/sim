@@ -16,6 +16,7 @@ use crate::batch::GSSimMotorBatch;
 use crate::hulls::GSSimHullWorld;
 use godot::prelude::*;
 use gs_sim_events::{EventTable, FLOATS, IN, IN_B_MODE, IN_B_Y, INTS, kind, slot};
+use gs_sim_players::activity::Activity;
 use gs_sim_players::table::{BEGIN, FLAG_ALIVE, STRIDE, Table};
 use gs_sim_players::{Config, OUT, post_head, pre, run_rows};
 
@@ -53,6 +54,9 @@ pub struct GSSimServerTick {
     pre_skips: i64,
     /// Seconds stepped since the last [`Self::reset_counters`].
     time: f64,
+    /// The players' last-active column ([`Self::activity_note`]) and its answers, kept between calls.
+    activity: Activity,
+    activity_out: Vec<i64>,
 }
 
 #[godot_api]
@@ -61,9 +65,11 @@ impl GSSimServerTick {
     /// 3: a tick that derives nothing ends with no events (2 kept the last derived tick's).
     /// 4: [`Self::derive_slots`], event rows filled from the resident motor rows.
     /// 5: [`Self::post_head`], the players' post-head pass from the resident motor rows.
-    #[constant]
     /// 6: [`Self::pre`], the players' pre-motor pass (body gate and ladder wish).
-    const API: i64 = 6;
+    /// 7: the players' last-active column ([`Self::activity_note`], [`Self::activity_due`],
+    /// [`Self::activity_take`], [`Self::activity_flush`]).
+    #[constant]
+    const API: i64 = 7;
     /// Floats per row of [`Self::pre`]'s input (`gs_sim_players::pre::IN`).
     #[constant]
     const PRE_IN: i64 = pre::IN as i64;
@@ -294,6 +300,44 @@ impl GSSimServerTick {
         refreshed
     }
 
+    /// Notes every `ids[i]` whose `rows[i]` is not -1 as active at [param tick]: the players'
+    /// loop's `GSMatch.note_activity` calls for the whole roster in one (`gs_sim_players::activity`).
+    #[func]
+    fn activity_note(&mut self, ids: PackedInt64Array, rows: PackedInt32Array, tick: i64) {
+        self.activity.note(ids.as_slice(), rows.as_slice(), tick);
+    }
+
+    /// The `[id, noted]` pairs an idle check at [param tick] with [param threshold] ticks could
+    /// misjudge without the column; the caller writes `max(record, noted)` into each record. Empty
+    /// on most ticks.
+    #[func]
+    fn activity_due(&mut self, tick: i64, threshold: i64) -> PackedInt64Array {
+        self.activity_out.clear();
+        self.activity.due(tick, threshold, &mut self.activity_out);
+        PackedInt64Array::from(&self.activity_out[..])
+    }
+
+    /// Drops [param id] from the column: its latest note when never handed over (write it into the
+    /// record before the player leaves), else -1.
+    #[func]
+    fn activity_take(&mut self, id: i64) -> i64 {
+        self.activity.take(id)
+    }
+
+    /// Every note never handed over, as `[id, noted]` pairs: before anything reads the records.
+    #[func]
+    fn activity_flush(&mut self) -> PackedInt64Array {
+        self.activity_out.clear();
+        self.activity.flush(&mut self.activity_out);
+        PackedInt64Array::from(&self.activity_out[..])
+    }
+
+    /// Forgets every player in the column.
+    #[func]
+    fn activity_clear(&mut self) {
+        self.activity.clear();
+    }
+
     /// The player table, [constant TABLE_STRIDE] floats per roster slot.
     #[func]
     fn table(&mut self) -> PackedFloat64Array {
@@ -317,7 +361,8 @@ impl GSSimServerTick {
     /// Steps, rows refreshed from motor rows, rows refreshed from feet, posture rows, event rows
     /// derived, rows filled from motor rows, marker rows missed ([`Self::derive_slots`]), since
     /// the last reset, then post-head rows answered and missed ([`Self::post_head`]), then pre rows
-    /// answered and skipped ([`Self::pre`]).
+    /// answered and skipped ([`Self::pre`]), then activity rows noted and ids handed over
+    /// ([`Self::activity_note`]).
     #[func]
     fn counters(&self) -> PackedInt64Array {
         PackedInt64Array::from(
@@ -333,6 +378,8 @@ impl GSSimServerTick {
                 self.head_misses,
                 self.pre_rows,
                 self.pre_skips,
+                self.activity.notes,
+                self.activity.handed,
             ][..],
         )
     }
@@ -356,6 +403,7 @@ impl GSSimServerTick {
         self.head_misses = 0;
         self.pre_rows = 0;
         self.pre_skips = 0;
+        self.activity.reset_counters();
         self.time = 0.0;
     }
 }
