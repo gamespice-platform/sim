@@ -70,14 +70,11 @@ pub fn held_step(slot: &mut HeldSlot, i: &HeldIn, retell: i64, wrap: i64) -> (bo
     (!keep, fired)
 }
 
-/// Steps after which a body not stepped since is forgotten (freed bodies leave no slot behind).
-pub const HELD_KEEP: u64 = 256;
-
-/// Every body's held-gun slot, by instance id, kept between frames.
+/// Every body's held-gun slot, by instance id, kept between frames until the caller forgets it (a body that is
+/// not drawn for a while keeps what it was told, as the script's members do).
 #[derive(Default)]
 pub struct HeldGate {
-    slots: HashMap<i64, (HeldSlot, u64)>,
-    steps: u64,
+    slots: HashMap<i64, HeldSlot>,
     /// One code per body of the last [method step]: `fired << 1 | tell`.
     pub codes: Vec<i64>,
 }
@@ -85,28 +82,22 @@ pub struct HeldGate {
 impl HeldGate {
     /// One frame over [param ids] and [param inputs] (the same length).
     pub fn step(&mut self, ids: &[i64], inputs: &[HeldIn], retell: i64, wrap: i64) {
-        self.steps += 1;
-        let now = self.steps;
         self.codes.clear();
         for (id, i) in ids.iter().zip(inputs) {
-            let (slot, used) = self.slots.entry(*id).or_default();
-            *used = now;
+            let slot = self.slots.entry(*id).or_default();
             let (tell, fired) = held_step(slot, i, retell, wrap);
             self.codes.push((fired << 1) | i64::from(tell));
-        }
-        if now.is_multiple_of(HELD_KEEP) {
-            self.slots.retain(|_, (_, used)| now - *used < HELD_KEEP);
         }
     }
 
     /// The slot of body [param id], if it has one.
     pub fn slot(&self, id: i64) -> Option<&HeldSlot> {
-        self.slots.get(&id).map(|(s, _)| s)
+        self.slots.get(&id)
     }
 
     /// Starts body [param id] from [param slot] (what the script had told it), replacing any slot it had.
     pub fn seed(&mut self, id: i64, slot: HeldSlot) {
-        self.slots.insert(id, (slot, self.steps));
+        self.slots.insert(id, slot);
     }
 
     /// Forgets body [param id] (it was freed or rebuilt its gun).
@@ -271,13 +262,15 @@ mod tests {
     }
 
     #[test]
-    fn held_gate_forgets_bodies_not_stepped() {
+    fn held_gate_keeps_bodies_not_stepped_until_forgotten() {
         let mut g = HeldGate::default();
         let i = HeldIn::default();
-        g.step(&[1], &[i], 30, 256);
-        for _ in 1..2 * HELD_KEEP {
+        g.step(&[1], &[HeldIn { seq: 7, ..i }], 30, 256);
+        for _ in 0..1000 {
             g.step(&[2], &[i], 30, 256);
         }
+        assert_eq!(g.slot(1).map(|s| s.seen), Some(7));
+        g.forget(1);
         assert!(g.slot(1).is_none());
         assert!(g.slot(2).is_some());
     }

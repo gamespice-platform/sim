@@ -1,9 +1,9 @@
 //! `GSSimRemoteRender`: game-fatal-contact's per-body render stages of `FcPlayer.present` (`r_held`, `r_tag`,
 //! `r_anim`) for a whole frame of remote bodies in one call each (see `gs_sim_present::render`).
 //!
-//! `held` keeps every body's retell gate and shot sequence by instance id and answers which guns are told again
-//! and how many shots each fired; `place_tags` writes every name tag's screen-parallel transform itself, skipping a
-//! tag that has not moved; `anim` computes the figures' motion numbers from packed rows.
+//! `held` keeps every body's retell gate and shot sequence by instance id (until `forget`) and answers which guns
+//! are told again and how many shots each fired; `place_tags` writes every name tag's screen-parallel transform
+//! itself, skipping a tag that has not moved; `anim` computes the figures' motion numbers from packed rows.
 
 use std::collections::HashMap;
 
@@ -243,7 +243,8 @@ impl GSSimRemoteRender {
         PackedFloat64Array::from(out.as_slice())
     }
 
-    /// Forgets body [param id]'s held gate (it was freed, or its gun rebuilt).
+    /// Forgets body [param id]'s held gate. The caller forgets every body it freed: a gate is kept until then,
+    /// however long the body goes undrawn.
     #[func]
     fn forget(&mut self, id: i64) {
         self.held.forget(id);
